@@ -95,7 +95,7 @@ main :: proc() {
   model_matrix := matrix[4, 4]f32{
     1, 0, 0, 0,
     0, 1, 0, 0,
-    0, 0, 1,-3,
+    0, 0, 1, -0.2,
     0, 0, 0, 1
   }
 
@@ -104,7 +104,7 @@ main :: proc() {
   player_position := Vec3{0, 0, 0}
 
   // projection_matrix := perspective_projection_matrix(WINDOW_WIDTH / WINDOW_HEIGHT, 30, 1, 10)
-  projection_matrix := linalg.matrix4_perspective_f32(90 * math.PI / 180, WINDOW_WIDTH / WINDOW_HEIGHT, 0.1, 1000)
+  projection_matrix := linalg.matrix4_perspective_f32(40 * math.PI / 180, WINDOW_WIDTH / WINDOW_HEIGHT, 0.01, 1000)
 
   shader_program := compile_shaderprogram(
                     cstring(#load("../assets/frag.glsl")),
@@ -153,8 +153,8 @@ main :: proc() {
   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
   gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGB, img_w, img_h, 0, gl.RGBA, gl.UNSIGNED_BYTE, &image_data[0])
   gl.GenerateMipmap(gl.TEXTURE_2D)
-  //
-  // stb.image_free(image_data)
+
+  stb.image_free(image_data)
 
 
 
@@ -162,6 +162,11 @@ main :: proc() {
 
   gl.Enable(gl.DEPTH_TEST)
 
+  mx, my := glfw.GetCursorPos(GlfwWindow)
+  mouse.current_position = {f32(mx), f32(my)}
+
+  wall_mesh := Mesh{}
+  mesh_init(&wall_mesh, vertices, indices, 0)
 
   for glfw.WindowShouldClose(GlfwWindow) == false {
     current_time := f64(time.now()._nsec)
@@ -171,9 +176,10 @@ main :: proc() {
 
 
     mouse.previous_position = mouse.current_position
-    mx, my := glfw.GetCursorPos(GlfwWindow)
+    mx, my = glfw.GetCursorPos(GlfwWindow)
     mouse.current_position = {f32(mx), f32(my)}
     mouse.delta_position = mouse.current_position - mouse.previous_position
+    // fmt.printfln("%f", mouse.delta_position.y)
 
     // model_matrix *= rotation_matrix_y(delta_time * 0.001)
     // model_matrix *= translation_matrix({0, 0, f32(math.sin(time_since_start*0.00001))*0.1})
@@ -190,6 +196,7 @@ main :: proc() {
 
     gl.BindVertexArray(cast(u32)triangle_vao)
     window_render()
+    mesh_draw(wall_mesh)
 
 
     gl.UniformMatrix4fv(shader_view_matrix_location, 1, gl.FALSE, &player.viewmatrix[0,0])
@@ -212,7 +219,7 @@ window_render :: proc() {
   gl.ClearColor(0.0, 0.0, 0.0, 1.0)
   gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
-  gl.DrawElements(gl.TRIANGLES, 6, gl.UNSIGNED_INT, cast(rawptr)(cast(uintptr)0))
+  // gl.DrawElements(gl.TRIANGLES, 6, gl.UNSIGNED_INT, cast(rawptr)(cast(uintptr)0))
 }
 
 window_refresh :: proc "c" (window: glfw.WindowHandle) {
