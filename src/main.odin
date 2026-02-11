@@ -63,6 +63,7 @@ main :: proc() {
   glfw.SwapInterval(1)
 
   gl.load_up_to(GL_VERSION_MAJOR, GL_VERSION_MINOR, glfw.gl_set_proc_address)
+  renderer_info()
   update_framebuffer()
 
   gl.Viewport(0, 0, FrameBuffer.w, FrameBuffer.h)
@@ -172,6 +173,7 @@ main :: proc() {
 
     cube_mesh.shader.parameters.model_matrix = model_matrix
     cube_mesh.shader.parameters.view_matrix = player.viewmatrix
+    cube_mesh.shader.parameters.camera_position = player.position
     cube_mesh.shader.parameters.projection_matrix = projection_matrix
     cube_mesh.shader.parameters.tint = {0, 0.4, 0.6}
 

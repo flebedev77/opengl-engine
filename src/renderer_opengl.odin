@@ -16,6 +16,7 @@ ShaderFlags :: enum {
 
 ShaderParameters :: struct {
   tint_location,
+  camera_position_location,
   view_matrix_location,
   projection_matrix_location,
   model_matrix_location: UniformLocation,
@@ -23,6 +24,7 @@ ShaderParameters :: struct {
   view_matrix,
   projection_matrix,
   model_matrix: Mat4,
+  camera_position,
   tint: Vec3
 }
 
@@ -71,7 +73,7 @@ mesh_init :: proc(
     gl.BufferData(gl.ARRAY_BUFFER, len(vertex_normals) * size_of(f32), &vertex_normals[0], gl.STATIC_DRAW)
 
     gl.EnableVertexAttribArray(1)
-    gl.VertexAttribPointer(1, 3, gl.FLOAT, gl.TRUE, 3 * size_of(f32), cast(uintptr)0)
+    gl.VertexAttribPointer(1, 3, gl.FLOAT, gl.FALSE, 3 * size_of(f32), cast(uintptr)0)
   }
 
   gl.GenBuffers(1, &mesh.uv_bufferobject)
@@ -100,6 +102,7 @@ mesh_draw :: proc(mesh: Mesh) {
   if shader.program != 0 {
     gl.UseProgram(shader.program)
 
+    gl.Uniform3fv(shader.parameters.camera_position_location, 1, &shader.parameters.camera_position[0])
     gl.Uniform3fv(shader.parameters.tint_location, 1, &shader.parameters.tint[0])
 
     gl.UniformMatrix4fv(shader.parameters.model_matrix_location, 1, gl.FALSE, &shader.parameters.model_matrix[0,0])
@@ -127,7 +130,13 @@ shader_compilemodule :: proc(source: cstring, type: u32) -> GpuID {
   // TODO: logging
   success: i32
   gl.GetShaderiv(shader, gl.COMPILE_STATUS, &success)
-  assert(success == i32(gl.TRUE))
+  // assert(success == i32(gl.TRUE))
+  if success != i32(gl.TRUE) {
+    shader_error_log: [512]u8
+    len: i32
+    gl.GetShaderInfoLog(shader, 512, &len, &shader_error_log[0])
+    fmt.printfln("Shader compilation error: %s", shader_error_log)
+  }
 
   return shader
 }
@@ -153,6 +162,7 @@ shader_setparameters :: proc(shader: ^Shader) {
   shader.parameters.tint_location = gl.GetUniformLocation(shader.program, "tint")
   switch shader.type {
     case .THREE_DIMENSIONAL:
+      shader.parameters.camera_position_location = gl.GetUniformLocation(shader.program, "camera_pos")
       shader.parameters.model_matrix_location = gl.GetUniformLocation(shader.program, "model_matrix")
       shader.parameters.view_matrix_location = gl.GetUniformLocation(shader.program, "view_matrix")
       shader.parameters.projection_matrix_location = gl.GetUniformLocation(shader.program, "projection_matrix")
@@ -160,4 +170,14 @@ shader_setparameters :: proc(shader: ^Shader) {
     case .TWO_DIMENTIONAL:
       break
   }
+}
+
+renderer_info :: proc() {
+  max_vertex_attributes: i32
+  gl.GetIntegerv(gl.MAX_VERTEX_ATTRIBS, &max_vertex_attributes)
+  fmt.printfln("MAX VERTEX ATTRIBUTES %d", max_vertex_attributes)
+
+  max_fragment_attributes: i32
+  gl.GetIntegerv(gl.MAX_FRAGMENT_INPUT_COMPONENTS, &max_fragment_attributes)
+  fmt.printfln("MAX FRAGMENT ATTRIBUTES %d", max_fragment_attributes)
 }
