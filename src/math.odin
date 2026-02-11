@@ -3,6 +3,7 @@ import "core:math"
 
 Vec3 :: [3]f32
 Vec2 :: [2]f32
+Mat4 :: matrix[4,4]f32
 
 GLOBAL_UP : Vec3 : {0, 1, 0}
 
