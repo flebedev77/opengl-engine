@@ -1,7 +1,9 @@
 package main
 
+@(deprecated = "Broken UVs and normals")
 mesh_make_cube_unlit :: proc(shader: Shader) -> Mesh {
   mesh: Mesh
+  mesh.model_matrix = identity_matrix()
   vertices: []f32 = {
     0, 0, 0,
     1, 0, 0,
@@ -36,17 +38,21 @@ mesh_make_cube_unlit :: proc(shader: Shader) -> Mesh {
   normals: []f32 = {
   }
   uvs: []f32 = {
+    0, 0,
+    0, 1,
+    1, 1,
   }
   mesh_init(&mesh, vertices, uvs, normals, indices, shader)
   return mesh
 }
 
 
-mesh_make_cube :: proc(shader: Shader) -> Mesh {
+mesh_make_cube :: proc(shader: Shader, origin_offset := Vec3{-0.5, -0.5, -0.5}, insideout_normals := false) -> Mesh {
   shader := shader
-  shader.parameters.model_matrix = identity_matrix()
   mesh: Mesh
+  mesh.model_matrix = identity_matrix()
   vertices: []f32 = {
+    //Front
     1, 0, 0,
     1, 1, 0,
     1, 0, 1,
@@ -55,19 +61,69 @@ mesh_make_cube :: proc(shader: Shader) -> Mesh {
     1, 1, 1,
     1, 0, 1,
 
+    //Bottom
     0, 0, 0,
     1, 0, 1,
     1, 0, 0,
 
     0, 0, 0,
     0, 0, 1,
-    1, 0, 1
+    1, 0, 1,
+
+    //Left
+    0, 0, 0,
+    1, 0, 0,
+    1, 1, 0,
+
+    0, 0, 0,
+    1, 1, 0,
+    0, 1, 0,
+
+    //Right
+    1, 0, 1,
+    0, 1, 1,
+    0, 0, 1,
+
+    1, 0, 1,
+    1, 1, 1,
+    0, 1, 1,
+
+    //Top
+    1, 1, 0,
+    0, 1, 0,
+    1, 1, 1,
+
+    0, 1, 0,
+    0, 1, 1,
+    1, 1, 1,
+
+    //Back
+    0, 0, 0,
+    0, 1, 0,
+    0, 0, 1,
+
+    0, 1, 0,
+    0, 1, 1,
+    0, 0, 1
+  }
+  for i := 0; i < len(vertices); i += 3 {
+    vertices[i]   += origin_offset.x
+    vertices[i+1] += origin_offset.y
+    vertices[i+2] += origin_offset.z
   }
   indices: []u32 = {
     0, 1, 2,
     3, 4, 5,
     6, 7, 8,
-    9, 10, 11
+    9, 10, 11,
+    12, 13, 14,
+    15, 16, 17,
+    18, 19, 20,
+    21, 22, 23,
+    24, 25, 26,
+    27, 28, 29,
+    30, 31, 32,
+    33, 34, 35
   }
   normals: []f32 = {
     1, 0, 0,
@@ -84,7 +140,44 @@ mesh_make_cube :: proc(shader: Shader) -> Mesh {
 
     0, -1, 0,
     0, -1, 0,
-    0, -1, 0
+    0, -1, 0,
+
+    0, 0, -1,
+    0, 0, -1,
+    0, 0, -1,
+    
+    0, 0, -1,
+    0, 0, -1,
+    0, 0, -1,
+
+    0, 0, 1,
+    0, 0, 1,
+    0, 0, 1,
+
+    0, 0, 1,
+    0, 0, 1,
+    0, 0, 1,
+
+    0, 1, 0,
+    0, 1, 0,
+    0, 1, 0,
+
+    0, 1, 0,
+    0, 1, 0,
+    0, 1, 0,
+
+    -1, 0, 0,
+    -1, 0, 0,
+    -1, 0, 0,
+
+    -1, 0, 0,
+    -1, 0, 0,
+    -1, 0, 0
+  }
+  if !insideout_normals {
+    for &n in normals {
+      n *= -1
+    }
   }
   uvs: []f32 = {
     0, 0,
@@ -101,7 +194,39 @@ mesh_make_cube :: proc(shader: Shader) -> Mesh {
 
     0, 0,
     0, 1,
-    1, 1
+    1, 1,
+
+    0, 0,
+    1, 0,
+    1, 1,
+
+    0, 0,
+    1, 1,
+    0, 1,
+
+    1, 0,
+    0, 1,
+    0, 0,
+
+    1, 0,
+    1, 1,
+    0, 1,
+
+    0, 0,
+    1, 0,
+    0, 1,
+
+    1, 0,
+    1, 1,
+    0, 1,
+
+    0, 0,
+    0, 1,
+    1, 0,
+
+    0, 1,
+    1, 1,
+    1, 0
   }
   mesh_init(&mesh, vertices, uvs, normals, indices, shader)
   return mesh

@@ -22,8 +22,7 @@ ShaderParameters :: struct {
   model_matrix_location: UniformLocation,
 
   view_matrix,
-  projection_matrix,
-  model_matrix: Mat4,
+  projection_matrix: Mat4,
   camera_position,
   tint: Vec3
 }
@@ -45,7 +44,7 @@ Mesh :: struct {
   shader: Shader,
   triangle_count,
   indice_count: i32,
-  model_matrix: matrix[4,4]f32
+  model_matrix: Mat4 
 }
 
 mesh_init :: proc(
@@ -97,15 +96,16 @@ mesh_init :: proc(
 }
 
 mesh_draw :: proc(mesh: Mesh) {
-
+  mesh := mesh
   shader := mesh.shader
+
   if shader.program != 0 {
     gl.UseProgram(shader.program)
 
     gl.Uniform3fv(shader.parameters.camera_position_location, 1, &shader.parameters.camera_position[0])
     gl.Uniform3fv(shader.parameters.tint_location, 1, &shader.parameters.tint[0])
 
-    gl.UniformMatrix4fv(shader.parameters.model_matrix_location, 1, gl.FALSE, &shader.parameters.model_matrix[0,0])
+    gl.UniformMatrix4fv(shader.parameters.model_matrix_location, 1, gl.FALSE, &mesh.model_matrix[0,0])
     gl.UniformMatrix4fv(shader.parameters.projection_matrix_location, 1, gl.FALSE, &shader.parameters.projection_matrix[0,0])
     gl.UniformMatrix4fv(shader.parameters.view_matrix_location, 1, gl.FALSE, &shader.parameters.view_matrix[0,0])
   }
@@ -158,7 +158,7 @@ shader_compileprogram :: proc(fragmentSource: cstring, vertexSource: cstring) ->
   return shader
 }
 
-shader_setparameters :: proc(shader: ^Shader) {
+shader_init :: proc(shader: ^Shader) {
   shader.parameters.tint_location = gl.GetUniformLocation(shader.program, "tint")
   switch shader.type {
     case .THREE_DIMENSIONAL:

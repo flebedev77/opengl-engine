@@ -12,7 +12,7 @@ uniform vec3 camera_pos;
 void main() {
   // frag_color = vec4(uv.x, 1.0, uv.y, 1.0);
   frag_color = texture(tex, frag_uv);
-  if (frag_color.r < 0.9) {
+  if (frag_color.r < 0.2) {
     frag_color = vec4(tint, 1.0);
   }
   // frag_color = vec4(abs(frag_pos), 1.0);

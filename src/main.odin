@@ -44,6 +44,8 @@ mouse: Mouse
 
 player: Player
 
+camera: Camera
+
 main :: proc() {
   player_init(&player)
   defer glfw.Terminate()
@@ -99,19 +101,15 @@ main :: proc() {
     0, 0, 0, 1
   }
 
-  view_matrix := translation_matrix({0, 0, -1})//identity_matrix()
-
-  player_position := Vec3{0, 0, 0}
-
   // projection_matrix := perspective_projection_matrix(WINDOW_WIDTH / WINDOW_HEIGHT, 30, 1, 10)
-  projection_matrix := linalg.matrix4_perspective_f32(40 * math.PI / 180, WINDOW_WIDTH / WINDOW_HEIGHT, 1, 2)
+  // projection_matrix := linalg.matrix4_perspective_f32(40 * math.PI / 180, WINDOW_WIDTH / WINDOW_HEIGHT, 1, 2)
 
   shader := shader_compileprogram(
                     cstring(#load("../assets/frag.glsl")),
                     cstring(#load("../assets/vert.glsl"))
                    )
   shader.type = .THREE_DIMENSIONAL
-  shader_setparameters(&shader)
+  shader_init(&shader)
   // gl.UseProgram(shader.program)
   defer gl.DeleteProgram(shader.program)
 
@@ -146,12 +144,16 @@ main :: proc() {
   glfw.SetWindowRefreshCallback(GlfwWindow, window_refresh)
 
   gl.Enable(gl.DEPTH_TEST)
+  gl.Enable(gl.FRAMEBUFFER_SRGB); 
 
   mx, my := glfw.GetCursorPos(GlfwWindow)
   mouse.current_position = {f32(mx), f32(my)}
 
-  cube_mesh := mesh_make_cube(shader)
+  cube_mesh := mesh_make_cube(shader, {0, -(0.8 - 0.5), 0})
   defer mesh_delete(&cube_mesh)
+
+  grid: Grid
+  grid_init(&grid, 5, 5, {-2.5, -0.8, -2.5}, shader)
 
   for glfw.WindowShouldClose(GlfwWindow) == false {
     current_time := f64(time.now()._nsec)
@@ -166,18 +168,18 @@ main :: proc() {
     mouse.delta_position = mouse.current_position - mouse.previous_position
     // fmt.printfln("%f", mouse.delta_position.y)
 
-    // model_matrix *= rotation_matrix_y(delta_time * 0.001)
+    // cube_mesh.model_matrix *= rotation_matrix_y(delta_time * 0.001)
     // model_matrix *= translation_matrix({0, 0, f32(math.sin(time_since_start*0.00001))*0.1})
 
-    projection_matrix := linalg.matrix4_perspective_f32(90 * math.PI / 180, f32(FrameBuffer.w) / f32(FrameBuffer.h), 0.1, 1000)
 
-    cube_mesh.shader.parameters.model_matrix = model_matrix
     cube_mesh.shader.parameters.view_matrix = player.viewmatrix
     cube_mesh.shader.parameters.camera_position = player.position
-    cube_mesh.shader.parameters.projection_matrix = projection_matrix
+    cube_mesh.shader.parameters.projection_matrix = camera.projection_matrix
     cube_mesh.shader.parameters.tint = {0, 0.4, 0.6}
 
+    camera_update(&camera)
     window_render()
+    grid_draw(&grid, camera)
     mesh_draw(cube_mesh)
     // fmt.printfln("%d", shader.parameters.model_matrix)
 

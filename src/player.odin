@@ -58,4 +58,7 @@ player_update :: proc(player: ^Player, delta_time: f32) {
   if glfw.GetKey(GlfwWindow, glfw.KEY_D) > 0 {
     player.position += right * player.walk_speed
   }
+
+  camera.position = player.position
+  camera.view_matrix = player.viewmatrix
 }
