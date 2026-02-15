@@ -120,8 +120,6 @@ main :: proc() {
   defer mesh_delete(light_mesh)
 
   obj_pos, obj_uv, obj_nor, obj_ind := obj_parse("assets/monkey.obj")
-  // fmt.printfln("POS %f", obj_pos)
-  // fmt.printfln("UV %f", obj_nor)
   obj_mesh: Mesh
   mesh_init(&obj_mesh, obj_pos, obj_uv, obj_nor, obj_ind, shader)
   obj_mesh.model_matrix *= translation_matrix({0, 1, 0})

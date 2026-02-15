@@ -1,3 +1,8 @@
+// TODO:
+// Handle different materials
+// Handle non triangulated meshes (saves disk space (although if we wanted to save disk space, we wouldn't be using obj))
+
+
 package main
 import "core:fmt"
 import "core:os"
@@ -14,17 +19,17 @@ import "core:mem"
   return v == math.round(v)
 }
 
-obj_parse :: proc(filename: string) ->
+obj_parse :: proc(filename: string, verbose := false) ->
   (vertex_positions: []f32, vertex_texture_coordinates: []f32, vertex_normals: []f32, indices: []u32) {
   data, read_ok := os.read_entire_file(filename)
   if read_ok {
-    return obj_parse_from_memory(data)
+    return obj_parse_from_memory(data, verbose)
   }
   fmt.eprintfln("Failed to read %s obj file", filename)
   return {}, {}, {}, {}
 }
 
-OBJModeType :: enum {
+@(private) OBJModeType :: enum {
   none,
   vertex_pos,
   vertex_nor,
@@ -32,11 +37,11 @@ OBJModeType :: enum {
   face_ind
 }
 
-obj_parse_from_memory :: proc(contents: []u8) -> 
+obj_parse_from_memory :: proc(contents: []u8, verbose := false) -> 
   (vertex_positions: []f32, vertex_texture_coordinates: []f32, vertex_normals: []f32, indices: []u32) {
 
   allocator: mem.Arena
-  mem.arena_init(&allocator, make([]byte, 99999999)) // idk whats going on
+  mem.arena_init(&allocator, make([]byte, 2*len(contents))) // idk whats going on
   default_allocator := context.allocator
   context.allocator = mem.arena_allocator(&allocator)
   defer mem.arena_free_all(&allocator)
@@ -104,7 +109,6 @@ obj_parse_from_memory :: proc(contents: []u8) ->
     }
 
   }
-  // fmt.printfln("%d", len(face_ind))
 
   // Some sort of factor validation
   assert(is_whole(f32(len(vertex_pos)) / 3),   "Invalid amount of vertex positions in obj")
@@ -112,20 +116,22 @@ obj_parse_from_memory :: proc(contents: []u8) ->
   assert(is_whole(f32(len(vertex_tex)) / 2),   "Invalid amount of vertex texture coordinates in obj")
   assert(is_whole(f32(len(face_ind) * 9) / 3), "Invalid amount of face indices in obj")
 
-  // fmt.printfln("POSLEN %d NORLEN %d TEXLEN %d FACLEN %d", len(vertex_pos), len(vertex_nor), len(vertex_tex), len(face_ind))
-  // fmt.printfln("VERTEX NORMALS %f", vertex_nor[:])
-  // fmt.printfln("VERTEX POSITIONS %f", vertex_pos[:])
-  // fmt.printfln("VERTEX TEXTURE COORDINATES %f", vertex_tex[:])
-  // fmt.printfln("FACE INDICES %d %d", len(face_ind), face_ind[:])
+  if verbose {
+    fmt.printfln("POSLEN %d NORLEN %d TEXLEN %d FACLEN %d", len(vertex_pos), len(vertex_nor), len(vertex_tex), len(face_ind))
+    fmt.printfln("VERTEX NORMALS %f", vertex_nor[:])
+    fmt.printfln("VERTEX POSITIONS %f", vertex_pos[:])
+    fmt.printfln("VERTEX TEXTURE COORDINATES %f", vertex_tex[:])
+    fmt.printfln("FACE INDICES %d %d", len(face_ind), face_ind[:])
+  }
 
-  sz := len(face_ind) / 3
+  vertex_amount := len(face_ind) / 3
   context.allocator = default_allocator
-  out_vertex_positions := make([]f32, sz * 3)
-  out_vertex_normals := make([]f32, sz * 3)
-  out_vertex_texture_coordinates := make([]f32, sz * 2)
-  out_indices := make([]u32, sz)
+  out_vertex_positions := make([]f32, vertex_amount * 3)
+  out_vertex_normals := make([]f32, vertex_amount * 3)
+  out_vertex_texture_coordinates := make([]f32, vertex_amount * 2)
+  out_indices := make([]u32, vertex_amount)
 
-  for i in 0..<sz {
+  for i in 0..<vertex_amount {
     pos_index := face_ind[i * 3]     - 1
     tex_index := face_ind[i * 3 + 1] - 1
     nor_index := face_ind[i * 3 + 2] - 1
@@ -143,14 +149,9 @@ obj_parse_from_memory :: proc(contents: []u8) ->
 
     out_indices[i] = u32(i)
   }
-  // for i in 0..<sz {
-  //   out_indices[i] = u32(i+1)
-  // }
-  // fmt.printfln("VERTEX POSITIONS %d %f %d", len(out_vertex_positions), out_vertex_positions[:], len(vertex_pos))
 
   return out_vertex_positions,
   out_vertex_texture_coordinates,
   out_vertex_normals,
   out_indices
-  // return {}, {}, {}, {}
 }
