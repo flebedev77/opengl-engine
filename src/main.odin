@@ -2,11 +2,12 @@ package main
 import "base:runtime"
 import "core:fmt"
 import "core:time"
-import "core:math/linalg"
-import "core:math"
 import "vendor:glfw"
 import gl "vendor:OpenGL"
 import stb "vendor:stb/image"
+
+import "core:math/linalg"
+import "core:math"
 
 // TODO: Move all constants to a .ini file
 WINDOW_WIDTH :: 800
@@ -18,7 +19,7 @@ MIN_WINDOW_HEIGHT :: 480
 GL_VERSION_MAJOR :: 3
 GL_VERSION_MINOR :: 3
 
-PLAYER_WALK_SPEED :: 0.02
+PLAYER_WALK_SPEED :: 0.03
 PLAYER_LOOK_SENSITIVITY :: Vec2{0.0001, 0.0002}
 
 VAO :: distinct u32
@@ -33,7 +34,7 @@ GlfwWindow: glfw.WindowHandle
 
 
 start_time := f64(time.now()._nsec)
-prev_time := f64(start_time)
+prev_time := start_time
 
 Mouse :: struct {
   previous_position,
@@ -70,39 +71,7 @@ main :: proc() {
 
   gl.Viewport(0, 0, FrameBuffer.w, FrameBuffer.h)
 
-  // vertices: []f32 = {
-  //   -0.5, -0.5,
-  //   0.0, 0.5,
-  //   0.5, -0.5
-  // }
-  //
-  // indices: []u32 = {
-  //   0, 1, 2
-  // }
 
-  vertices: []f32 = {
-    0, 0, 0,
-    0, 1, 0,
-    1, 0, 0,
-    1, 1, 0
-  }
-  // uvs: []f32 = {
-  //   0, 0  
-  // }
-  indices: []u32 = {
-    0, 1, 2,
-    1, 2, 3
-  }
-
-  model_matrix := matrix[4, 4]f32{
-    1, 0, 0, 0,
-    0, 1, 0, 0,
-    0, 0, 1, -0.2,
-    0, 0, 0, 1
-  }
-
-  // projection_matrix := perspective_projection_matrix(WINDOW_WIDTH / WINDOW_HEIGHT, 30, 1, 10)
-  // projection_matrix := linalg.matrix4_perspective_f32(40 * math.PI / 180, WINDOW_WIDTH / WINDOW_HEIGHT, 1, 2)
 
   shader := shader_compileprogram(
                     cstring(#load("../assets/frag.glsl")),
@@ -110,17 +79,7 @@ main :: proc() {
                    )
   shader.type = .THREE_DIMENSIONAL
   shader_init(&shader)
-  // gl.UseProgram(shader.program)
   defer gl.DeleteProgram(shader.program)
-
-  // shader_transform_matrix_location := gl.GetUniformLocation(cast(u32)shader_program, "model_matrix")
-  // gl.UniformMatrix4fv(shader_transform_matrix_location, 1, gl.FALSE, &model_matrix[0,0])
-  //
-  // shader_projection_matrix_location := gl.GetUniformLocation(cast(u32)shader_program, "projection_matrix")
-  // gl.UniformMatrix4fv(shader_projection_matrix_location, 1, gl.FALSE, &projection_matrix[0,0])
-  //
-  // shader_view_matrix_location := gl.GetUniformLocation(cast(u32)shader_program, "view_matrix")
-  // gl.UniformMatrix4fv(shader_view_matrix_location, 1, gl.FALSE, &view_matrix[0,0])
 
   stone_image_mem := #load("../assets/textures/box_placeholder.png")
   img_w, img_h, channels: i32
@@ -136,9 +95,10 @@ main :: proc() {
   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
   gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGB, img_w, img_h, 0, gl.RGB, gl.UNSIGNED_BYTE, &image_data[0])
   gl.GenerateMipmap(gl.TEXTURE_2D)
+  // gl.BindTexture(gl.TEXTURE_2D, 0)
+  // gl.BindTexture(gl.TEXTURE0, texture)
 
   stb.image_free(image_data)
-
 
 
   glfw.SetWindowRefreshCallback(GlfwWindow, window_refresh)
@@ -150,10 +110,21 @@ main :: proc() {
   mouse.current_position = {f32(mx), f32(my)}
 
   cube_mesh := mesh_make_cube(shader, {0, -(0.8 - 0.5), 0})
-  defer mesh_delete(&cube_mesh)
+  defer mesh_delete(cube_mesh)
 
   grid: Grid
   grid_init(&grid, 5, 5, {-2.5, -0.8, -2.5}, shader)
+  defer grid_delete(grid)
+
+  light_mesh := mesh_make_cube(shader, {10, 10, 10})  
+  defer mesh_delete(light_mesh)
+
+  obj_pos, obj_uv, obj_nor, obj_ind := obj_parse("assets/monkey.obj")
+  // fmt.printfln("POS %f", obj_pos)
+  // fmt.printfln("UV %f", obj_nor)
+  obj_mesh: Mesh
+  mesh_init(&obj_mesh, obj_pos, obj_uv, obj_nor, obj_ind, shader)
+  obj_mesh.model_matrix *= translation_matrix({0, 1, 0})
 
   for glfw.WindowShouldClose(GlfwWindow) == false {
     current_time := f64(time.now()._nsec)
@@ -177,13 +148,25 @@ main :: proc() {
     cube_mesh.shader.parameters.projection_matrix = camera.projection_matrix
     cube_mesh.shader.parameters.tint = {0, 0.4, 0.6}
 
+    light_mesh.shader.parameters.view_matrix = player.viewmatrix
+    light_mesh.shader.parameters.camera_position = player.position
+    light_mesh.shader.parameters.projection_matrix = camera.projection_matrix
+    light_mesh.shader.parameters.tint = {0, 0.4, 0.6}
+
+    obj_mesh.shader.parameters.view_matrix = player.viewmatrix
+    obj_mesh.shader.parameters.camera_position = player.position
+    obj_mesh.shader.parameters.projection_matrix = camera.projection_matrix
+    obj_mesh.shader.parameters.tint = {0.9, 0.3, 0.2}
+    obj_mesh.model_matrix *= rotation_matrix_y(delta_time * 0.001)
+    obj_mesh.model_matrix *= translation_matrix({0, math.sin(time_since_start * 0.001) * 0.007, 0})
+
     camera_update(&camera)
     window_render()
-    grid_draw(&grid, camera)
-    mesh_draw(cube_mesh)
+    grid_draw(grid, camera)
+    // mesh_draw(cube_mesh)
+    mesh_draw(light_mesh)
+    mesh_draw(obj_mesh)
     // fmt.printfln("%d", shader.parameters.model_matrix)
-
-
 
 
     if glfw.GetKey(GlfwWindow, glfw.KEY_ESCAPE) > 0 {

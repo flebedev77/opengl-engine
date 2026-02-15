@@ -30,7 +30,7 @@ grid_init :: proc(grid: ^Grid, width, height: int, offset: Vec3, shader: Shader)
   }
 }
 
-grid_draw :: proc(grid: ^Grid, camera: Camera) {
+grid_draw :: proc(grid: Grid, camera: Camera) {
   for y in 0..<grid.height {
     for x in 0..<grid.width {
       i := y * grid.width + x
@@ -48,6 +48,10 @@ grid_draw :: proc(grid: ^Grid, camera: Camera) {
   }
 }
 
-grid_delete :: proc() {
-
+grid_delete :: proc(grid: Grid) {
+  for y in 0..<grid.height {
+    for x in 0..<grid.width {
+      mesh_delete(grid.meshes[y * grid.width + x])
+    }
+  }
 }

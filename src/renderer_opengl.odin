@@ -16,6 +16,7 @@ ShaderFlags :: enum {
 
 ShaderParameters :: struct {
   tint_location,
+  light_position_location,
   camera_position_location,
   view_matrix_location,
   projection_matrix_location,
@@ -89,6 +90,7 @@ mesh_init :: proc(
 
   gl.BindVertexArray(0)
 
+  mesh.model_matrix = identity_matrix()
   mesh.shader = shader
   mesh.indice_count = i32(len(indices))
   mesh.triangle_count = mesh.indice_count / 3;
@@ -102,6 +104,8 @@ mesh_draw :: proc(mesh: Mesh) {
   if shader.program != 0 {
     gl.UseProgram(shader.program)
 
+    light_pos := Vec3{10, 10, 10}
+    gl.Uniform3fv(shader.parameters.light_position_location, 1, &light_pos[0])
     gl.Uniform3fv(shader.parameters.camera_position_location, 1, &shader.parameters.camera_position[0])
     gl.Uniform3fv(shader.parameters.tint_location, 1, &shader.parameters.tint[0])
 
@@ -114,7 +118,8 @@ mesh_draw :: proc(mesh: Mesh) {
   gl.DrawElements(gl.TRIANGLES, mesh.triangle_count * 3, gl.UNSIGNED_INT, cast(rawptr)(cast(uintptr)0))
 }
 
-mesh_delete :: proc(mesh: ^Mesh) {
+mesh_delete :: proc(mesh: Mesh) {
+  mesh := mesh
   gl.DeleteBuffers(1, &mesh.position_bufferobject)
   gl.DeleteBuffers(1, &mesh.indice_bufferobject)
   gl.DeleteVertexArrays(1, &mesh.vao)
@@ -162,6 +167,7 @@ shader_init :: proc(shader: ^Shader) {
   shader.parameters.tint_location = gl.GetUniformLocation(shader.program, "tint")
   switch shader.type {
     case .THREE_DIMENSIONAL:
+      shader.parameters.light_position_location = gl.GetUniformLocation(shader.program, "light_pos")
       shader.parameters.camera_position_location = gl.GetUniformLocation(shader.program, "camera_pos")
       shader.parameters.model_matrix_location = gl.GetUniformLocation(shader.program, "model_matrix")
       shader.parameters.view_matrix_location = gl.GetUniformLocation(shader.program, "view_matrix")

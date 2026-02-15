@@ -8,20 +8,27 @@ out vec4 frag_color;
 uniform sampler2D tex;
 uniform vec3 tint;
 uniform vec3 camera_pos;
+uniform vec3 light_pos;
 
 void main() {
   // frag_color = vec4(uv.x, 1.0, uv.y, 1.0);
-  frag_color = texture(tex, frag_uv);
-  if (frag_color.r < 0.2) {
+  vec4 textureSample = texture(tex, frag_uv);
+  frag_color = textureSample;
+  if (frag_color.r < 0.5) {
     frag_color = vec4(tint, 1.0);
   }
   // frag_color = vec4(abs(frag_pos), 1.0);
-  vec3 light_dir = normalize(frag_pos - camera_pos); // TODO change this to point from an actual light
+  vec3 light_dir = normalize(frag_pos - light_pos); // TODO change this to point from an actual light
   vec3 view_dir = normalize(frag_pos - camera_pos);
 
-  vec3 specular_reflection_direction = reflect(light_dir, frag_normal);
+  vec3 specular_reflection_direction = reflect(-light_dir, frag_normal);
   float specular = clamp(pow(dot(view_dir, specular_reflection_direction), 50.0), 0.0, 1.0);
-  float diffuse = clamp(dot(light_dir, frag_normal), 0.0, 1.0);
+  specular *= clamp(0.5 - textureSample.r, 0.0, 1.0);
+  // specular *= 0.0;
 
-  frag_color *= (diffuse + specular);
+  float diffuse = clamp(dot(light_dir, -frag_normal), 0.0, 1.0) * 0.2;
+
+  float ambient = 0.1;
+
+  frag_color *= (diffuse + specular + ambient);
 }
