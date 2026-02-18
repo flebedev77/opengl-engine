@@ -74,32 +74,42 @@ main :: proc() {
 
 
   shader := shader_compileprogram(
-                    cstring(#load("../assets/frag.glsl")),
-                    cstring(#load("../assets/vert.glsl"))
+                    cstring(#load("../assets/shaders/frag.glsl")),
+                    cstring(#load("../assets/shaders/vert.glsl")),
+                    .THREE_DIMENSIONAL
                    )
-  shader.type = .THREE_DIMENSIONAL
-  shader_init(&shader)
   defer gl.DeleteProgram(shader.program)
 
-  stone_image_mem := #load("../assets/textures/box_placeholder.png")
-  img_w, img_h, channels: i32
-  image_data := stb.load_from_memory(&stone_image_mem[0], i32(len(stone_image_mem)), &img_w, &img_h, &channels, 0)
-  fmt.printfln("%d %d %d", img_w, img_h, channels)
+  shadowmap_shader := shader_compileprogram(
+                    cstring(#load("../assets/shaders/shadowmap_frag.glsl")),
+                    cstring(#load("../assets/shaders/shadowmap_vert.glsl")),
+                    .SHADOWMAP
+                   )
+  defer gl.DeleteProgram(shadowmap_shader.program)
 
-  texture: u32
-  gl.GenTextures(1, &texture)
-  gl.BindTexture(gl.TEXTURE_2D, texture)
-  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT)
-  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT)
-  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-  gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGB, img_w, img_h, 0, gl.RGB, gl.UNSIGNED_BYTE, &image_data[0])
-  gl.GenerateMipmap(gl.TEXTURE_2D)
-  // gl.BindTexture(gl.TEXTURE_2D, 0)
-  // gl.BindTexture(gl.TEXTURE0, texture)
+  shadowmap_width, shadowmap_height: i32 = 1024, 1024
+  shadowmap_framebuffer, shadowmap_texture: u32
+  gl.GenTextures(1, &shadowmap_texture)
+  gl.BindTexture(gl.TEXTURE_2D, shadowmap_texture)
+  gl.TexImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT, shadowmap_width, shadowmap_height, 0, gl.DEPTH_COMPONENT, gl.FLOAT, nil)
+  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
 
-  stb.image_free(image_data)
+  gl.GenFramebuffers(1, &shadowmap_framebuffer)
+  gl.BindFramebuffer(gl.FRAMEBUFFER, shadowmap_framebuffer)
+  gl.DrawBuffer(gl.NONE)
+  gl.ReadBuffer(gl.NONE)
+  gl.FramebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, shadowmap_texture, 0)
+  if gl.CheckFramebufferStatus(gl.FRAMEBUFFER) != gl.FRAMEBUFFER_COMPLETE {
+    fmt.printfln("Shadow framebuffer not complete!")
+    fmt.printfln("%d", gl.CheckFramebufferStatus(gl.FRAMEBUFFER))
+  }
+  gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
 
+
+  assets_texture := texture_load("assets/textures/box_placeholder.ppm")
 
   glfw.SetWindowRefreshCallback(GlfwWindow, window_refresh)
 
@@ -122,7 +132,14 @@ main :: proc() {
   obj_pos, obj_uv, obj_nor, obj_ind := obj_parse("assets/monkey.obj")
   obj_mesh: Mesh
   mesh_init(&obj_mesh, obj_pos, obj_uv, obj_nor, obj_ind, shader)
-  obj_mesh.model_matrix *= translation_matrix({0, 1, 0})
+  scl := f32(0.3)
+  obj_mesh.model_matrix *= scale_matrix({scl, scl, scl})
+  obj_mesh.model_matrix *= translation_matrix({0, 0.3, 0})
+
+  delete(obj_pos)
+  delete(obj_uv)
+  delete(obj_nor)
+  delete(obj_ind)
 
   for glfw.WindowShouldClose(GlfwWindow) == false {
     current_time := f64(time.now()._nsec)
@@ -139,32 +156,58 @@ main :: proc() {
 
     // cube_mesh.model_matrix *= rotation_matrix_y(delta_time * 0.001)
     // model_matrix *= translation_matrix({0, 0, f32(math.sin(time_since_start*0.00001))*0.1})
+    gl.Viewport(0, 0, shadowmap_width, shadowmap_height)
+    gl.BindFramebuffer(gl.FRAMEBUFFER, shadowmap_framebuffer)
+    gl.Clear(gl.DEPTH_BUFFER_BIT)
+    // gl.BindTexture(gl.TEXTURE_2D, shadowmap_texture)
+    light_viewmatrix: Mat4 = linalg.matrix4_look_at_f32({5, 5, 5}, {4, 4, 4}, {0, 1, 0})
+    light_projmatrix: Mat4 = linalg.matrix4_perspective_f32(
+      90 * math.PI / 180,
+      f32(FrameBuffer.w) / f32(FrameBuffer.h), 
+      2, 5)
+    light_projmatrix = orthographic_projection_matrix(-1, 1, 1, -1, 0.1, 10)
+
+    // fmt.printfln("%d", shadowmap_shader.parameters)
+    gl.UseProgram(shadowmap_shader.program)
+    gl.UniformMatrix4fv(shadowmap_shader.parameters.view_matrix_location, 1, gl.FALSE, &light_viewmatrix[0][0])
+    gl.UniformMatrix4fv(shadowmap_shader.parameters.projection_matrix_location, 1, gl.FALSE, &light_projmatrix[0][0])
+    // gl.UniformMatrix4fv(shadowmap_shader.parameters.view_matrix_location, 1, gl.FALSE, &player.viewmatrix[0][0])
+    // gl.UniformMatrix4fv(shadowmap_shader.parameters.projection_matrix_location, 1, gl.FALSE, &camera.projection_matrix[0][0])
+    grid_draw(grid, camera, shadowmap_shader)
+    mesh_draw(obj_mesh, shadowmap_shader)
 
 
-    cube_mesh.shader.parameters.view_matrix = player.viewmatrix
-    cube_mesh.shader.parameters.camera_position = player.position
-    cube_mesh.shader.parameters.projection_matrix = camera.projection_matrix
-    cube_mesh.shader.parameters.tint = {0, 0.4, 0.6}
+    gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
 
-    light_mesh.shader.parameters.view_matrix = player.viewmatrix
-    light_mesh.shader.parameters.camera_position = player.position
-    light_mesh.shader.parameters.projection_matrix = camera.projection_matrix
-    light_mesh.shader.parameters.tint = {0, 0.4, 0.6}
 
-    obj_mesh.shader.parameters.view_matrix = player.viewmatrix
-    obj_mesh.shader.parameters.camera_position = player.position
-    obj_mesh.shader.parameters.projection_matrix = camera.projection_matrix
-    obj_mesh.shader.parameters.tint = {0.9, 0.3, 0.2}
-    obj_mesh.model_matrix *= rotation_matrix_y(delta_time * 0.001)
-    obj_mesh.model_matrix *= translation_matrix({0, math.sin(time_since_start * 0.001) * 0.007, 0})
+    // gl.CullFace(gl.BACK)
+    gl.Viewport(0, 0, FrameBuffer.w, FrameBuffer.h)
+    {
+      cube_mesh.shader.parameters.view_matrix = camera.view_matrix
+      cube_mesh.shader.parameters.camera_position = player.position
+      cube_mesh.shader.parameters.projection_matrix = camera.projection_matrix
+      cube_mesh.shader.parameters.tint = {0, 0.4, 0.6}
 
-    camera_update(&camera)
-    window_render()
-    grid_draw(grid, camera)
-    // mesh_draw(cube_mesh)
-    mesh_draw(light_mesh)
-    mesh_draw(obj_mesh)
-    // fmt.printfln("%d", shader.parameters.model_matrix)
+      light_mesh.shader.parameters.view_matrix = camera.view_matrix
+      light_mesh.shader.parameters.camera_position = player.position
+      light_mesh.shader.parameters.projection_matrix = camera.projection_matrix
+      light_mesh.shader.parameters.tint = {0, 0.4, 0.6}
+
+      obj_mesh.shader.parameters.view_matrix = camera.view_matrix
+      obj_mesh.shader.parameters.camera_position = player.position
+      obj_mesh.shader.parameters.projection_matrix = camera.projection_matrix
+      obj_mesh.shader.parameters.tint = {0.9, 0.1, 0.1}
+      obj_mesh.model_matrix *= rotation_matrix_y(delta_time * 0.001)
+      obj_mesh.model_matrix *= translation_matrix({0, math.sin(time_since_start * 0.001) * 0.007, 0})
+
+      camera_update(&camera)
+      window_render()
+      grid_draw(grid, camera)
+      // mesh_draw(cube_mesh)
+      mesh_draw(light_mesh)
+      mesh_draw(obj_mesh)
+      // fmt.printfln("%d", shader.parameters.model_matrix)
+    }
 
 
     if glfw.GetKey(GlfwWindow, glfw.KEY_ESCAPE) > 0 {

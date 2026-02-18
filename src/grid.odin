@@ -30,7 +30,7 @@ grid_init :: proc(grid: ^Grid, width, height: int, offset: Vec3, shader: Shader)
   }
 }
 
-grid_draw :: proc(grid: Grid, camera: Camera) {
+grid_draw :: proc(grid: Grid, camera: Camera, shader_override: Shader = {}) {
   for y in 0..<grid.height {
     for x in 0..<grid.width {
       i := y * grid.width + x
@@ -43,7 +43,7 @@ grid_draw :: proc(grid: Grid, camera: Camera) {
         1,
         f32(y) / f32(grid.height)
       }
-      mesh_draw(mesh)
+      mesh_draw(mesh, shader_override)
     }
   }
 }

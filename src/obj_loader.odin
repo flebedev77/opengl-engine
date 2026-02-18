@@ -2,6 +2,10 @@
 // Handle different materials
 // Handle non triangulated meshes (saves disk space (although if we wanted to save disk space, we wouldn't be using obj))
 
+// Mesh requirements
+// - Position vectors in 3 components, normal vectors in 3 components and uv in 2 components
+// - Triangulated indices
+// - Must include all 3 components (position, uv and normal)
 
 package main
 import "core:fmt"
@@ -11,13 +15,6 @@ import "core:strconv"
 import "core:math"
 import "core:mem"
 
-@(private, require_results) is_numeric :: proc(c: u8) -> bool {
-  return (c == '-' || c == '.' || (c > 0x2F && c < 0x3A))
-}
-
-@(private, require_results) is_whole :: proc(v: f32) -> bool {
-  return v == math.round(v)
-}
 
 obj_parse :: proc(filename: string, verbose := false) ->
   (vertex_positions: []f32, vertex_texture_coordinates: []f32, vertex_normals: []f32, indices: []u32) {
@@ -41,7 +38,7 @@ obj_parse_from_memory :: proc(contents: []u8, verbose := false) ->
   (vertex_positions: []f32, vertex_texture_coordinates: []f32, vertex_normals: []f32, indices: []u32) {
 
   allocator: mem.Arena
-  mem.arena_init(&allocator, make([]byte, 2*len(contents))) // idk whats going on
+  mem.arena_init(&allocator, make([]byte, 3 * len(contents))) // This allocation size is not set in stone, if the loader doesn't work for some models, this is probably the reason why
   default_allocator := context.allocator
   context.allocator = mem.arena_allocator(&allocator)
   defer mem.arena_free_all(&allocator)
@@ -115,6 +112,11 @@ obj_parse_from_memory :: proc(contents: []u8, verbose := false) ->
   assert(is_whole(f32(len(vertex_nor)) / 3),   "Invalid amount of vertex normals in obj")
   assert(is_whole(f32(len(vertex_tex)) / 2),   "Invalid amount of vertex texture coordinates in obj")
   assert(is_whole(f32(len(face_ind) * 9) / 3), "Invalid amount of face indices in obj")
+
+  assert(len(vertex_pos) > 2, "Not enough vertex positions in obj")
+  assert(len(vertex_nor) > 2, "Not enough vertex normals in obj")
+  assert(len(vertex_tex) > 1, "Not enough vertex texture coordinates in obj")
+  assert(len(face_ind)   > 2, "Not enough indices in obj")
 
   if verbose {
     fmt.printfln("POSLEN %d NORLEN %d TEXLEN %d FACLEN %d", len(vertex_pos), len(vertex_nor), len(vertex_tex), len(face_ind))

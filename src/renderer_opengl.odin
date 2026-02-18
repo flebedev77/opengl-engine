@@ -1,13 +1,16 @@
 package main
+import "core:os"
 import "core:fmt"
 import gl "vendor:OpenGL"
+import stbi "vendor:stb/image"
 
 GpuID :: u32
 UniformLocation :: i32
 
 ShaderType :: enum {
   THREE_DIMENSIONAL, // Signifies that the shader should receive 3D related uniforms
-  TWO_DIMENTIONAL    // TODO
+  TWO_DIMENTIONAL,   // TODO
+  SHADOWMAP
 }
 
 ShaderFlags :: enum {
@@ -67,7 +70,6 @@ mesh_init :: proc(
   gl.VertexAttribPointer(0, 3, gl.FLOAT, gl.FALSE, 3 * size_of(f32), cast(uintptr)0)
 
   if len(vertex_normals) == len(vertex_positions) {
-    fmt.printfln("NORMALS ENABLED")
     gl.GenBuffers(1, &mesh.normal_bufferobject)
     gl.BindBuffer(gl.ARRAY_BUFFER, mesh.normal_bufferobject)
     gl.BufferData(gl.ARRAY_BUFFER, len(vertex_normals) * size_of(f32), &vertex_normals[0], gl.STATIC_DRAW)
@@ -97,14 +99,14 @@ mesh_init :: proc(
   // fmt.printfln("VAO  %d\nVBO  %d\nEBO  %d\nTRIS %d", mesh.vao, mesh.position_bufferobject, mesh.indice_bufferobject, len(indices))
 }
 
-mesh_draw :: proc(mesh: Mesh) {
+mesh_draw :: proc(mesh: Mesh, shader_override: Shader = {}) {
   mesh := mesh
   shader := mesh.shader
 
-  if shader.program != 0 {
+  if shader.program != 0 && shader_override.program == 0 {
     gl.UseProgram(shader.program)
 
-    light_pos := Vec3{10, 10, 10}
+    light_pos := Vec3{10, 10, 10} // TODO move this
     gl.Uniform3fv(shader.parameters.light_position_location, 1, &light_pos[0])
     gl.Uniform3fv(shader.parameters.camera_position_location, 1, &shader.parameters.camera_position[0])
     gl.Uniform3fv(shader.parameters.tint_location, 1, &shader.parameters.tint[0])
@@ -112,6 +114,10 @@ mesh_draw :: proc(mesh: Mesh) {
     gl.UniformMatrix4fv(shader.parameters.model_matrix_location, 1, gl.FALSE, &mesh.model_matrix[0,0])
     gl.UniformMatrix4fv(shader.parameters.projection_matrix_location, 1, gl.FALSE, &shader.parameters.projection_matrix[0,0])
     gl.UniformMatrix4fv(shader.parameters.view_matrix_location, 1, gl.FALSE, &shader.parameters.view_matrix[0,0])
+  }
+  if shader_override.program != 0 {
+    gl.UniformMatrix4fv(shader.parameters.model_matrix_location, 1, gl.FALSE, &mesh.model_matrix[0,0])
+    gl.UseProgram(shader_override.program)
   }
   gl.BindVertexArray(mesh.vao)
 
@@ -146,7 +152,7 @@ shader_compilemodule :: proc(source: cstring, type: u32) -> GpuID {
   return shader
 }
 
-shader_compileprogram :: proc(fragmentSource: cstring, vertexSource: cstring) -> Shader {
+shader_compileprogram :: proc(fragmentSource: cstring, vertexSource: cstring, type: ShaderType) -> Shader {
   shader_program := gl.CreateProgram()
   fragment_shader := shader_compilemodule(fragmentSource, gl.FRAGMENT_SHADER)
   vertex_shader := shader_compilemodule(vertexSource, gl.VERTEX_SHADER)
@@ -159,6 +165,8 @@ shader_compileprogram :: proc(fragmentSource: cstring, vertexSource: cstring) ->
 
   shader: Shader
   shader.program = shader_program
+  shader.type = type
+  shader_init(&shader)
   
   return shader
 }
@@ -172,9 +180,11 @@ shader_init :: proc(shader: ^Shader) {
       shader.parameters.model_matrix_location = gl.GetUniformLocation(shader.program, "model_matrix")
       shader.parameters.view_matrix_location = gl.GetUniformLocation(shader.program, "view_matrix")
       shader.parameters.projection_matrix_location = gl.GetUniformLocation(shader.program, "projection_matrix")
-      break
     case .TWO_DIMENTIONAL:
-      break
+    case .SHADOWMAP:
+      shader.parameters.model_matrix_location = gl.GetUniformLocation(shader.program, "model_matrix")
+      shader.parameters.view_matrix_location = gl.GetUniformLocation(shader.program, "view_matrix")
+      shader.parameters.projection_matrix_location = gl.GetUniformLocation(shader.program, "projection_matrix")
   }
 }
 
@@ -186,4 +196,36 @@ renderer_info :: proc() {
   max_fragment_attributes: i32
   gl.GetIntegerv(gl.MAX_FRAGMENT_INPUT_COMPONENTS, &max_fragment_attributes)
   fmt.printfln("MAX FRAGMENT ATTRIBUTES %d", max_fragment_attributes)
+}
+
+texture_load :: proc(filepath: string) -> u32 {
+  contents := os.read_entire_file(filepath) or_else nil
+  if contents == nil {
+    fmt.eprintfln("Failed to read %s image", filepath)
+  }
+
+  // img_w, img_h, img_channels: i32
+  // img_data := stbi.load_from_memory(&contents[0], i32(len(contents)), 
+  //   &img_w, &img_h, &img_channels, 0)
+  // defer stbi.image_free(img_data)
+
+  img_w, img_h, img_channels, img_data := ppm_parse(filepath)
+
+  if img_data == nil {
+    fmt.eprintfln("Failed to parse %s image", filepath)
+  }
+
+  texture: u32
+
+  gl.GenTextures(1, &texture)
+  gl.BindTexture(gl.TEXTURE_2D, texture)
+  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT)
+  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT)
+  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+  gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGB, img_w, img_h,
+    0, (img_channels == 3) ? gl.RGB : gl.RGBA, gl.UNSIGNED_BYTE, &img_data[0])
+  gl.GenerateMipmap(gl.TEXTURE_2D)
+
+  return texture
 }

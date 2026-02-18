@@ -7,6 +7,14 @@ Mat4 :: matrix[4,4]f32
 
 GLOBAL_UP : Vec3 : {0, 1, 0}
 
+@(require_results) is_numeric :: proc(c: u8) -> bool {
+  return (c == '-' || c == '.' || (c > 0x2F && c < 0x3A))
+}
+
+@(require_results) is_whole :: proc(v: f32) -> bool {
+  return v == math.round(v)
+}
+
 @(require_results) rotation_matrix_x :: proc(angle: f32) -> matrix[4,4]f32 {
   rotation_matrix := matrix[4,4]f32{
     1, 0, 0, 0,
@@ -76,6 +84,15 @@ GLOBAL_UP : Vec3 : {0, 1, 0}
   //   0, 0, 0, 0,
   //   0, 0, f, 1
   // }
+}
+
+@(require_results) orthographic_projection_matrix :: proc(left, right, top, bottom, near, far: f32) -> Mat4 {
+  return Mat4{
+    2 / (right - left), 0, 0, -((right + left) / (right - left)),
+    0, 2 / (top - bottom), 0, -((top + bottom) / (top - bottom)),
+    0, 0, -2 / (far - near), -((far + near) / (far - near)),
+    0, 0, 0, 1
+  }
 }
 
 @(require_results) identity_matrix :: proc() -> matrix[4,4]f32 {
