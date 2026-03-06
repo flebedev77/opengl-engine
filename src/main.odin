@@ -91,15 +91,15 @@ main :: proc() {
                    )
   defer gl.DeleteProgram(shadowmap_shader.program)
 
-  shadowmap_width, shadowmap_height: i32 = 1024, 1024
+  shadowmap_width, shadowmap_height: i32 = 4096, 4096
   shadowmap_framebuffer, shadowmap_texture: u32
   gl.GenTextures(1, &shadowmap_texture)
   gl.BindTexture(gl.TEXTURE_2D, shadowmap_texture)
   gl.TexImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT, shadowmap_width, shadowmap_height, 0, gl.DEPTH_COMPONENT, gl.FLOAT, nil)
-  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
-  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
-  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
+  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_BORDER)
+  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_BORDER)
+  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
 
   gl.GenFramebuffers(1, &shadowmap_framebuffer)
   gl.BindFramebuffer(gl.FRAMEBUFFER, shadowmap_framebuffer)
@@ -120,6 +120,8 @@ main :: proc() {
   gl.Enable(gl.DEPTH_TEST)
   gl.Enable(gl.FRAMEBUFFER_SRGB); 
   gl.Enable(gl.MULTISAMPLE)
+  gl.Enable(gl.CULL_FACE);
+  gl.FrontFace(gl.CCW); 
 
   mx, my := glfw.GetCursorPos(GlfwWindow)
   mouse.current_position = {f32(mx), f32(my)}
@@ -131,7 +133,11 @@ main :: proc() {
   light_mesh := mesh_make_cube(shader, {10, 10, 10})  
   defer mesh_delete(light_mesh)
 
-  obj_pos, obj_uv, obj_nor, obj_ind := obj_parse("assets/monkey.obj")
+  cube_mesh := mesh_make_cube(shader, {0, 0, 0})
+  cube_mesh.model_matrix = translation_matrix({1, -0.3, 1})
+  defer mesh_delete(cube_mesh)
+
+  obj_pos, obj_uv, obj_nor, obj_ind := obj_parse("assets/plane.obj")
   obj_mesh: Mesh
   mesh_init(&obj_mesh, obj_pos, obj_uv, obj_nor, obj_ind, shader)
   scl := f32(0.3)
@@ -177,11 +183,14 @@ main :: proc() {
     grid_draw(grid, camera, shadowmap_shader)
     mesh_draw(obj_mesh, shadowmap_shader)
 
+    // gl.CullFace(gl.FRONT)
+    mesh_draw(cube_mesh, shadowmap_shader)
+
 
     gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
 
 
-    // gl.CullFace(gl.BACK)
+    gl.CullFace(gl.BACK)
     gl.Viewport(0, 0, FrameBuffer.w, FrameBuffer.h)
     {
       light_mesh.shader.parameters.view_matrix = camera.view_matrix
@@ -193,15 +202,21 @@ main :: proc() {
       obj_mesh.shader.parameters.camera_position = player.position
       obj_mesh.shader.parameters.projection_matrix = camera.projection_matrix
       obj_mesh.shader.parameters.tint = {0.9, 0.1, 0.1}
-      obj_mesh.shader.parameters.shadowmap_matrix = light_projmatrix
       obj_mesh.model_matrix *= rotation_matrix_y(delta_time * 0.001)
       obj_mesh.model_matrix *= translation_matrix({0, math.sin(time_since_start * 0.001) * 0.007, 0})
+
+
+      cube_mesh.shader.parameters.view_matrix = camera.view_matrix
+      cube_mesh.shader.parameters.camera_position = player.position
+      cube_mesh.shader.parameters.projection_matrix = camera.projection_matrix
+      cube_mesh.shader.parameters.tint = {0.9, 0.1, 0.1}
 
       camera_update(&camera)
       window_render()
       grid_draw(grid, camera)
       mesh_draw(light_mesh)
       mesh_draw(obj_mesh)
+      mesh_draw(cube_mesh)
       // fmt.printfln("%d", shader.parameters.model_matrix)
     }
 
