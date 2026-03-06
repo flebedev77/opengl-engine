@@ -61,6 +61,12 @@ player_update :: proc(player: ^Player, delta_time: f32) {
   if glfw.GetKey(GlfwWindow, glfw.KEY_D) > 0 {
     moveinput += right
   }
+  if glfw.GetKey(GlfwWindow, glfw.KEY_SPACE) > 0 {
+    moveinput += {0, 1, 0}
+  }
+  if glfw.GetKey(GlfwWindow, glfw.KEY_LEFT_SHIFT) > 0 {
+    moveinput += {0, -1, 0}
+  }
 
   if player.position.y < 0.3 {
     player.position.y = 0.3
@@ -68,10 +74,10 @@ player_update :: proc(player: ^Player, delta_time: f32) {
     player.velocity.y = 0
   }
 
-  if glfw.GetKey(GlfwWindow, glfw.KEY_SPACE) > 0 && player.is_onground {
-    player.is_onground = false 
-    player.velocity.y = 0.05
-  }
+  // if glfw.GetKey(GlfwWindow, glfw.KEY_SPACE) > 0 && player.is_onground {
+  //   player.is_onground = false 
+  //   player.velocity.y = 0.05
+  // }
 
   
   if linalg.length2(moveinput) > 0 {
@@ -79,7 +85,7 @@ player_update :: proc(player: ^Player, delta_time: f32) {
     player.position += moveinput * player.walk_speed
   }
 
-  player.velocity.y -= 0.002
+  // player.velocity.y -= 0.002
   player.position += player.velocity
   camera.position = player.position
   camera.view_matrix = player.viewmatrix

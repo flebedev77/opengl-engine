@@ -6,13 +6,13 @@
 // - Position vectors in 3 components, normal vectors in 3 components and uv in 2 components
 // - Triangulated indices
 // - Must include all 3 components (position, uv and normal)
+// - Must not have any vertex colors
 
 package main
 import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:strconv"
-import "core:math"
 import "core:mem"
 
 

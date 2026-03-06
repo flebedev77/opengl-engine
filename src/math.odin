@@ -87,6 +87,12 @@ GLOBAL_UP : Vec3 : {0, 1, 0}
 }
 
 @(require_results) orthographic_projection_matrix :: proc(left, right, top, bottom, near, far: f32) -> Mat4 {
+  // return Mat4{
+  //   2/(right-left),          0,                 0,                 0,
+  //   0,                2/(top-bottom),           0,                 0,
+  //   0,                0,               -2/(far-near),           0,
+  //   -((right+left)/(right-left)), -((top+bottom)/(top-bottom)), -((far+near)/(far-near)),        1
+  // }
   return Mat4{
     2 / (right - left), 0, 0, -((right + left) / (right - left)),
     0, 2 / (top - bottom), 0, -((top + bottom) / (top - bottom)),

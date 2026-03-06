@@ -18,6 +18,9 @@ ShaderFlags :: enum {
 }
 
 ShaderParameters :: struct {
+  albedo_texture_location,
+  shadowmap_texture_location,
+  shadowmap_matrix_location,
   tint_location,
   light_position_location,
   camera_position_location,
@@ -25,6 +28,7 @@ ShaderParameters :: struct {
   projection_matrix_location,
   model_matrix_location: UniformLocation,
 
+  shadowmap_matrix,
   view_matrix,
   projection_matrix: Mat4,
   camera_position,
@@ -111,13 +115,18 @@ mesh_draw :: proc(mesh: Mesh, shader_override: Shader = {}) {
     gl.Uniform3fv(shader.parameters.camera_position_location, 1, &shader.parameters.camera_position[0])
     gl.Uniform3fv(shader.parameters.tint_location, 1, &shader.parameters.tint[0])
 
+    gl.Uniform1i(shader.parameters.albedo_texture_location, 0)
+    gl.Uniform1i(shader.parameters.shadowmap_texture_location, 1)
+
     gl.UniformMatrix4fv(shader.parameters.model_matrix_location, 1, gl.FALSE, &mesh.model_matrix[0,0])
     gl.UniformMatrix4fv(shader.parameters.projection_matrix_location, 1, gl.FALSE, &shader.parameters.projection_matrix[0,0])
     gl.UniformMatrix4fv(shader.parameters.view_matrix_location, 1, gl.FALSE, &shader.parameters.view_matrix[0,0])
+    gl.UniformMatrix4fv(shader.parameters.shadowmap_matrix_location, 1, gl.FALSE, &shader.parameters.shadowmap_matrix[0,0])
   }
   if shader_override.program != 0 {
-    gl.UniformMatrix4fv(shader.parameters.model_matrix_location, 1, gl.FALSE, &mesh.model_matrix[0,0])
     gl.UseProgram(shader_override.program)
+    gl.UniformMatrix4fv(shader.parameters.model_matrix_location, 1, gl.FALSE, &mesh.model_matrix[0,0])
+    gl.UniformMatrix4fv(shader.parameters.shadowmap_matrix_location, 1, gl.FALSE, &shader.parameters.shadowmap_matrix[0,0])
   }
   gl.BindVertexArray(mesh.vao)
 
@@ -138,7 +147,6 @@ shader_compilemodule :: proc(source: cstring, type: u32) -> GpuID {
   gl.ShaderSource(shader, 1, &source, nil)
   gl.CompileShader(shader)
 
-  // TODO: logging
   success: i32
   gl.GetShaderiv(shader, gl.COMPILE_STATUS, &success)
   // assert(success == i32(gl.TRUE))
@@ -146,7 +154,7 @@ shader_compilemodule :: proc(source: cstring, type: u32) -> GpuID {
     shader_error_log: [512]u8
     len: i32
     gl.GetShaderInfoLog(shader, 512, &len, &shader_error_log[0])
-    fmt.printfln("Shader compilation error: %s", shader_error_log)
+    panic(fmt.tprintfln("Shader compilation error: %s", shader_error_log[:len]))
   }
 
   return shader
@@ -173,8 +181,11 @@ shader_compileprogram :: proc(fragmentSource: cstring, vertexSource: cstring, ty
 
 shader_init :: proc(shader: ^Shader) {
   shader.parameters.tint_location = gl.GetUniformLocation(shader.program, "tint")
+  shader.parameters.shadowmap_matrix_location = gl.GetUniformLocation(shader.program, "shadowmap_matrix")
   switch shader.type {
     case .THREE_DIMENSIONAL:
+      shader.parameters.albedo_texture_location = gl.GetUniformLocation(shader.program, "albedo_texture")
+      shader.parameters.shadowmap_texture_location = gl.GetUniformLocation(shader.program, "shadowmap_texture")
       shader.parameters.light_position_location = gl.GetUniformLocation(shader.program, "light_pos")
       shader.parameters.camera_position_location = gl.GetUniformLocation(shader.program, "camera_pos")
       shader.parameters.model_matrix_location = gl.GetUniformLocation(shader.program, "model_matrix")
@@ -196,6 +207,14 @@ renderer_info :: proc() {
   max_fragment_attributes: i32
   gl.GetIntegerv(gl.MAX_FRAGMENT_INPUT_COMPONENTS, &max_fragment_attributes)
   fmt.printfln("MAX FRAGMENT ATTRIBUTES %d", max_fragment_attributes)
+
+  max_texture_units: i32
+  gl.GetIntegerv(gl.MAX_TEXTURE_UNITS, &max_texture_units)
+  fmt.printfln("MAX TEXTURE UNITS %d", max_texture_units)
+
+  fmt.printfln("OpenGL version  : %s", gl.GetString(gl.VERSION))
+  fmt.printfln("OpenGL renderer : %s", gl.GetString(gl.RENDERER))
+  fmt.printfln("OpenGL vendor   : %s", gl.GetString(gl.VENDOR))
 }
 
 texture_load :: proc(filepath: string) -> u32 {

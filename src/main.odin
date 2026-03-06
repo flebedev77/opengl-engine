@@ -4,7 +4,6 @@ import "core:fmt"
 import "core:time"
 import "vendor:glfw"
 import gl "vendor:OpenGL"
-import stb "vendor:stb/image"
 
 import "core:math/linalg"
 import "core:math"
@@ -55,6 +54,7 @@ main :: proc() {
 
   glfw.WindowHint(glfw.CONTEXT_VERSION_MAJOR, GL_VERSION_MAJOR)
   glfw.WindowHint(glfw.CONTEXT_VERSION_MINOR, GL_VERSION_MINOR)
+  glfw.WindowHint(glfw.SAMPLES, 4)
 
   GlfwWindow = glfw.CreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Hello world", nil, nil)
   defer glfw.DestroyWindow(GlfwWindow)
@@ -72,13 +72,17 @@ main :: proc() {
   gl.Viewport(0, 0, FrameBuffer.w, FrameBuffer.h)
 
 
-
   shader := shader_compileprogram(
                     cstring(#load("../assets/shaders/frag.glsl")),
                     cstring(#load("../assets/shaders/vert.glsl")),
                     .THREE_DIMENSIONAL
                    )
   defer gl.DeleteProgram(shader.program)
+
+  light_viewmatrix := linalg.matrix4_look_at_f32({10, 10, 10}, {0, 0, 0}, {0, 1, 0})
+  light_projmatrix := orthographic_projection_matrix(-5, 5, 5, -5, 0.01, 26)
+  shadowmap_matrix := light_projmatrix * light_viewmatrix
+  shader.parameters.shadowmap_matrix = shadowmap_matrix
 
   shadowmap_shader := shader_compileprogram(
                     cstring(#load("../assets/shaders/shadowmap_frag.glsl")),
@@ -109,18 +113,16 @@ main :: proc() {
   gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
 
 
-  assets_texture := texture_load("assets/textures/box_placeholder.ppm")
+  albedo_texture := texture_load("assets/textures/box_placeholder.ppm")
 
   glfw.SetWindowRefreshCallback(GlfwWindow, window_refresh)
 
   gl.Enable(gl.DEPTH_TEST)
   gl.Enable(gl.FRAMEBUFFER_SRGB); 
+  gl.Enable(gl.MULTISAMPLE)
 
   mx, my := glfw.GetCursorPos(GlfwWindow)
   mouse.current_position = {f32(mx), f32(my)}
-
-  cube_mesh := mesh_make_cube(shader, {0, -(0.8 - 0.5), 0})
-  defer mesh_delete(cube_mesh)
 
   grid: Grid
   grid_init(&grid, 5, 5, {-2.5, -0.8, -2.5}, shader)
@@ -154,24 +156,23 @@ main :: proc() {
     mouse.delta_position = mouse.current_position - mouse.previous_position
     // fmt.printfln("%f", mouse.delta_position.y)
 
+    gl.ActiveTexture(gl.TEXTURE0)
+    gl.BindTexture(gl.TEXTURE_2D, albedo_texture)
+    gl.ActiveTexture(gl.TEXTURE1)
+    gl.BindTexture(gl.TEXTURE_2D, shadowmap_texture) 
+
     // cube_mesh.model_matrix *= rotation_matrix_y(delta_time * 0.001)
     // model_matrix *= translation_matrix({0, 0, f32(math.sin(time_since_start*0.00001))*0.1})
     gl.Viewport(0, 0, shadowmap_width, shadowmap_height)
     gl.BindFramebuffer(gl.FRAMEBUFFER, shadowmap_framebuffer)
     gl.Clear(gl.DEPTH_BUFFER_BIT)
     // gl.BindTexture(gl.TEXTURE_2D, shadowmap_texture)
-    light_viewmatrix: Mat4 = linalg.matrix4_look_at_f32({5, 5, 5}, {4, 4, 4}, {0, 1, 0})
-    light_projmatrix: Mat4 = linalg.matrix4_perspective_f32(
-      90 * math.PI / 180,
-      f32(FrameBuffer.w) / f32(FrameBuffer.h), 
-      2, 5)
-    light_projmatrix = orthographic_projection_matrix(-1, 1, 1, -1, 0.1, 10)
 
     // fmt.printfln("%d", shadowmap_shader.parameters)
     gl.UseProgram(shadowmap_shader.program)
-    gl.UniformMatrix4fv(shadowmap_shader.parameters.view_matrix_location, 1, gl.FALSE, &light_viewmatrix[0][0])
-    gl.UniformMatrix4fv(shadowmap_shader.parameters.projection_matrix_location, 1, gl.FALSE, &light_projmatrix[0][0])
-    // gl.UniformMatrix4fv(shadowmap_shader.parameters.view_matrix_location, 1, gl.FALSE, &player.viewmatrix[0][0])
+    gl.UniformMatrix4fv(shadowmap_shader.parameters.shadowmap_matrix_location, 1, gl.FALSE, &shadowmap_matrix[0][0])
+    // gl.UniformMatrix4fv(shadowmap_shader.parameters.projection_matrix_location, 1, gl.FALSE, &light_projmatrix[0][0])
+    // gl.UniformMatrix4fv(shadowmap_shader.parameters.view_matrix_location, 1, gl.FALSE, &light_viewmatrix[0][0])
     // gl.UniformMatrix4fv(shadowmap_shader.parameters.projection_matrix_location, 1, gl.FALSE, &camera.projection_matrix[0][0])
     grid_draw(grid, camera, shadowmap_shader)
     mesh_draw(obj_mesh, shadowmap_shader)
@@ -183,11 +184,6 @@ main :: proc() {
     // gl.CullFace(gl.BACK)
     gl.Viewport(0, 0, FrameBuffer.w, FrameBuffer.h)
     {
-      cube_mesh.shader.parameters.view_matrix = camera.view_matrix
-      cube_mesh.shader.parameters.camera_position = player.position
-      cube_mesh.shader.parameters.projection_matrix = camera.projection_matrix
-      cube_mesh.shader.parameters.tint = {0, 0.4, 0.6}
-
       light_mesh.shader.parameters.view_matrix = camera.view_matrix
       light_mesh.shader.parameters.camera_position = player.position
       light_mesh.shader.parameters.projection_matrix = camera.projection_matrix
@@ -197,13 +193,13 @@ main :: proc() {
       obj_mesh.shader.parameters.camera_position = player.position
       obj_mesh.shader.parameters.projection_matrix = camera.projection_matrix
       obj_mesh.shader.parameters.tint = {0.9, 0.1, 0.1}
+      obj_mesh.shader.parameters.shadowmap_matrix = light_projmatrix
       obj_mesh.model_matrix *= rotation_matrix_y(delta_time * 0.001)
       obj_mesh.model_matrix *= translation_matrix({0, math.sin(time_since_start * 0.001) * 0.007, 0})
 
       camera_update(&camera)
       window_render()
       grid_draw(grid, camera)
-      // mesh_draw(cube_mesh)
       mesh_draw(light_mesh)
       mesh_draw(obj_mesh)
       // fmt.printfln("%d", shader.parameters.model_matrix)
