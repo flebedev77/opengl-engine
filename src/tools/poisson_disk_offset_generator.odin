@@ -18,12 +18,12 @@ SCALE :: WINDOW_HEIGHT / 2 - 20
 
 desired_amount := 16
 
-PossionDisk :: struct {
+PoissonDisk :: struct {
   position: v2,
   radius: f32
 }
 
-draw_disk :: proc(d: PossionDisk) {
+draw_disk :: proc(d: PoissonDisk) {
   origin := v2{WINDOW_WIDTH/2, WINDOW_HEIGHT/2}
   rl.DrawCircle(
     i32(origin.x + d.position.x * SCALE), 
@@ -33,8 +33,8 @@ draw_disk :: proc(d: PossionDisk) {
   )
 }
 
-generate_distribution :: proc() -> [dynamic]PossionDisk {
-  arr := make([dynamic]PossionDisk, context.temp_allocator)
+generate_distribution :: proc() -> [dynamic]PoissonDisk {
+  arr := make([dynamic]PoissonDisk, context.temp_allocator)
 
   rand.reset(u64(time.now()._nsec))
 
@@ -46,12 +46,12 @@ generate_distribution :: proc() -> [dynamic]PossionDisk {
     pos := v2{math.cos(angle), math.sin(angle)} * radius
     for disk in arr {
       dist := linalg.length(disk.position - pos)
-      if dist < 1 {
+      if dist < disk.radius {
         continue
       }
     }
 
-    append(&arr, PossionDisk{
+    append(&arr, PoissonDisk{
       position = pos,
       radius = 1
     })
@@ -64,7 +64,7 @@ generate_distribution :: proc() -> [dynamic]PossionDisk {
   return arr
 }
 
-export_possion_offsets :: proc(disks: [dynamic]PossionDisk) -> os.Error {
+export_poisson_offsets :: proc(disks: [dynamic]PoissonDisk) -> os.Error {
   sb := strings.builder_make(context.temp_allocator)
   for disk in disks {
     strings.write_string(&sb, "vec2(")
@@ -75,13 +75,14 @@ export_possion_offsets :: proc(disks: [dynamic]PossionDisk) -> os.Error {
     strings.write_string(&sb, "), \n")
   }
 
-  os.write_entire_file("possion_offsets.txt", sb.buf[:])
+  os.write_entire_file("poisson_offsets.txt", sb.buf[:])
 
   return nil
 }
 
 main :: proc() {
-  rl.InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Possion distribution generator")
+  rl.InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Poisson distribution generator")
+  rl.SetWindowState({.VSYNC_HINT})
 
   disks := generate_distribution()
   fmt.printfln("DISKS amount %d", len(disks))
@@ -100,7 +101,7 @@ main :: proc() {
     }
 
     if rl.IsKeyPressed(.ENTER) {
-      export_possion_offsets(disks)
+      export_poisson_offsets(disks)
       rl.CloseWindow()
     }
 
