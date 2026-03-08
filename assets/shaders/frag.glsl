@@ -12,9 +12,29 @@ uniform vec3 tint;
 uniform vec3 camera_pos;
 uniform vec3 light_pos;
 
-float shadow_pcf_border_exponent = 4.0; // Helps make the transition between nonshadow and shadow more natural and non linear
-float shadow_pcf_noisiness = 0.1;
-int shadow_pcf_samples = 5;
+const float PI = 3.141592653589793;
+const float shadow_pcf_border_exponent = 6; // Helps make the transition between nonshadow and shadow more natural and non linear
+const float shadow_pcf_noisiness = 0.2;
+const int shadow_pcf_samples = 2;
+
+const vec2 poisson_offsets[16] = vec2[](
+    vec2(0.00087641, -0.63862264), 
+    vec2(-0.13883482, 0.45381424), 
+    vec2(0.06422021, -0.18769506), 
+    vec2(-0.57479477, -0.25208041), 
+    vec2(-0.14291742, -0.86147839), 
+    vec2(-0.36587161, -0.47558826), 
+    vec2(0.34885627, 0.82500464), 
+    vec2(0.69631511, -0.55897927), 
+    vec2(-0.58133727, 0.72104436), 
+    vec2(0.64826161, 0.28402969), 
+    vec2(-0.86492872, 0.07038971), 
+    vec2(0.42102033, 0.30327117), 
+    vec2(0.11165676, 0.87970036), 
+    vec2(-0.77341479, -0.35967383), 
+    vec2(-0.36183363, -0.56892765), 
+    vec2(0.17042206, -0.71032268) 
+);
 
 float rand(vec2 co){
     return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
@@ -35,22 +55,65 @@ float calculate_shadow(vec4 light_space_pos, vec3 light_dir) {
   float pixel_depth = proj_coords.z;
 
   if (closest_depth < pixel_depth - bias) {
-    vec2 texel_size = 1.0 / textureSize(shadowmap_texture, 0);
+    vec2 texel_size = 1.0 / textureSize(shadowmap_texture, 0);// + 0.0001;
     float shadow = 0.0;
 
-    // NOTE(flebedev99): Could be factored to hardware multisampling for performance
-    for (int x = -shadow_pcf_samples; x <= shadow_pcf_samples; x++) {
-      for (int y = -shadow_pcf_samples; y <= shadow_pcf_samples; y++) {
-        vec2 noise_offset = vec2( // NOTE(flebedev99): This could be stored into a texture to avoid redundant calculations
-          rand(vec2(x, y)) * 2.0 - 1.0,
-          rand(frag_pos.xy) * 2.0 - 1.0
+    // Box sampling
+    // for (int x = -shadow_pcf_samples; x <= shadow_pcf_samples; x++) {
+    //   for (int y = -shadow_pcf_samples; y <= shadow_pcf_samples; y++) {
+    //     vec2 noise_offset = vec2( // NOTE: This could be stored into a texture to avoid redundant calculations
+    //       rand(vec2(x, y)) * 2.0 - 1.0,
+    //       rand(frag_pos.xy) * 2.0 - 1.0
+    //     ) * shadow_pcf_noisiness;
+    //     vec2 sample_pos = (noise_offset + vec2(x, y)) * texel_size;
+    //     float depth = texture(shadowmap_texture, proj_coords.xy + sample_pos).r;
+    //     shadow += (pixel_depth - bias > depth) ? 1.0 : 0.0;
+    //   }
+    // }
+    // shadow /= pow(shadow_pcf_samples * 2.0 + 1.0, 2.0);
+
+    // Nvidia hardware accelerated sampling https://developer.nvidia.com/gpugems/gpugems/part-ii-lighting-and-shadows/chapter-11-shadow-map-antialiasing
+    // for (float x = -1.5; x <= 1.5; x++) {
+    //   for (float y = -1.5; y <= 1.5; y++) {
+    //     vec2 sample_pos = vec2(x, y) * texel_size;
+    //     float depth = texture(shadowmap_texture, proj_coords.xy + sample_pos).r;
+    //     shadow += (pixel_depth - bias > depth) ? 1.0 : 0.0;
+    //   }
+    // }
+    // shadow /= 16;
+
+    // Circular sampling
+    // float circle_sample_step = 0.1;
+    // float samples = 0;
+    // for (int radius = 0; radius < 1; radius++) {
+    //   for (float theta = 0; theta < 2 * PI; theta += circle_sample_step) {
+    //     samples++;
+    //     vec2 noise_offset = vec2(
+    //         rand(vec2(radius, theta)) * 2.0 - 1.0,
+    //         rand(frag_pos.xy) * 2.0 - 1.0
+    //     ) * shadow_pcf_noisiness;
+    //
+    //     vec2 sample_pos = vec2(cos(theta + noise_offset.x), sin(theta + noise_offset.y)) * (noise_offset.x + radius) * texel_size;
+    //     float depth = texture(shadowmap_texture, proj_coords.xy + sample_pos).r;
+    //     shadow += (pixel_depth - bias > depth) ? 1.0 : 0.0;
+    //   }
+    // }
+    //
+    // shadow /= samples;
+
+    // Poisson sampling
+    for (int i = 0; i < 16; i++) {
+        vec2 noise_offset = vec2(
+            rand(vec2(i, frag_pos.z)) * 2.0 - 1.0,
+            rand(frag_pos.xy) * 2.0 - 1.0
         ) * shadow_pcf_noisiness;
-        vec2 sample_pos = (noise_offset + vec2(x, y)) * texel_size;
+        vec2 sample_pos = (poisson_offsets[i] + noise_offset) * texel_size;
         float depth = texture(shadowmap_texture, proj_coords.xy + sample_pos).r;
         shadow += (pixel_depth - bias > depth) ? 1.0 : 0.0;
-      }
     }
-    shadow /= pow(shadow_pcf_samples * 2.0 + 1.0, 2.0);
+    shadow /= 16;
+
+    // shadow = 1;
 
     return shadow;
   }
@@ -71,15 +134,17 @@ void main() {
 
   float specularity = (textureSample.r) * 1.5;//step(0.99, (textureSample.r + textureSample.g + textureSample.b));
   vec3 specular_reflection_direction = reflect(-light_dir, frag_normal);
-  float specular = clamp(pow(dot(view_dir, specular_reflection_direction), 50.0), 0.0, 1.0);
-  specular *= clamp(specularity, 0.0, 1.0);
+  float specular = clamp(pow(dot(view_dir, specular_reflection_direction), 50), 0.0, 1.0);
+  specular *= clamp(specularity, 0, 1.0);
 
-  float diffuse = clamp(dot(light_dir, -frag_normal), 0.0, 1.0) * 0.5;
+  float diffuse = clamp(dot(light_dir, -frag_normal), 0, 1) * 0.5;
 
-  float ambient = 0.1;
-  frag_color += ambient;
+  vec4 ambient = vec4(0.2 * vec3(0.5, 0.5, 0.9), 1.0); // NOTE multiplying by the color of the sky, make sure it always corresponds
+  float shadow_darkness = 0.6;
+  // frag_color += ambient;
   
   float shadow = calculate_shadow(frag_pos_lightspace, light_dir);
-  frag_color = mix(frag_color, frag_color * vec4(0.1, 0.1, 0.12, 1.0), clamp(pow(shadow, shadow_pcf_border_exponent), 0.0, 1.0));
-  frag_color *= (diffuse + ambient + specular * (1.0 - shadow));
+  shadow = clamp(pow(shadow, shadow_pcf_border_exponent), 0, 1);
+  // frag_color = mix(frag_color, frag_color * shadow_ambient, clamp(pow(shadow, shadow_pcf_border_exponent), 0.0, 1.0));
+  frag_color *= (diffuse + ambient + specular * (1.0 - shadow)) * ((1 + shadow_darkness) - shadow);
 }

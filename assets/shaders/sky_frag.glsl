@@ -104,7 +104,8 @@ void main() {
   vec3 out_color = mix(vec3(0.5, 0.5, 0.7), high_color, y_factor);
   vec3 view_dir = normalize(frag_pos - camera_pos);
   vec3 light_dir = normalize(light_pos);
-  float sun_factor = clamp((pow(max(dot(view_dir, light_dir), 0), 100) - 0.6) * 2.0, 0, 1);
+
+  float sun_factor = clamp((pow(max(dot(view_dir, light_dir) - 0.002, 0), 100)) * 2.0, 0, 1);
   out_color = mix(out_color, vec3(1, 1, 0.8), sun_factor);
 
   frag_color = vec4(out_color, 1.0);

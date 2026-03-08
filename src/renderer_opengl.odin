@@ -110,7 +110,7 @@ mesh_draw :: proc(mesh: Mesh, shader_override: Shader = {}) {
   if shader.program != 0 && shader_override.program == 0 {
     gl.UseProgram(shader.program)
 
-    light_pos := Vec3{10, 10, 10} // TODO move this
+    light_pos := Vec3{10, 5, 10} // TODO move this
     gl.Uniform3fv(shader.parameters.light_position_location, 1, &light_pos[0])
     gl.Uniform3fv(shader.parameters.camera_position_location, 1, &shader.parameters.camera_position[0])
     gl.Uniform3fv(shader.parameters.tint_location, 1, &shader.parameters.tint[0])
