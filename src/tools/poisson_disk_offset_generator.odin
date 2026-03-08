@@ -87,7 +87,9 @@ main :: proc() {
   disks := generate_distribution()
   fmt.printfln("DISKS amount %d", len(disks))
 
-  for !rl.WindowShouldClose() {
+  is_running := true
+
+  for !rl.WindowShouldClose() && is_running {
     rl.BeginDrawing()
     rl.ClearBackground(rl.BLACK)
 
@@ -102,7 +104,7 @@ main :: proc() {
 
     if rl.IsKeyPressed(.ENTER) {
       export_poisson_offsets(disks)
-      rl.CloseWindow()
+      is_running = false
     }
 
     rl.EndDrawing()
