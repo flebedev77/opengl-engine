@@ -91,15 +91,29 @@ main :: proc() {
                    )
   defer gl.DeleteProgram(shadowmap_shader.program)
 
+
+  sky_shader := shader_compileprogram(
+                    cstring(#load("../assets/shaders/sky_frag.glsl")),
+                    cstring(#load("../assets/shaders/sky_vert.glsl")),
+                    .THREE_DIMENSIONAL
+                   )
+  defer gl.DeleteProgram(sky_shader.program)
+
   shadowmap_width, shadowmap_height: i32 = 4096, 4096
   shadowmap_framebuffer, shadowmap_texture: u32
   gl.GenTextures(1, &shadowmap_texture)
   gl.BindTexture(gl.TEXTURE_2D, shadowmap_texture)
   gl.TexImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT, shadowmap_width, shadowmap_height, 0, gl.DEPTH_COMPONENT, gl.FLOAT, nil)
-  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_BORDER)
-  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_BORDER)
   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+
+  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE);
+  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_FUNC, gl.GEQUAL);
+
+  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_BORDER)
+  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_BORDER)
+  border_col: []f32 = {1, 1, 1}
+  gl.TexParameterfv(gl.TEXTURE_2D, gl.TEXTURE_BORDER_COLOR, &border_col[0])
 
   gl.GenFramebuffers(1, &shadowmap_framebuffer)
   gl.BindFramebuffer(gl.FRAMEBUFFER, shadowmap_framebuffer)
@@ -135,6 +149,7 @@ main :: proc() {
 
   cube_mesh := mesh_make_cube(shader, {0, 0, 0})
   cube_mesh.model_matrix = translation_matrix({1, -0.3, 1})
+  cube_mesh.model_matrix *= scale_matrix({1, 0.8, 1})
   defer mesh_delete(cube_mesh)
 
   obj_pos, obj_uv, obj_nor, obj_ind := obj_parse("assets/plane.obj")
@@ -148,6 +163,11 @@ main :: proc() {
   delete(obj_uv)
   delete(obj_nor)
   delete(obj_ind)
+
+  sky_pos, sky_uv, sky_nor, sky_ind := obj_parse("assets/skydome.obj")
+  sky_mesh: Mesh
+  mesh_init(&sky_mesh, sky_pos, sky_uv, sky_nor, sky_ind, sky_shader)
+  sky_mesh.model_matrix *= scale_matrix({500, 500, 500})
 
   for glfw.WindowShouldClose(GlfwWindow) == false {
     current_time := f64(time.now()._nsec)
@@ -180,7 +200,7 @@ main :: proc() {
     // gl.UniformMatrix4fv(shadowmap_shader.parameters.projection_matrix_location, 1, gl.FALSE, &light_projmatrix[0][0])
     // gl.UniformMatrix4fv(shadowmap_shader.parameters.view_matrix_location, 1, gl.FALSE, &light_viewmatrix[0][0])
     // gl.UniformMatrix4fv(shadowmap_shader.parameters.projection_matrix_location, 1, gl.FALSE, &camera.projection_matrix[0][0])
-    grid_draw(grid, camera, shadowmap_shader)
+    grid_draw(&grid, camera, shadowmap_shader)
     mesh_draw(obj_mesh, shadowmap_shader)
 
     // gl.CullFace(gl.FRONT)
@@ -211,10 +231,20 @@ main :: proc() {
       cube_mesh.shader.parameters.projection_matrix = camera.projection_matrix
       cube_mesh.shader.parameters.tint = {0.9, 0.1, 0.1}
 
+      sky_view_mat := camera.view_matrix
+      sky_view_mat[0, 3] = 0
+      sky_view_mat[1, 3] = 0
+      sky_view_mat[2, 3] = 0
+      sky_mesh.shader.parameters.view_matrix = sky_view_mat
+      sky_mesh.shader.parameters.camera_position = player.position
+      sky_mesh.shader.parameters.projection_matrix = camera.projection_matrix
+
       camera_update(&camera)
       window_render()
-      grid_draw(grid, camera)
-      mesh_draw(light_mesh)
+      mesh_draw(sky_mesh)
+
+      grid_draw(&grid, camera)
+      // mesh_draw(light_mesh)
       mesh_draw(obj_mesh)
       mesh_draw(cube_mesh)
       // fmt.printfln("%d", shader.parameters.model_matrix)
