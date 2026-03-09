@@ -34,8 +34,8 @@ scene_update :: proc(scene: ^Scene) {
   player_update(scene, &scene.player)
 }
 
-scene_render :: proc(scene: ^Scene) {
+scene_render :: proc(scene: ^Scene, shader_override: Shader = {}) {
   for &mesh in scene.meshes {
-    render_mesh(scene.renderer, &mesh)
+    render_mesh(scene.renderer, &mesh, shader_override)
   }
 }

@@ -70,11 +70,18 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   scene.renderer = renderer
 }
 
-render_mesh :: proc(renderer: ^Renderer, mesh: ^Mesh) {
-  mesh.shader.parameters.view_matrix = renderer.scene.camera.view_matrix
-  mesh.shader.parameters.projection_matrix = renderer.scene.camera.projection_matrix
-  mesh.shader.parameters.camera_position = renderer.scene.camera.position
-  mesh_draw(mesh^)
+render_mesh :: proc(renderer: ^Renderer, mesh: ^Mesh, shader_override: Shader = {}) {
+  if shader_override.program != 0 {
+    shader_override := shader_override
+    shader_override.parameters.view_matrix = renderer.scene.camera.view_matrix
+    shader_override.parameters.projection_matrix = renderer.scene.camera.projection_matrix
+    shader_override.parameters.camera_position = renderer.scene.camera.position
+  } else {
+    mesh.shader.parameters.view_matrix = renderer.scene.camera.view_matrix
+    mesh.shader.parameters.projection_matrix = renderer.scene.camera.projection_matrix
+    mesh.shader.parameters.camera_position = renderer.scene.camera.position
+  }
+  mesh_draw(mesh^, shader_override)
 }
 
 mesh_init :: proc(
@@ -131,10 +138,18 @@ mesh_draw :: proc(mesh: Mesh, shader_override: Shader = {}) {
 
   if shader.program != 0 && shader_override.program == 0 {
     gl.UseProgram(shader.program)
+  } else if shader_override.program != 0 {
+    gl.UseProgram(shader_override.program)
+    shader = shader_override
+  }
 
     light_pos := Vec3{10, 5, 10} // TODO move this
     gl.Uniform3fv(shader.parameters.light_position_location, 1, &light_pos[0])
     gl.Uniform3fv(shader.parameters.camera_position_location, 1, &shader.parameters.camera_position[0])
+
+    if shader.parameters.tint == {0, 0, 0} {
+      shader.parameters.tint = {1, 1, 1}
+    }
     gl.Uniform3fv(shader.parameters.tint_location, 1, &shader.parameters.tint[0])
 
     gl.Uniform1i(shader.parameters.albedo_texture_location, 0)
@@ -144,12 +159,7 @@ mesh_draw :: proc(mesh: Mesh, shader_override: Shader = {}) {
     gl.UniformMatrix4fv(shader.parameters.projection_matrix_location, 1, gl.FALSE, &shader.parameters.projection_matrix[0,0])
     gl.UniformMatrix4fv(shader.parameters.view_matrix_location, 1, gl.FALSE, &shader.parameters.view_matrix[0,0])
     gl.UniformMatrix4fv(shader.parameters.shadowmap_matrix_location, 1, gl.FALSE, &shader.parameters.shadowmap_matrix[0,0])
-  }
-  if shader_override.program != 0 {
-    gl.UseProgram(shader_override.program)
-    gl.UniformMatrix4fv(shader.parameters.model_matrix_location, 1, gl.FALSE, &mesh.model_matrix[0,0])
-    gl.UniformMatrix4fv(shader.parameters.shadowmap_matrix_location, 1, gl.FALSE, &shader.parameters.shadowmap_matrix[0,0])
-  }
+
   gl.BindVertexArray(mesh.vao)
 
   gl.DrawElements(gl.TRIANGLES, mesh.triangle_count * 3, gl.UNSIGNED_INT, cast(rawptr)(cast(uintptr)0))

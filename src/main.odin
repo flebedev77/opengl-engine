@@ -84,6 +84,7 @@ main :: proc() {
                     cstring(#load("../assets/shaders/shadowmap_vert.glsl")),
                     .SHADOWMAP
                    )
+  shadowmap_shader.parameters.shadowmap_matrix = shadowmap_matrix
   defer gl.DeleteProgram(shadowmap_shader.program)
 
 
@@ -161,6 +162,8 @@ main :: proc() {
   append(&scene.meshes, cube_mesh)
   append(&scene.meshes, sky_mesh)
   append(&scene.meshes, obj_mesh)
+  append(&scene.meshes, light_mesh)
+
 
   for glfw.WindowShouldClose(GlfwWindow) == false {
     current_time := f64(time.now()._nsec)
@@ -169,17 +172,15 @@ main :: proc() {
     time_since_start := f32((current_time - start_time) / f64(time.Millisecond))
 
 
-    gl.ActiveTexture(gl.TEXTURE0)
-    gl.BindTexture(gl.TEXTURE_2D, albedo_texture)
-    gl.ActiveTexture(gl.TEXTURE1)
-    gl.BindTexture(gl.TEXTURE_2D, shadowmap_texture) 
 
     // cube_mesh.model_matrix *= rotation_matrix_y(delta_time * 0.001)
     // model_matrix *= translation_matrix({0, 0, f32(math.sin(time_since_start*0.00001))*0.1})
     gl.Viewport(0, 0, shadowmap_width, shadowmap_height)
     gl.BindFramebuffer(gl.FRAMEBUFFER, shadowmap_framebuffer)
     gl.Clear(gl.DEPTH_BUFFER_BIT)
-    // gl.BindTexture(gl.TEXTURE_2D, shadowmap_texture)
+    gl.BindTexture(gl.TEXTURE_2D, shadowmap_texture)
+
+    scene_render(&scene, shadowmap_shader)
 
     // fmt.printfln("%d", shadowmap_shader.parameters)
     // gl.UseProgram(shadowmap_shader.program)
@@ -197,6 +198,11 @@ main :: proc() {
     gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
 
     gl.Viewport(0, 0, FrameBuffer.w, FrameBuffer.h)
+
+    gl.ActiveTexture(gl.TEXTURE0)
+    gl.BindTexture(gl.TEXTURE_2D, albedo_texture)
+    gl.ActiveTexture(gl.TEXTURE1)
+    gl.BindTexture(gl.TEXTURE_2D, shadowmap_texture) 
 
     window_render()
     scene_update(&scene)
