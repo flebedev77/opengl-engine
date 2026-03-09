@@ -16,7 +16,7 @@ out vec4 frag_pos_lightspace;
 void main() {
   frag_uv = vert_uv;
   // NOTE calculating the normal matrix on the shader is expensive, should pass it as a uniform?
-  frag_normal = mat3(transpose(inverse(model_matrix))) * vert_normal;
+  frag_normal = normalize(mat3(transpose(inverse(model_matrix))) * vert_normal);
   frag_pos = vec3(model_matrix * vec4(vert_pos, 1.0));
   frag_pos_lightspace = shadowmap_matrix * model_matrix * vec4(vert_pos, 1.0);
   gl_Position = projection_matrix * view_matrix * model_matrix * vec4(vert_pos, 1.0);

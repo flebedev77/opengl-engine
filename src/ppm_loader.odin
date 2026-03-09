@@ -83,7 +83,7 @@ ppm_parse_from_memory :: proc(contents: []u8, verbose := false) ->
           }
         }
 
-        if state == .PIXEL_COMPONENT {
+        if state == .PIXEL_COMPONENT { // NOTE: Could optimise this to a mem copy
           pixel_index := i - pixel_begin_index
           pixel_buffer[pixel_index] = c
         }

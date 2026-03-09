@@ -65,7 +65,10 @@ main :: proc() {
 
   scene: Scene
   scene_init(&scene)
+  defer scene_delete(&scene)
 
+  renderer: Renderer
+  renderer_init(&renderer, &scene)
 
   shader := shader_compileprogram(
                     cstring(#load("../assets/shaders/frag.glsl")),
@@ -123,46 +126,40 @@ main :: proc() {
   gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
 
 
-  albedo_texture := texture_load("assets/textures/box_placeholder.ppm")
+  albedo_texture := texture_load("assets/textures/Map-1.ppm")
 
   glfw.SetWindowRefreshCallback(GlfwWindow, window_refresh)
 
-  renderer: Renderer
-  renderer_init(&renderer, &scene)
 
   // grid: Grid
   // grid_init(&grid, 5, 5, {-2.5, -0.8, -2.5}, shader)
   // defer grid_delete(grid)
 
   light_mesh := mesh_make_cube(shader, {10, 10, 10})  
-  defer mesh_delete(light_mesh)
 
   cube_mesh := mesh_make_cube(shader, {0, 0, 0})
-  cube_mesh.model_matrix = translation_matrix({1, -0.3, 1})
-  // cube_mesh.model_matrix *= scale_matrix({1, 0.8, 1})
-  defer mesh_delete(cube_mesh)
-  //
-  obj_pos, obj_uv, obj_nor, obj_ind := obj_parse("assets/plane.obj")
-  obj_mesh: Mesh
-  mesh_init(&obj_mesh, obj_pos, obj_uv, obj_nor, obj_ind, shader)
+  cube_mesh.model_matrix = translation_matrix({1, 0, 1})
+  cube_mesh.model_matrix *= scale_matrix({1, 0.8, 1})
+
+  obj_mesh := asset_loader_obj_mesh("assets/models/aeroplane.obj", shader)
   scl := f32(0.3)
   obj_mesh.model_matrix *= scale_matrix({scl, scl, scl})
   obj_mesh.model_matrix *= translation_matrix({0, 0.3, 0})
 
-  delete(obj_pos)
-  delete(obj_uv)
-  delete(obj_nor)
-  delete(obj_ind)
-
-  sky_pos, sky_uv, sky_nor, sky_ind := obj_parse("assets/skydome.obj")
-  sky_mesh: Mesh
-  mesh_init(&sky_mesh, sky_pos, sky_uv, sky_nor, sky_ind, sky_shader)
+  
+  sky_mesh := asset_loader_obj_mesh("assets/models/skydome.obj", sky_shader)
   sky_mesh.model_matrix *= scale_matrix({500, 500, 500})
 
+  ground_mesh := asset_loader_obj_mesh("assets/models/ground.obj", shader)
+  scl = 0.2
+  ground_mesh.model_matrix *= scale_matrix({scl, scl, scl})
+  ground_mesh.model_matrix *= translation_matrix({0, 0, 0})
+  
   append(&scene.meshes, cube_mesh)
   append(&scene.meshes, sky_mesh)
   append(&scene.meshes, obj_mesh)
   append(&scene.meshes, light_mesh)
+  append(&scene.meshes, ground_mesh)
 
 
   for glfw.WindowShouldClose(GlfwWindow) == false {

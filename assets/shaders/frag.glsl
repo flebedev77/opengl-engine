@@ -46,8 +46,10 @@ float calculate_shadow(vec4 light_space_pos, vec3 light_dir) {
 
   if (proj_coords.z >= 1.0) return 0.0;
 
-  float max_bias = 0.0005;
+  float max_bias = 0.0002;
   float min_bias = 0.0001;
+  // float max_bias = 0.05;
+  // float min_bias = 0.01;
   float bias = max(max_bias * (1.0 - dot(frag_normal, light_dir)), min_bias);  
 
 
@@ -123,13 +125,8 @@ float calculate_shadow(vec4 light_space_pos, vec3 light_dir) {
 void main() {
   vec4 textureSample = texture(albedo_texture, frag_uv);
   frag_color = textureSample * vec4(tint, 1.0);
-  // frag_color.a = 1.0;
-  //if (frag_color.r < 0.5) {
-  // if (frag_color.r < 1.0) {
-  //   frag_color = vec4(tint, 1.0);
-  // }
-  // frag_color = vec4(abs(frag_pos), 1.0);
-  vec3 light_dir = normalize(frag_pos - light_pos); // TODO change this to point from an actual light
+
+  vec3 light_dir = normalize(- light_pos); // TODO change this to point from an actual light
   vec3 view_dir = normalize(frag_pos - camera_pos);
 
   float specularity = (textureSample.r) * 1.5;//step(0.99, (textureSample.r + textureSample.g + textureSample.b));
@@ -139,12 +136,13 @@ void main() {
 
   float diffuse = clamp(dot(light_dir, -frag_normal), 0, 1) * 0.5;
 
-  vec4 ambient = vec4(0.2 * vec3(0.5, 0.5, 0.9), 1.0); // NOTE multiplying by the color of the sky, make sure it always corresponds
-  float shadow_darkness = 0.6;
+  vec4 ambient = vec4(0.2 * vec3(0.094, 0.345, 0.729), 1.0); // NOTE multiplying by the color of the sky, make sure it always corresponds
+  float shadow_darkness = 0.9;
   // frag_color += ambient;
   
   float shadow = calculate_shadow(frag_pos_lightspace, light_dir);
   shadow = clamp(pow(shadow, shadow_pcf_border_exponent), 0, 1);
+  float inv_shadow = 1 - shadow;
   // frag_color = mix(frag_color, frag_color * shadow_ambient, clamp(pow(shadow, shadow_pcf_border_exponent), 0.0, 1.0));
-  frag_color *= (diffuse + ambient + specular * (1.0 - shadow)) * ((1 + shadow_darkness) - shadow);
+  frag_color *= (diffuse * inv_shadow + ambient + specular * inv_shadow) * ((1 + shadow_darkness) - shadow);
 }

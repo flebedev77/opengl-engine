@@ -21,6 +21,7 @@ scene_init :: proc(scene: ^Scene) {
 
 scene_update :: proc(scene: ^Scene) {
   {
+    // NOTE: factor out to windowing layer
     mx, my := glfw.GetCursorPos(GlfwWindow)
 
     scene.mouse.previous_position = scene.mouse.current_position
@@ -38,4 +39,15 @@ scene_render :: proc(scene: ^Scene, shader_override: Shader = {}) {
   for &mesh in scene.meshes {
     render_mesh(scene.renderer, &mesh, shader_override)
   }
+}
+
+scene_delete :: proc(scene: ^Scene, verbose := false) {
+  if verbose {
+    fmt.printfln("Unloading meshes")
+  }
+
+  for mesh in scene.meshes {
+    mesh_delete(mesh)
+  }
+  delete(scene.meshes)
 }

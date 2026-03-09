@@ -11,7 +11,8 @@ Player :: struct {
   walk_speed: f32,
   position,
   velocity: Vec3,
-  is_onground: bool
+  is_onground: bool,
+  is_flying: bool
 }
 
 player_init :: proc(player: ^Player) {
@@ -61,31 +62,42 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
   if glfw.GetKey(GlfwWindow, glfw.KEY_D) > 0 {
     moveinput += right
   }
-  if glfw.GetKey(GlfwWindow, glfw.KEY_SPACE) > 0 {
+  if player.is_flying && glfw.GetKey(GlfwWindow, glfw.KEY_SPACE) > 0 {
     moveinput += {0, 1, 0}
   }
-  if glfw.GetKey(GlfwWindow, glfw.KEY_LEFT_SHIFT) > 0 {
+  if player.is_flying && glfw.GetKey(GlfwWindow, glfw.KEY_LEFT_SHIFT) > 0 {
     moveinput += {0, -1, 0}
   }
 
-  if player.position.y < 0.3 {
-    player.position.y = 0.3
+  if !player.is_flying && player.position.y + player.velocity.y <= 0.6 {
+    player.position.y = 0.6
+    player.velocity.y = 0.0
     player.is_onground = true
-    player.velocity.y = 0
   }
 
-  // if glfw.GetKey(GlfwWindow, glfw.KEY_SPACE) > 0 && player.is_onground {
-  //   player.is_onground = false 
-  //   player.velocity.y = 0.05
-  // }
+  if !player.is_flying && glfw.GetKey(GlfwWindow, glfw.KEY_SPACE) > 0 && player.is_onground {
+    player.is_onground = false 
+    player.velocity.y = 0.14
+  }
 
   
-  if linalg.length2(moveinput) > 0 {
+  if linalg.length2(moveinput) > 0 && linalg.length(player.velocity.xz) < player.walk_speed {
     moveinput = linalg.normalize(moveinput)
-    player.position += moveinput * player.walk_speed
+    moveinput.y *= 0.5
+    player.velocity += moveinput * player.walk_speed * 0.5
   }
 
-  // player.velocity.y -= 0.002
+  if glfw.GetKey(GlfwWindow, glfw.KEY_TAB) > 0 {
+    player.is_flying = true
+  }
+  if glfw.GetKey(GlfwWindow, glfw.KEY_LEFT_CONTROL) > 0 {
+    player.is_flying = false
+  }
+
+  if !player.is_flying {
+    player.velocity.y -= 0.004
+  }
+  player.velocity *= 0.9
   player.position += player.velocity
   scene.camera.position = player.position
   scene.camera.view_matrix = player.viewmatrix

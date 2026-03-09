@@ -9,6 +9,11 @@ Camera :: struct {
 }
 
 camera_update :: proc(camera: ^Camera) {
-    camera.projection_matrix = linalg.matrix4_perspective_f32(90 * math.PI / 180, f32(FrameBuffer.w) / f32(FrameBuffer.h), 0.1, 1000)
+    camera.projection_matrix = linalg.matrix4_perspective_f32(
+      90 * math.PI / 180, 
+      f32(FrameBuffer.w) / f32(FrameBuffer.h), 
+      0.001,
+      1000
+    )
     // camera.projection_matrix = orthographic_projection_matrix(-1, 1, 1, -1, 0.1, 1000)
 }
