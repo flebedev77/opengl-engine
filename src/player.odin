@@ -20,9 +20,9 @@ player_init :: proc(player: ^Player) {
   player.look_sensitivity = PLAYER_LOOK_SENSITIVITY
 }
 
-player_update :: proc(player: ^Player, delta_time: f32) {
-  player.yaw += mouse.delta_position.x * player.look_sensitivity.x * delta_time
-  player.pitch -= mouse.delta_position.y * player.look_sensitivity.y * delta_time
+player_update :: proc(scene: ^Scene, player: ^Player) {
+  player.yaw += scene.mouse.delta_position.x * player.look_sensitivity.x * scene.delta_time
+  player.pitch -= scene.mouse.delta_position.y * player.look_sensitivity.y * scene.delta_time
 
   pitch_limit_padding: f32 = 0.003
   if player.pitch > math.PI/2 - pitch_limit_padding {
@@ -87,6 +87,6 @@ player_update :: proc(player: ^Player, delta_time: f32) {
 
   // player.velocity.y -= 0.002
   player.position += player.velocity
-  camera.position = player.position
-  camera.view_matrix = player.viewmatrix
+  scene.camera.position = player.position
+  scene.camera.view_matrix = player.viewmatrix
 }

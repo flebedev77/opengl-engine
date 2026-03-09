@@ -2,7 +2,6 @@ package main
 import "core:os"
 import "core:fmt"
 import gl "vendor:OpenGL"
-import stbi "vendor:stb/image"
 
 GpuID :: u32
 UniformLocation :: i32
@@ -53,6 +52,29 @@ Mesh :: struct {
   triangle_count,
   indice_count: i32,
   model_matrix: Mat4 
+}
+
+Renderer :: struct {
+  scene: ^Scene
+}
+
+renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
+  gl.Enable(gl.DEPTH_TEST)
+  gl.Enable(gl.FRAMEBUFFER_SRGB)
+  gl.Enable(gl.MULTISAMPLE)
+  gl.Enable(gl.CULL_FACE)
+  gl.CullFace(gl.BACK)
+  gl.FrontFace(gl.CCW)
+
+  renderer.scene = scene
+  scene.renderer = renderer
+}
+
+render_mesh :: proc(renderer: ^Renderer, mesh: ^Mesh) {
+  mesh.shader.parameters.view_matrix = renderer.scene.camera.view_matrix
+  mesh.shader.parameters.projection_matrix = renderer.scene.camera.projection_matrix
+  mesh.shader.parameters.camera_position = renderer.scene.camera.position
+  mesh_draw(mesh^)
 }
 
 mesh_init :: proc(
