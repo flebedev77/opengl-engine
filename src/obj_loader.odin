@@ -38,7 +38,7 @@ obj_parse_from_memory :: proc(contents: []u8, verbose := false) ->
   (vertex_positions: []f32, vertex_texture_coordinates: []f32, vertex_normals: []f32, indices: []u32) {
 
   allocator: mem.Arena
-  mem.arena_init(&allocator, make([]byte, 3 * len(contents))) // This allocation size is not set in stone, if the loader doesn't work for some models, this is probably the reason why
+  mem.arena_init(&allocator, make([]byte, 10 * len(contents))) // This allocation size is not set in stone, if the loader doesn't work for some models, this is probably the reason why
   default_allocator := context.allocator
   context.allocator = mem.arena_allocator(&allocator)
   defer mem.arena_free_all(&allocator)

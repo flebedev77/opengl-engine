@@ -126,7 +126,30 @@ main :: proc() {
   gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
 
 
-  albedo_texture := texture_load("assets/textures/Map-1.ppm")
+  albedo_texture := texture_load("assets/textures/box_placeholder.ppm")
+  airplane_texture := texture_load("assets/textures/Map-1.ppm")
+
+  default_material := Material{
+    is_valid = true,
+    albedo_texture = albedo_texture,
+    albedo_tint = {0,0,0},
+    shader = shader
+  }
+  airplane_material := Material{
+    is_valid = true,
+    albedo_texture = airplane_texture,
+    albedo_tint = {1,0,0},
+    shader = shader
+  }
+  sky_material := Material{
+    is_valid = true,
+    shader = sky_shader
+  }
+
+  shadowmap_material := Material{
+    is_valid = true,
+    shader = shadowmap_shader
+  }
 
   glfw.SetWindowRefreshCallback(GlfwWindow, window_refresh)
 
@@ -135,22 +158,22 @@ main :: proc() {
   // grid_init(&grid, 5, 5, {-2.5, -0.8, -2.5}, shader)
   // defer grid_delete(grid)
 
-  light_mesh := mesh_make_cube(shader, {10, 10, 10})  
+  light_mesh := mesh_make_cube(default_material, {10, 10, 10})  
 
-  cube_mesh := mesh_make_cube(shader, {0, 0, 0})
+  cube_mesh := mesh_make_cube(default_material, {0, 0, 0})
   cube_mesh.model_matrix = translation_matrix({1, 0, 1})
   cube_mesh.model_matrix *= scale_matrix({1, 0.8, 1})
 
-  obj_mesh := asset_loader_obj_mesh("assets/models/aeroplane.obj", shader)
+  obj_mesh := asset_loader_obj_mesh("assets/models/aeroplane.obj", airplane_material)
   scl := f32(0.3)
   obj_mesh.model_matrix *= scale_matrix({scl, scl, scl})
   obj_mesh.model_matrix *= translation_matrix({0, 0.3, 0})
 
   
-  sky_mesh := asset_loader_obj_mesh("assets/models/skydome.obj", sky_shader)
+  sky_mesh := asset_loader_obj_mesh("assets/models/skydome.obj", sky_material)
   sky_mesh.model_matrix *= scale_matrix({500, 500, 500})
 
-  ground_mesh := asset_loader_obj_mesh("assets/models/ground.obj", shader)
+  ground_mesh := asset_loader_obj_mesh("assets/models/ground.obj", default_material)
   scl = 0.2
   ground_mesh.model_matrix *= scale_matrix({scl, scl, scl})
   ground_mesh.model_matrix *= translation_matrix({0, 0, 0})
@@ -177,7 +200,7 @@ main :: proc() {
     gl.Clear(gl.DEPTH_BUFFER_BIT)
     gl.BindTexture(gl.TEXTURE_2D, shadowmap_texture)
 
-    scene_render(&scene, shadowmap_shader)
+    scene_render(&scene, shadowmap_material)
 
     // fmt.printfln("%d", shadowmap_shader.parameters)
     // gl.UseProgram(shadowmap_shader.program)

@@ -1,7 +1,7 @@
 package main
 
 @(deprecated = "Broken UVs and normals")
-mesh_make_cube_unlit :: proc(shader: Shader) -> Mesh {
+mesh_make_cube_unlit :: proc(material: Material) -> Mesh {
   mesh: Mesh
   vertices: []f32 = {
     0, 0, 0,
@@ -41,13 +41,12 @@ mesh_make_cube_unlit :: proc(shader: Shader) -> Mesh {
     0, 1,
     1, 1,
   }
-  mesh_init(&mesh, vertices, uvs, normals, indices, shader)
+  mesh_init(&mesh, vertices, uvs, normals, indices, material)
   return mesh
 }
 
 
-mesh_make_cube :: proc(shader: Shader, origin_offset := Vec3{-0.5, -0.5, -0.5}, insideout_normals := false) -> Mesh {
-  shader := shader
+mesh_make_cube :: proc(material: Material, origin_offset := Vec3{-0.5, -0.5, -0.5}, insideout_normals := false) -> Mesh {
   mesh: Mesh
   vertices: []f32 = {
     //Front
@@ -238,6 +237,6 @@ mesh_make_cube :: proc(shader: Shader, origin_offset := Vec3{-0.5, -0.5, -0.5}, 
     1, 1,
     1, 0
   }
-  mesh_init(&mesh, vertices, uvs, normals, indices, shader)
+  mesh_init(&mesh, vertices, uvs, normals, indices, material)
   return mesh
 }

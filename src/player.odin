@@ -19,6 +19,7 @@ player_init :: proc(player: ^Player) {
   player.position = {0, 0.3, 0}
   player.walk_speed = PLAYER_WALK_SPEED
   player.look_sensitivity = PLAYER_LOOK_SENSITIVITY
+  player.is_flying = true
 }
 
 player_update :: proc(scene: ^Scene, player: ^Player) {

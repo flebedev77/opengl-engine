@@ -30,8 +30,7 @@ ShaderParameters :: struct {
   shadowmap_matrix,
   view_matrix,
   projection_matrix: Mat4,
-  camera_position,
-  tint: Vec3
+  camera_position: Vec3
 }
 
 Shader :: struct {
@@ -41,16 +40,22 @@ Shader :: struct {
   flags: bit_set[ShaderFlags]
 }
 
+Material :: struct {
+  is_valid: bool,
+  albedo_texture: GpuID,
+  albedo_tint: Vec3,
+  shader: Shader,
+}
+
 Mesh :: struct {
   vao,
   position_bufferobject,
   normal_bufferobject,
   uv_bufferobject,
-  indice_bufferobject,
-  texture: GpuID,
-  shader: Shader,
+  indice_bufferobject: GpuID,
   triangle_count,
   indice_count: i32,
+  material: Material,
   model_matrix: Mat4 
 }
 
@@ -70,18 +75,18 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   scene.renderer = renderer
 }
 
-render_mesh :: proc(renderer: ^Renderer, mesh: ^Mesh, shader_override: Shader = {}) {
-  if shader_override.program != 0 {
-    shader_override := shader_override
+render_mesh :: proc(renderer: ^Renderer, mesh: ^Mesh, material_override: Material = {}) {
+  if material_override.is_valid {
+    shader_override := material_override.shader
     shader_override.parameters.view_matrix = renderer.scene.camera.view_matrix
     shader_override.parameters.projection_matrix = renderer.scene.camera.projection_matrix
     shader_override.parameters.camera_position = renderer.scene.camera.position
   } else {
-    mesh.shader.parameters.view_matrix = renderer.scene.camera.view_matrix
-    mesh.shader.parameters.projection_matrix = renderer.scene.camera.projection_matrix
-    mesh.shader.parameters.camera_position = renderer.scene.camera.position
+    mesh.material.shader.parameters.view_matrix = renderer.scene.camera.view_matrix
+    mesh.material.shader.parameters.projection_matrix = renderer.scene.camera.projection_matrix
+    mesh.material.shader.parameters.camera_position = renderer.scene.camera.position
   }
-  mesh_draw(mesh^, shader_override)
+  mesh_draw(mesh^, material_override)
 }
 
 mesh_init :: proc(
@@ -90,7 +95,7 @@ mesh_init :: proc(
   vertex_uvs: []f32,
   vertex_normals: []f32,
   indices: []u32,
-  shader: Shader
+  material: Material
 ) {
   gl.GenVertexArrays(1, &mesh.vao)
   gl.BindVertexArray(mesh.vao)
@@ -126,31 +131,35 @@ mesh_init :: proc(
   gl.BindVertexArray(0)
 
   mesh.model_matrix = identity_matrix()
-  mesh.shader = shader
+  mesh.material = material
   mesh.indice_count = i32(len(indices))
   mesh.triangle_count = mesh.indice_count / 3;
   // fmt.printfln("VAO  %d\nVBO  %d\nEBO  %d\nTRIS %d", mesh.vao, mesh.position_bufferobject, mesh.indice_bufferobject, len(indices))
 }
 
-mesh_draw :: proc(mesh: Mesh, shader_override: Shader = {}) {
+mesh_draw :: proc(mesh: Mesh, material_override: Material = {}) {
   mesh := mesh
-  shader := mesh.shader
+  material := mesh.material
 
-  if shader.program != 0 && shader_override.program == 0 {
-    gl.UseProgram(shader.program)
-  } else if shader_override.program != 0 {
-    gl.UseProgram(shader_override.program)
-    shader = shader_override
+  if material.is_valid && !material_override.is_valid {
+    gl.UseProgram(material.shader.program)
+  } else if material_override.is_valid {
+    gl.UseProgram(material_override.shader.program)
+    material = material_override
   }
+  shader := material.shader
 
     light_pos := Vec3{10, 5, 10} // TODO move this
     gl.Uniform3fv(shader.parameters.light_position_location, 1, &light_pos[0])
     gl.Uniform3fv(shader.parameters.camera_position_location, 1, &shader.parameters.camera_position[0])
 
-    if shader.parameters.tint == {0, 0, 0} {
-      shader.parameters.tint = {1, 1, 1}
+    if material.albedo_tint == {0, 0, 0} {
+      material.albedo_tint = {1, 1, 1}
     }
-    gl.Uniform3fv(shader.parameters.tint_location, 1, &shader.parameters.tint[0])
+    gl.Uniform3fv(shader.parameters.tint_location, 1, &material.albedo_tint[0])
+
+    gl.ActiveTexture(gl.TEXTURE0)
+    gl.BindTexture(gl.TEXTURE_2D, material.albedo_texture)
 
     gl.Uniform1i(shader.parameters.albedo_texture_location, 0)
     gl.Uniform1i(shader.parameters.shadowmap_texture_location, 1)
@@ -277,6 +286,8 @@ texture_load :: proc(filepath: string) -> u32 {
   gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGB, img_w, img_h,
     0, (img_channels == 3) ? gl.RGB : gl.RGBA, gl.UNSIGNED_BYTE, &img_data[0])
   gl.GenerateMipmap(gl.TEXTURE_2D)
+
+  free(img_data)
 
   return texture
 }

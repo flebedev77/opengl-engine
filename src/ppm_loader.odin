@@ -91,7 +91,9 @@ ppm_parse_from_memory :: proc(contents: []u8, verbose := false) ->
     case:
       fmt.eprintfln("P%c not supported yet", contents[1])
   }
-  fmt.printfln("WIDTH %d HEIGHT %d CHANNELS %d COLOR RANGE %d", image_w, image_h, 3, color_range)
+  if (verbose) {
+    fmt.printfln("WIDTH %d HEIGHT %d CHANNELS %d COLOR RANGE %d", image_w, image_h, 3, color_range)
+  }
 
   data = &pixel_buffer[0]
   image_channels = 3
