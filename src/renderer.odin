@@ -41,7 +41,9 @@ mesh_make_cube_unlit :: proc(material: Material) -> Mesh {
     0, 1,
     1, 1,
   }
-  mesh_init(&mesh, vertices, uvs, normals, indices, material)
+  colors: []f32 = {
+  }
+  mesh_init(&mesh, vertices, colors, uvs, normals, indices, material)
   return mesh
 }
 
@@ -237,6 +239,8 @@ mesh_make_cube :: proc(material: Material, origin_offset := Vec3{-0.5, -0.5, -0.
     1, 1,
     1, 0
   }
-  mesh_init(&mesh, vertices, uvs, normals, indices, material)
+  colors: []f32 = {
+  }
+  mesh_init(&mesh, vertices, colors, uvs, normals, indices, material)
   return mesh
 }

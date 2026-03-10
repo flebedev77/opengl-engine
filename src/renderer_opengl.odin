@@ -50,6 +50,7 @@ Material :: struct {
 Mesh :: struct {
   vao,
   position_bufferobject,
+  color_bufferobject,
   normal_bufferobject,
   uv_bufferobject,
   indice_bufferobject: GpuID,
@@ -92,6 +93,7 @@ render_mesh :: proc(renderer: ^Renderer, mesh: ^Mesh, material_override: Materia
 mesh_init :: proc(
   mesh: ^Mesh,
   vertex_positions: []f32,
+  vertex_colors: []f32,
   vertex_uvs: []f32,
   vertex_normals: []f32,
   indices: []u32,
@@ -122,6 +124,15 @@ mesh_init :: proc(
 
   gl.EnableVertexAttribArray(2)
   gl.VertexAttribPointer(2, 2, gl.FLOAT, gl.FALSE, 2 * size_of(f32), cast(uintptr)0)
+
+  if len(vertex_colors) == len(vertex_positions) {
+    gl.GenBuffers(1, &mesh.color_bufferobject)
+    gl.BindBuffer(gl.ARRAY_BUFFER, mesh.color_bufferobject)
+    gl.BufferData(gl.ARRAY_BUFFER, len(vertex_colors) * size_of(f32), &vertex_colors[0], gl.STATIC_DRAW)
+
+    gl.EnableVertexAttribArray(3)
+    gl.VertexAttribPointer(3, 3, gl.FLOAT, gl.FALSE, 3 * size_of(f32), cast(uintptr)0)
+  }
   
   gl.GenBuffers(1, &mesh.indice_bufferobject)
   gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, mesh.indice_bufferobject)

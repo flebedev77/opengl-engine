@@ -132,7 +132,7 @@ main :: proc() {
   default_material := Material{
     is_valid = true,
     albedo_texture = albedo_texture,
-    albedo_tint = {0,0,0},
+    albedo_tint = {0.8,0.8,0.98},
     shader = shader
   }
   airplane_material := Material{
@@ -173,7 +173,7 @@ main :: proc() {
   sky_mesh := asset_loader_obj_mesh("assets/models/skydome.obj", sky_material)
   sky_mesh.model_matrix *= scale_matrix({500, 500, 500})
 
-  ground_mesh := asset_loader_obj_mesh("assets/models/ground.obj", default_material)
+  ground_mesh := asset_loader_obj_mesh("assets/models/ground_colors.obj", default_material)
   scl = 0.2
   ground_mesh.model_matrix *= scale_matrix({scl, scl, scl})
   ground_mesh.model_matrix *= translation_matrix({0, 0, 0})

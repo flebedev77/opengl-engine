@@ -1,12 +1,11 @@
 // TODO:
-// Handle different materials
+// Handle different materials (mtl files)
 // Handle non triangulated meshes (saves disk space (although if we wanted to save disk space, we wouldn't be using obj))
 
 // Mesh requirements
 // - Position vectors in 3 components, normal vectors in 3 components and uv in 2 components
 // - Triangulated indices
 // - Must include all 3 components (position, uv and normal)
-// - Must not have any vertex colors
 
 package main
 import "core:fmt"
@@ -17,13 +16,17 @@ import "core:mem"
 
 
 obj_parse :: proc(filename: string, verbose := false) ->
-  (vertex_positions: []f32, vertex_texture_coordinates: []f32, vertex_normals: []f32, indices: []u32) {
+  (vertex_positions: []f32, 
+   vertex_colors: []f32,
+   vertex_texture_coordinates: []f32,
+   vertex_normals: []f32,
+   indices: []u32) {
   data, read_ok := os.read_entire_file(filename)
   if read_ok {
     return obj_parse_from_memory(data, verbose)
   }
   fmt.eprintfln("Failed to read %s obj file", filename)
-  return {}, {}, {}, {}
+  return {}, {}, {}, {}, {}
 }
 
 @(private) OBJModeType :: enum {
@@ -35,7 +38,11 @@ obj_parse :: proc(filename: string, verbose := false) ->
 }
 
 obj_parse_from_memory :: proc(contents: []u8, verbose := false) -> 
-  (vertex_positions: []f32, vertex_texture_coordinates: []f32, vertex_normals: []f32, indices: []u32) {
+  (vertex_positions: []f32, 
+   vertex_colors: []f32,
+   vertex_texture_coordinates: []f32,
+   vertex_normals: []f32, 
+   indices: []u32) {
 
   allocator: mem.Arena
   mem.arena_init(&allocator, make([]byte, 10 * len(contents))) // This allocation size is not set in stone, if the loader doesn't work for some models, this is probably the reason why
@@ -44,6 +51,7 @@ obj_parse_from_memory :: proc(contents: []u8, verbose := false) ->
   defer mem.arena_free_all(&allocator)
   
   vertex_pos: [dynamic]f32
+  vertex_col: [dynamic]f32
   vertex_nor: [dynamic]f32
   vertex_tex: [dynamic]f32
   face_ind: [dynamic]u32
@@ -53,6 +61,7 @@ obj_parse_from_memory :: proc(contents: []u8, verbose := false) ->
   state := OBJModeType.none
   is_comment := false
   line, col := 0, 0
+  numbers_encountered := u32(0) // Per line
   for char, i in contents {
     next_char: u8
     if len(contents) > i + 1 {
@@ -73,6 +82,7 @@ obj_parse_from_memory :: proc(contents: []u8, verbose := false) ->
     }
 
     if char == 'v' {
+      numbers_encountered = 0
       switch next_char {
         case ' ': state = .vertex_pos
         case 'n': state = .vertex_nor
@@ -95,8 +105,9 @@ obj_parse_from_memory :: proc(contents: []u8, verbose := false) ->
       if !is_numeric(next_char) {
         value := strconv.parse_f32(strings.to_string(number_sb)) or_else 0
         strings.builder_reset(&number_sb)
+        numbers_encountered += 1
         #partial switch state {
-          case .vertex_pos: append(&vertex_pos, value)
+          case .vertex_pos: append((numbers_encountered > 3) ? &vertex_col : &vertex_pos, value)
           case .vertex_tex: append(&vertex_tex, value)
           case .vertex_nor: append(&vertex_nor, value)
           case .face_ind: append(&face_ind, u32(value))
@@ -109,6 +120,7 @@ obj_parse_from_memory :: proc(contents: []u8, verbose := false) ->
 
   // Some sort of factor validation
   assert(is_whole(f32(len(vertex_pos)) / 3),   "Invalid amount of vertex positions in obj")
+  assert(is_whole(f32(len(vertex_col)) / 3),   "Invalid amount of vertex colors in obj")
   assert(is_whole(f32(len(vertex_nor)) / 3),   "Invalid amount of vertex normals in obj")
   assert(is_whole(f32(len(vertex_tex)) / 2),   "Invalid amount of vertex texture coordinates in obj")
   assert(is_whole(f32(len(face_ind) * 9) / 3), "Invalid amount of face indices in obj")
@@ -129,6 +141,7 @@ obj_parse_from_memory :: proc(contents: []u8, verbose := false) ->
   vertex_amount := len(face_ind) / 3
   context.allocator = default_allocator
   out_vertex_positions := make([]f32, vertex_amount * 3)
+  out_vertex_colors := make([]f32, vertex_amount * 3)
   out_vertex_normals := make([]f32, vertex_amount * 3)
   out_vertex_texture_coordinates := make([]f32, vertex_amount * 2)
   out_indices := make([]u32, vertex_amount)
@@ -138,9 +151,15 @@ obj_parse_from_memory :: proc(contents: []u8, verbose := false) ->
     tex_index := face_ind[i * 3 + 1] - 1
     nor_index := face_ind[i * 3 + 2] - 1
 
-    out_vertex_positions[i * 3] = vertex_pos[pos_index * 3]
+    out_vertex_positions[i * 3]     = vertex_pos[pos_index * 3]
     out_vertex_positions[i * 3 + 1] = vertex_pos[pos_index * 3 + 1]
     out_vertex_positions[i * 3 + 2] = vertex_pos[pos_index * 3 + 2]
+
+    if len(vertex_col) > 0 {
+      out_vertex_colors[i * 3]     = vertex_col[pos_index * 3]
+      out_vertex_colors[i * 3 + 1] = vertex_col[pos_index * 3 + 1]
+      out_vertex_colors[i * 3 + 2] = vertex_col[pos_index * 3 + 2]
+    }
 
     out_vertex_normals[i * 3] = vertex_nor[nor_index * 3]
     out_vertex_normals[i * 3 + 1] = vertex_nor[nor_index * 3 + 1]
@@ -153,6 +172,7 @@ obj_parse_from_memory :: proc(contents: []u8, verbose := false) ->
   }
 
   return out_vertex_positions,
+  out_vertex_colors,
   out_vertex_texture_coordinates,
   out_vertex_normals,
   out_indices

@@ -3,6 +3,7 @@ in vec2 frag_uv;
 in vec3 frag_pos;
 in vec3 frag_normal;
 in vec4 frag_pos_lightspace;
+in vec3 frag_vert_color;
 
 out vec4 frag_color;
 
@@ -124,7 +125,7 @@ float calculate_shadow(vec4 light_space_pos, vec3 light_dir) {
 
 void main() {
   vec4 textureSample = texture(albedo_texture, frag_uv);
-  frag_color = textureSample * vec4(tint, 1.0);
+  frag_color = textureSample * vec4(tint, 1) * vec4(frag_vert_color, 1);
 
   vec3 light_dir = normalize(- light_pos); // TODO change this to point from an actual light
   vec3 view_dir = normalize(frag_pos - camera_pos);
