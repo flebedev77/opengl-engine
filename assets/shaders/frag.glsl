@@ -127,12 +127,12 @@ void main() {
   vec4 textureSample = texture(albedo_texture, frag_uv);
   frag_color = textureSample * vec4(tint, 1) * vec4(frag_vert_color, 1);
 
-  vec3 light_dir = normalize(- light_pos); // TODO change this to point from an actual light
+  vec3 light_dir = normalize(-light_pos); // TODO change this to point from an actual light
   vec3 view_dir = normalize(frag_pos - camera_pos);
 
   float specularity = (textureSample.r) * 1.5;//step(0.99, (textureSample.r + textureSample.g + textureSample.b));
-  vec3 specular_reflection_direction = reflect(-light_dir, frag_normal);
-  float specular = clamp(pow(dot(view_dir, specular_reflection_direction), 50), 0.0, 1.0);
+  vec3 light_view_midway = normalize((-light_dir) + (-view_dir));
+  float specular = clamp(pow(dot(light_view_midway, frag_normal), 8), 0, 1);
   specular *= clamp(specularity, 0, 1.0);
 
   float diffuse = clamp(dot(light_dir, -frag_normal), 0, 1) * 0.5;
