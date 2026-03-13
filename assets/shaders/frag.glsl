@@ -132,7 +132,7 @@ void main() {
 
   float specularity = (textureSample.r) * 1.5;//step(0.99, (textureSample.r + textureSample.g + textureSample.b));
   vec3 light_view_midway = normalize((-light_dir) + (-view_dir));
-  float specular = clamp(pow(dot(light_view_midway, frag_normal), 8), 0, 1);
+  float specular = clamp(pow(dot(light_view_midway, frag_normal), 20), 0, 1);
   specular *= clamp(specularity, 0, 1.0);
 
   float diffuse = clamp(dot(light_dir, -frag_normal), 0, 1) * 0.5;

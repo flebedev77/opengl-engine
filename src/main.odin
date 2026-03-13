@@ -41,6 +41,8 @@ Mouse :: struct {
   delta_position: Vec2
 }
 
+shadowmap_material: Material
+
 main :: proc() {
   defer glfw.Terminate()
 
@@ -48,7 +50,7 @@ main :: proc() {
 
   glfw.WindowHint(glfw.CONTEXT_VERSION_MAJOR, GL_VERSION_MAJOR)
   glfw.WindowHint(glfw.CONTEXT_VERSION_MINOR, GL_VERSION_MINOR)
-  glfw.WindowHint(glfw.SAMPLES, 4)
+  glfw.WindowHint(glfw.SAMPLES, 8)
 
   GlfwWindow = glfw.CreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Hello world", nil, nil)
   defer glfw.DestroyWindow(GlfwWindow)
@@ -64,11 +66,9 @@ main :: proc() {
   update_framebuffer()
 
   scene: Scene
-  scene_init(&scene)
-  defer scene_delete(&scene)
-
   renderer: Renderer
-  renderer_init(&renderer, &scene)
+  scene_init(&scene, &renderer)
+  defer scene_delete(&scene)
 
   shader := shader_compileprogram(
                     cstring(#load("../assets/shaders/frag.glsl")),
@@ -77,8 +77,18 @@ main :: proc() {
                    )
   defer gl.DeleteProgram(shader.program)
 
-  light_viewmatrix := linalg.matrix4_look_at_f32({10, 10, 10}, {0, 0, 0}, {0, 1, 0})
-  light_projmatrix := orthographic_projection_matrix(-3, 3, 3, -3, 0.01, 26)
+  light_viewmatrix := linalg.matrix4_look_at_f32(
+    linalg.normalize(Vec3{10, 50, 10}) * 5, 
+    {0, 0, 0},
+    {0, 1, 0}
+  )
+  lightmap_proj_size := f32(3)
+  light_projmatrix := orthographic_projection_matrix(
+    -lightmap_proj_size,
+    lightmap_proj_size,
+    lightmap_proj_size,
+    -lightmap_proj_size,
+    0.1, 26)
   shadowmap_matrix := light_projmatrix * light_viewmatrix
   shader.parameters.shadowmap_matrix = shadowmap_matrix
 
@@ -99,15 +109,13 @@ main :: proc() {
   defer gl.DeleteProgram(sky_shader.program)
 
   shadowmap_width, shadowmap_height: i32 = 4096, 4096
+  shadowmap_material: Material
   shadowmap_framebuffer, shadowmap_texture: u32
   gl.GenTextures(1, &shadowmap_texture)
   gl.BindTexture(gl.TEXTURE_2D, shadowmap_texture)
   gl.TexImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT, shadowmap_width, shadowmap_height, 0, gl.DEPTH_COMPONENT, gl.FLOAT, nil)
   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-
-  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE);
-  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_FUNC, gl.GEQUAL);
 
   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_BORDER)
   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_BORDER)
@@ -125,9 +133,14 @@ main :: proc() {
   }
   gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
 
+  scene.shadowmap_framebuffer = {
+    framebuffer = shadowmap_framebuffer,
+    size = {shadowmap_width, shadowmap_height}
+  }
+
 
   albedo_texture := texture_load("assets/textures/box_placeholder.ppm")
-  airplane_texture := texture_load("assets/textures/Map-1.ppm")
+  airplane_texture := texture_load("assets/textures/su_body.ppm")
 
   default_material := Material{
     is_valid = true,
@@ -138,7 +151,7 @@ main :: proc() {
   airplane_material := Material{
     is_valid = true,
     albedo_texture = airplane_texture,
-    albedo_tint = {1,0,0},
+    albedo_tint = {0,0,0},
     shader = shader
   }
   sky_material := Material{
@@ -146,10 +159,11 @@ main :: proc() {
     shader = sky_shader
   }
 
-  shadowmap_material := Material{
+  shadowmap_material = Material{
     is_valid = true,
     shader = shadowmap_shader
   }
+  scene.shadowmap_material = shadowmap_material
 
   glfw.SetWindowRefreshCallback(GlfwWindow, window_refresh)
 
@@ -164,10 +178,10 @@ main :: proc() {
   cube_mesh.model_matrix = translation_matrix({1, 0, 1})
   cube_mesh.model_matrix *= scale_matrix({1, 0.8, 1})
 
-  obj_mesh := asset_loader_obj_mesh("assets/models/aeroplane.obj", airplane_material)
-  scl := f32(0.3)
+  obj_mesh := asset_loader_obj_mesh("assets/models/su57.obj", airplane_material)
+  scl := f32(0.02)
+  obj_mesh.model_matrix *= translation_matrix({0, 1.3, 0})
   obj_mesh.model_matrix *= scale_matrix({scl, scl, scl})
-  obj_mesh.model_matrix *= translation_matrix({0, 0.3, 0})
 
   
   sky_mesh := asset_loader_obj_mesh("assets/models/skydome.obj", sky_material)
@@ -195,12 +209,12 @@ main :: proc() {
 
     // cube_mesh.model_matrix *= rotation_matrix_y(delta_time * 0.001)
     // model_matrix *= translation_matrix({0, 0, f32(math.sin(time_since_start*0.00001))*0.1})
-    gl.Viewport(0, 0, shadowmap_width, shadowmap_height)
-    gl.BindFramebuffer(gl.FRAMEBUFFER, shadowmap_framebuffer)
-    gl.Clear(gl.DEPTH_BUFFER_BIT)
-    gl.BindTexture(gl.TEXTURE_2D, shadowmap_texture)
-
-    scene_render(&scene, shadowmap_material)
+    // gl.Viewport(0, 0, shadowmap_width, shadowmap_height)
+    // gl.BindFramebuffer(gl.FRAMEBUFFER, shadowmap_framebuffer)
+    // gl.Clear(gl.DEPTH_BUFFER_BIT)
+    // gl.BindTexture(gl.TEXTURE_2D, shadowmap_texture)
+    //
+    // scene_render(&scene, shadowmap_material)
 
     // fmt.printfln("%d", shadowmap_shader.parameters)
     // gl.UseProgram(shadowmap_shader.program)
@@ -215,9 +229,9 @@ main :: proc() {
     // mesh_draw(cube_mesh, shadowmap_shader)
 
 
-    gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
-
-    gl.Viewport(0, 0, FrameBuffer.w, FrameBuffer.h)
+    // gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
+    //
+    // gl.Viewport(0, 0, FrameBuffer.w, FrameBuffer.h)
 
     gl.ActiveTexture(gl.TEXTURE0)
     gl.BindTexture(gl.TEXTURE_2D, albedo_texture)

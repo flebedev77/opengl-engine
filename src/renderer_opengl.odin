@@ -1,6 +1,7 @@
 package main
 import "core:os"
 import "core:fmt"
+import stbi "vendor:stb/image"
 import gl "vendor:OpenGL"
 
 GpuID :: u32
@@ -60,8 +61,15 @@ Mesh :: struct {
   model_matrix: Mat4 
 }
 
+Framebuffer :: struct {
+  texture,
+  framebuffer: GpuID,
+  size: IVec2
+}
+
 Renderer :: struct {
-  scene: ^Scene
+  scene: ^Scene,
+  bound_framebuffer: Framebuffer
 }
 
 renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
@@ -72,8 +80,19 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   gl.CullFace(gl.BACK)
   gl.FrontFace(gl.CCW)
 
+  // gl.PolygonMode(gl.FRONT_AND_BACK, gl.LINE)// : GL_FILL); 
+
   renderer.scene = scene
   scene.renderer = renderer
+}
+
+render_begin :: proc(renderer: ^Renderer) {
+  gl.BindFramebuffer(gl.FRAMEBUFFER, renderer.bound_framebuffer.framebuffer)
+  gl.Viewport(0, 0,
+    renderer.bound_framebuffer.size.x,
+    renderer.bound_framebuffer.size.y
+  )
+  gl.Clear(gl.DEPTH_BUFFER_BIT | gl.COLOR_BUFFER_BIT)
 }
 
 render_mesh :: proc(renderer: ^Renderer, mesh: ^Mesh, material_override: Material = {}) {
@@ -160,7 +179,7 @@ mesh_draw :: proc(mesh: Mesh, material_override: Material = {}) {
   }
   shader := material.shader
 
-    light_pos := Vec3{10, 5, 10} // TODO move this
+    light_pos := Vec3{10, 50, 10} // TODO move this
     gl.Uniform3fv(shader.parameters.light_position_location, 1, &light_pos[0])
     gl.Uniform3fv(shader.parameters.camera_position_location, 1, &shader.parameters.camera_position[0])
 
@@ -275,12 +294,13 @@ texture_load :: proc(filepath: string) -> u32 {
     fmt.eprintfln("Failed to read %s image", filepath)
   }
 
-  // img_w, img_h, img_channels: i32
-  // img_data := stbi.load_from_memory(&contents[0], i32(len(contents)), 
-  //   &img_w, &img_h, &img_channels, 0)
-  // defer stbi.image_free(img_data)
+  img_w, img_h, img_channels: i32
+  img_data := stbi.load_from_memory(&contents[0], i32(len(contents)), 
+    &img_w, &img_h, &img_channels, 0)
+  defer stbi.image_free(img_data)
 
-  img_w, img_h, img_channels, img_data := ppm_parse(filepath)
+  // img_w, img_h, img_channels, img_data := ppm_parse(filepath)
+  // defer free(img_data)
 
   if img_data == nil {
     fmt.eprintfln("Failed to parse %s image", filepath)
@@ -298,7 +318,6 @@ texture_load :: proc(filepath: string) -> u32 {
     0, (img_channels == 3) ? gl.RGB : gl.RGBA, gl.UNSIGNED_BYTE, &img_data[0])
   gl.GenerateMipmap(gl.TEXTURE_2D)
 
-  free(img_data)
 
   return texture
 }

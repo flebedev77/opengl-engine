@@ -82,9 +82,13 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
   }
 
   
-  if linalg.length2(moveinput) > 0 && linalg.length(player.velocity.xz) < player.walk_speed {
+  if linalg.length2(moveinput) > 0 &&
+     linalg.length(player.velocity.xz) < player.walk_speed {
     moveinput = linalg.normalize(moveinput)
-    moveinput.y *= 0.5
+    if player.is_flying && math.abs(player.velocity.y) > player.walk_speed {
+      moveinput *= 0
+    }
+
     player.velocity += moveinput * player.walk_speed * 0.5
   }
 
@@ -97,8 +101,10 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
 
   if !player.is_flying {
     player.velocity.y -= 0.004
+  } else {
+    player.velocity.y *= 0.9
   }
-  player.velocity *= 0.9
+  player.velocity.xz *= 0.9
   player.position += player.velocity
   scene.camera.position = player.position
   scene.camera.view_matrix = player.viewmatrix
