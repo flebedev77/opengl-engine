@@ -93,20 +93,27 @@ main :: proc() {
   shader.parameters.shadowmap_matrix = shadowmap_matrix
 
   shadowmap_shader := shader_compileprogram(
-                    cstring(#load("../assets/shaders/shadowmap_frag.glsl")),
-                    cstring(#load("../assets/shaders/shadowmap_vert.glsl")),
-                    .SHADOWMAP
-                   )
+    cstring(#load("../assets/shaders/shadowmap_frag.glsl")),
+    cstring(#load("../assets/shaders/shadowmap_vert.glsl")),
+    .SHADOWMAP
+  )
   shadowmap_shader.parameters.shadowmap_matrix = shadowmap_matrix
   defer gl.DeleteProgram(shadowmap_shader.program)
 
 
   sky_shader := shader_compileprogram(
-                    cstring(#load("../assets/shaders/sky_frag.glsl")),
-                    cstring(#load("../assets/shaders/sky_vert.glsl")),
-                    .THREE_DIMENSIONAL
-                   )
+    cstring(#load("../assets/shaders/sky_frag.glsl")),
+    cstring(#load("../assets/shaders/sky_vert.glsl")),
+    .THREE_DIMENSIONAL
+  )
   defer gl.DeleteProgram(sky_shader.program)
+
+  post_process_shader := shader_compileprogram(
+    cstring(#load("../assets/shaders/post_process_frag.glsl")),
+    cstring(#load("../assets/shaders/post_process_vert.glsl")),
+    .TWO_DIMENTIONAL
+  )
+  defer gl.DeleteProgram(post_process_shader.program)
 
   shadowmap_width, shadowmap_height: i32 = 4096, 4096
   shadowmap_material: Material
@@ -159,6 +166,11 @@ main :: proc() {
     shader = sky_shader
   }
 
+  post_process_material := Material{
+    is_valid = true,
+    shader = post_process_shader
+  }
+
   shadowmap_material = Material{
     is_valid = true,
     shader = shadowmap_shader
@@ -191,6 +203,10 @@ main :: proc() {
   scl = 0.2
   ground_mesh.model_matrix *= scale_matrix({scl, scl, scl})
   ground_mesh.model_matrix *= translation_matrix({0, 0, 0})
+
+  quad_mesh := mesh_make_quad(post_process_material)
+  // quad_mesh.model_matrix *= translation_matrix({1, 0, 0})
+  scene.post_process_quad = quad_mesh
   
   append(&scene.meshes, cube_mesh)
   append(&scene.meshes, sky_mesh)
@@ -238,7 +254,7 @@ main :: proc() {
     gl.ActiveTexture(gl.TEXTURE1)
     gl.BindTexture(gl.TEXTURE_2D, shadowmap_texture) 
 
-    window_render()
+    // window_render()
     scene_update(&scene)
 
     {

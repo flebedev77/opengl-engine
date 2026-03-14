@@ -61,12 +61,6 @@ Mesh :: struct {
   model_matrix: Mat4 
 }
 
-Framebuffer :: struct {
-  texture,
-  framebuffer: GpuID,
-  size: IVec2
-}
-
 Renderer :: struct {
   scene: ^Scene,
   bound_framebuffer: Framebuffer
@@ -121,14 +115,17 @@ mesh_init :: proc(
   gl.GenVertexArrays(1, &mesh.vao)
   gl.BindVertexArray(mesh.vao)
 
-  gl.GenBuffers(1, &mesh.position_bufferobject)
-  gl.BindBuffer(gl.ARRAY_BUFFER, mesh.position_bufferobject)
-  gl.BufferData(gl.ARRAY_BUFFER, len(vertex_positions) * size_of(f32), &vertex_positions[0], gl.STATIC_DRAW)
+  if len(vertex_positions) > 0 {
+    gl.GenBuffers(1, &mesh.position_bufferobject)
+    gl.BindBuffer(gl.ARRAY_BUFFER, mesh.position_bufferobject)
+    gl.BufferData(gl.ARRAY_BUFFER, len(vertex_positions) * size_of(f32), &vertex_positions[0], gl.STATIC_DRAW)
 
-  gl.EnableVertexAttribArray(0)
-  gl.VertexAttribPointer(0, 3, gl.FLOAT, gl.FALSE, 3 * size_of(f32), cast(uintptr)0)
+    gl.EnableVertexAttribArray(0)
+    gl.VertexAttribPointer(0, 3, gl.FLOAT, gl.FALSE, 3 * size_of(f32), cast(uintptr)0)
+  }
 
-  if len(vertex_normals) == len(vertex_positions) {
+  if len(vertex_normals) == len(vertex_positions) &&
+     len(vertex_normals) > 0 {
     gl.GenBuffers(1, &mesh.normal_bufferobject)
     gl.BindBuffer(gl.ARRAY_BUFFER, mesh.normal_bufferobject)
     gl.BufferData(gl.ARRAY_BUFFER, len(vertex_normals) * size_of(f32), &vertex_normals[0], gl.STATIC_DRAW)
@@ -137,14 +134,18 @@ mesh_init :: proc(
     gl.VertexAttribPointer(1, 3, gl.FLOAT, gl.FALSE, 3 * size_of(f32), cast(uintptr)0)
   }
 
-  gl.GenBuffers(1, &mesh.uv_bufferobject)
-  gl.BindBuffer(gl.ARRAY_BUFFER, mesh.uv_bufferobject)
-  gl.BufferData(gl.ARRAY_BUFFER, len(vertex_uvs) * size_of(f32), &vertex_uvs[0], gl.STATIC_DRAW)
+  if len(vertex_uvs) == (len(vertex_positions) / 3) * 2 &&
+     len(vertex_uvs) > 0 {
+    gl.GenBuffers(1, &mesh.uv_bufferobject)
+    gl.BindBuffer(gl.ARRAY_BUFFER, mesh.uv_bufferobject)
+    gl.BufferData(gl.ARRAY_BUFFER, len(vertex_uvs) * size_of(f32), &vertex_uvs[0], gl.STATIC_DRAW)
 
-  gl.EnableVertexAttribArray(2)
-  gl.VertexAttribPointer(2, 2, gl.FLOAT, gl.FALSE, 2 * size_of(f32), cast(uintptr)0)
+    gl.EnableVertexAttribArray(2)
+    gl.VertexAttribPointer(2, 2, gl.FLOAT, gl.FALSE, 2 * size_of(f32), cast(uintptr)0)
+  }
 
-  if len(vertex_colors) == len(vertex_positions) {
+  if len(vertex_colors) == len(vertex_positions) &&
+     len(vertex_colors) > 0 {
     gl.GenBuffers(1, &mesh.color_bufferobject)
     gl.BindBuffer(gl.ARRAY_BUFFER, mesh.color_bufferobject)
     gl.BufferData(gl.ARRAY_BUFFER, len(vertex_colors) * size_of(f32), &vertex_colors[0], gl.STATIC_DRAW)
@@ -152,11 +153,12 @@ mesh_init :: proc(
     gl.EnableVertexAttribArray(3)
     gl.VertexAttribPointer(3, 3, gl.FLOAT, gl.FALSE, 3 * size_of(f32), cast(uintptr)0)
   }
-  
-  gl.GenBuffers(1, &mesh.indice_bufferobject)
-  gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, mesh.indice_bufferobject)
-  gl.BufferData(gl.ELEMENT_ARRAY_BUFFER, len(indices) * size_of(f32), &indices[0], gl.STATIC_DRAW)
 
+  if len(indices) > 0 {
+    gl.GenBuffers(1, &mesh.indice_bufferobject)
+    gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, mesh.indice_bufferobject)
+    gl.BufferData(gl.ELEMENT_ARRAY_BUFFER, len(indices) * size_of(f32), &indices[0], gl.STATIC_DRAW)
+  }
 
   gl.BindVertexArray(0)
 
@@ -179,6 +181,10 @@ mesh_draw :: proc(mesh: Mesh, material_override: Material = {}) {
   }
   shader := material.shader
 
+  if mesh.material.shader.type == .TWO_DIMENTIONAL {
+    gl.BindVertexArray(mesh.vao)
+    gl.DrawElements(gl.TRIANGLE_STRIP, 4, gl.UNSIGNED_INT, cast(rawptr)(cast(uintptr)0))
+  } else {
     light_pos := Vec3{10, 50, 10} // TODO move this
     gl.Uniform3fv(shader.parameters.light_position_location, 1, &light_pos[0])
     gl.Uniform3fv(shader.parameters.camera_position_location, 1, &shader.parameters.camera_position[0])
@@ -199,9 +205,10 @@ mesh_draw :: proc(mesh: Mesh, material_override: Material = {}) {
     gl.UniformMatrix4fv(shader.parameters.view_matrix_location, 1, gl.FALSE, &shader.parameters.view_matrix[0,0])
     gl.UniformMatrix4fv(shader.parameters.shadowmap_matrix_location, 1, gl.FALSE, &shader.parameters.shadowmap_matrix[0,0])
 
-  gl.BindVertexArray(mesh.vao)
+    gl.BindVertexArray(mesh.vao)
 
-  gl.DrawElements(gl.TRIANGLES, mesh.triangle_count * 3, gl.UNSIGNED_INT, cast(rawptr)(cast(uintptr)0))
+    gl.DrawElements(gl.TRIANGLES, mesh.triangle_count * 3, gl.UNSIGNED_INT, cast(rawptr)(cast(uintptr)0))
+  }
 }
 
 mesh_delete :: proc(mesh: Mesh) {
@@ -320,4 +327,70 @@ texture_load :: proc(filepath: string) -> u32 {
 
 
   return texture
+}
+
+Framebuffer :: struct {
+  texture,
+  framebuffer: GpuID,
+  size: IVec2,
+  type: FramebufferType
+}
+
+FramebufferType :: enum {
+  COLOR,
+  DEPTH,
+  NONE
+}
+
+framebuffer_init :: proc(
+  framebuffer: ^Framebuffer,
+  size: IVec2,
+  type: FramebufferType
+) {
+  assert(type != .NONE)
+  framebuffer.size = size
+  framebuffer.type = type
+
+  gl.GenTextures(1, &framebuffer.texture)
+  gl.BindTexture(gl.TEXTURE_2D, framebuffer.texture)
+  
+  texture_format := (type == .COLOR) ? gl.RGB : gl.DEPTH_COMPONENT
+  gl.TexImage2D(gl.TEXTURE_2D, 0, i32(texture_format), size.x, size.y, 0, u32(texture_format), gl.FLOAT, nil)
+
+  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+
+  if type == .DEPTH { // Setting a white border helps with shadows outside the shadowmap
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_BORDER)
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_BORDER)
+    border_col: []f32 = {1, 1, 1}
+    gl.TexParameterfv(gl.TEXTURE_2D, gl.TEXTURE_BORDER_COLOR, &border_col[0])
+  }
+
+  gl.GenFramebuffers(1, &framebuffer.framebuffer)
+  gl.BindFramebuffer(gl.FRAMEBUFFER, framebuffer.framebuffer)
+  if type == .DEPTH { // Disable color in depth just in case
+    gl.DrawBuffer(gl.NONE)
+    gl.ReadBuffer(gl.NONE)
+  }
+
+  attachment_format: u32 = (type == .COLOR) ? gl.COLOR_ATTACHMENT0 : gl.DEPTH_ATTACHMENT
+  gl.FramebufferTexture2D(
+    gl.FRAMEBUFFER,
+    attachment_format,
+    gl.TEXTURE_2D,
+    framebuffer.texture,
+    0
+  )
+
+  if gl.CheckFramebufferStatus(gl.FRAMEBUFFER) != gl.FRAMEBUFFER_COMPLETE {
+    fmt.printfln("Failed to init framebuffer")
+    fmt.printfln("%d", gl.CheckFramebufferStatus(gl.FRAMEBUFFER))
+  }
+}
+
+framebuffer_delete :: proc(framebuffer: Framebuffer) {
+  framebuffer := framebuffer
+  gl.DeleteTextures(1, &framebuffer.texture)
+  gl.DeleteFramebuffers(1, &framebuffer.framebuffer)
 }

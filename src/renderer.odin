@@ -244,3 +244,52 @@ mesh_make_cube :: proc(material: Material, origin_offset := Vec3{-0.5, -0.5, -0.
   mesh_init(&mesh, vertices, colors, uvs, normals, indices, material)
   return mesh
 }
+
+mesh_make_3d_quad :: proc(material: Material) -> Mesh {
+  vertex_positions: []f32 = {
+    -0.5, -0.5, 0,
+    +0.5, -0.5, 0,
+    +0.5, +0.5, 0,
+    -0.5, +0.5, 0
+  }
+  vertex_uvs: []f32 = {
+    0, 0,
+    1, 0,
+    1, 1,
+    0, 1
+  }
+  indices: []u32 = {
+    0, 1, 2,
+    2, 3, 0
+  }
+  normals: []f32 = {
+    0, 0, 1,
+    0, 0, 1,
+    0, 0, 1,
+    0, 0, 1
+  }
+  colors: []f32
+  mesh: Mesh
+  mesh_init(&mesh, vertex_positions, colors, vertex_uvs, normals, indices, material)
+  return mesh
+}
+
+mesh_make_quad :: proc(material: Material) -> Mesh {
+  assert(material.is_valid)
+  mesh: Mesh
+  if material.shader.type == .TWO_DIMENTIONAL {
+    vertex_uvs: []f32 = {
+      0, 0,
+      1, 0,
+      1, 1,
+      0, 1
+    }
+    indices: []u32 = {
+      0, 1, 2, 3
+    }
+    mesh_init(&mesh, {}, {}, vertex_uvs, {}, indices, material)
+  } else {
+    mesh = mesh_make_3d_quad(material)
+  }
+  return mesh
+}
