@@ -50,6 +50,7 @@ main :: proc() {
 
   glfw.WindowHint(glfw.CONTEXT_VERSION_MAJOR, GL_VERSION_MAJOR)
   glfw.WindowHint(glfw.CONTEXT_VERSION_MINOR, GL_VERSION_MINOR)
+  glfw.WindowHint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
   glfw.WindowHint(glfw.SAMPLES, 8)
 
   GlfwWindow = glfw.CreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Hello world", nil, nil)
@@ -190,7 +191,7 @@ main :: proc() {
   cube_mesh.model_matrix = translation_matrix({1, 0, 1})
   cube_mesh.model_matrix *= scale_matrix({1, 0.8, 1})
 
-  obj_mesh := asset_loader_obj_mesh("assets/models/su57.obj", airplane_material)
+  obj_mesh := asset_loader_obj_mesh("assets/models/monk.obj", airplane_material)
   scl := f32(0.02)
   obj_mesh.model_matrix *= translation_matrix({0, 1.3, 0})
   obj_mesh.model_matrix *= scale_matrix({scl, scl, scl})
@@ -210,6 +211,7 @@ main :: proc() {
   
   append(&scene.meshes, cube_mesh)
   append(&scene.meshes, sky_mesh)
+  scene.player.mesh = &obj_mesh
   append(&scene.meshes, obj_mesh)
   append(&scene.meshes, light_mesh)
   append(&scene.meshes, ground_mesh)

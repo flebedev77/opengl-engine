@@ -18,6 +18,9 @@ ShaderFlags :: enum {
 }
 
 ShaderParameters :: struct {
+  screen_texture_location,
+  depth_texture_location,
+  normal_texture_location,
   albedo_texture_location,
   shadowmap_texture_location,
   shadowmap_matrix_location,
@@ -25,11 +28,13 @@ ShaderParameters :: struct {
   light_position_location,
   camera_position_location,
   view_matrix_location,
+  inv_projection_matrix_location,
   projection_matrix_location,
   model_matrix_location: UniformLocation,
 
   shadowmap_matrix,
   view_matrix,
+  inv_projection_matrix,
   projection_matrix: Mat4,
   camera_position: Vec3
 }
@@ -90,6 +95,7 @@ render_begin :: proc(renderer: ^Renderer) {
 }
 
 render_mesh :: proc(renderer: ^Renderer, mesh: ^Mesh, material_override: Material = {}) {
+  // Wtf is going on?
   if material_override.is_valid {
     shader_override := material_override.shader
     shader_override.parameters.view_matrix = renderer.scene.camera.view_matrix
@@ -99,6 +105,7 @@ render_mesh :: proc(renderer: ^Renderer, mesh: ^Mesh, material_override: Materia
     mesh.material.shader.parameters.view_matrix = renderer.scene.camera.view_matrix
     mesh.material.shader.parameters.projection_matrix = renderer.scene.camera.projection_matrix
     mesh.material.shader.parameters.camera_position = renderer.scene.camera.position
+    mesh.material.shader.parameters.inv_projection_matrix = renderer.scene.camera.inv_projection_matrix
   }
   mesh_draw(mesh^, material_override)
 }
@@ -181,8 +188,12 @@ mesh_draw :: proc(mesh: Mesh, material_override: Material = {}) {
   }
   shader := material.shader
 
+  gl.UniformMatrix4fv(shader.parameters.inv_projection_matrix_location, 1, gl.FALSE, &shader.parameters.inv_projection_matrix[0, 0])
   if mesh.material.shader.type == .TWO_DIMENTIONAL {
     gl.BindVertexArray(mesh.vao)
+    gl.Uniform1i(shader.parameters.screen_texture_location, 2)
+    gl.Uniform1i(shader.parameters.depth_texture_location, 3)
+    gl.Uniform1i(shader.parameters.normal_texture_location, 4)
     gl.DrawElements(gl.TRIANGLE_STRIP, 4, gl.UNSIGNED_INT, cast(rawptr)(cast(uintptr)0))
   } else {
     light_pos := Vec3{10, 50, 10} // TODO move this
@@ -260,6 +271,7 @@ shader_compileprogram :: proc(fragmentSource: cstring, vertexSource: cstring, ty
 shader_init :: proc(shader: ^Shader) {
   shader.parameters.tint_location = gl.GetUniformLocation(shader.program, "tint")
   shader.parameters.shadowmap_matrix_location = gl.GetUniformLocation(shader.program, "shadowmap_matrix")
+  shader.parameters.inv_projection_matrix_location = gl.GetUniformLocation(shader.program, "inv_projection_matrix")
   switch shader.type {
     case .THREE_DIMENSIONAL:
       shader.parameters.albedo_texture_location = gl.GetUniformLocation(shader.program, "albedo_texture")
@@ -270,6 +282,9 @@ shader_init :: proc(shader: ^Shader) {
       shader.parameters.view_matrix_location = gl.GetUniformLocation(shader.program, "view_matrix")
       shader.parameters.projection_matrix_location = gl.GetUniformLocation(shader.program, "projection_matrix")
     case .TWO_DIMENTIONAL:
+      shader.parameters.screen_texture_location = gl.GetUniformLocation(shader.program, "screen_texture")
+      shader.parameters.depth_texture_location = gl.GetUniformLocation(shader.program, "depth_texture")
+      shader.parameters.normal_texture_location = gl.GetUniformLocation(shader.program, "normal_texture")
     case .SHADOWMAP:
       shader.parameters.model_matrix_location = gl.GetUniformLocation(shader.program, "model_matrix")
       shader.parameters.view_matrix_location = gl.GetUniformLocation(shader.program, "view_matrix")
@@ -330,14 +345,17 @@ texture_load :: proc(filepath: string) -> u32 {
 }
 
 Framebuffer :: struct {
-  texture,
+  color_texture,
+  depth_texture,
+  normal_texture,
   framebuffer: GpuID,
   size: IVec2,
   type: FramebufferType
 }
 
 FramebufferType :: enum {
-  COLOR,
+  COLOR_DEPTH_AND_NORMAL,
+  COLOR_AND_DEPTH,
   DEPTH,
   NONE
 }
@@ -351,37 +369,71 @@ framebuffer_init :: proc(
   framebuffer.size = size
   framebuffer.type = type
 
-  gl.GenTextures(1, &framebuffer.texture)
-  gl.BindTexture(gl.TEXTURE_2D, framebuffer.texture)
+  gl.GenTextures(1, &framebuffer.depth_texture)
+  gl.BindTexture(gl.TEXTURE_2D, framebuffer.depth_texture)
   
-  texture_format := (type == .COLOR) ? gl.RGB : gl.DEPTH_COMPONENT
-  gl.TexImage2D(gl.TEXTURE_2D, 0, i32(texture_format), size.x, size.y, 0, u32(texture_format), gl.FLOAT, nil)
+  gl.TexImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT, size.x, size.y, 0, gl.DEPTH_COMPONENT, gl.FLOAT, nil)
 
   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
 
-  if type == .DEPTH { // Setting a white border helps with shadows outside the shadowmap
-    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_BORDER)
-    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_BORDER)
-    border_col: []f32 = {1, 1, 1}
-    gl.TexParameterfv(gl.TEXTURE_2D, gl.TEXTURE_BORDER_COLOR, &border_col[0])
-  }
+  // Setting a white border helps with shadows outside the shadowmap
+  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_BORDER)
+  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_BORDER)
+  border_col: []f32 = {1, 1, 1}
+  gl.TexParameterfv(gl.TEXTURE_2D, gl.TEXTURE_BORDER_COLOR, &border_col[0])
 
   gl.GenFramebuffers(1, &framebuffer.framebuffer)
   gl.BindFramebuffer(gl.FRAMEBUFFER, framebuffer.framebuffer)
-  if type == .DEPTH { // Disable color in depth just in case
-    gl.DrawBuffer(gl.NONE)
-    gl.ReadBuffer(gl.NONE)
-  }
 
-  attachment_format: u32 = (type == .COLOR) ? gl.COLOR_ATTACHMENT0 : gl.DEPTH_ATTACHMENT
   gl.FramebufferTexture2D(
     gl.FRAMEBUFFER,
-    attachment_format,
+    gl.DEPTH_ATTACHMENT,
     gl.TEXTURE_2D,
-    framebuffer.texture,
+    framebuffer.depth_texture,
     0
   )
+
+  if type == .COLOR_AND_DEPTH || type == .COLOR_DEPTH_AND_NORMAL{
+    gl.GenTextures(1, &framebuffer.color_texture)
+    gl.BindTexture(gl.TEXTURE_2D, framebuffer.color_texture)
+
+    gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGB, size.x, size.y, 0, gl.RGB, gl.FLOAT, nil)
+
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+
+    gl.FramebufferTexture2D(
+      gl.FRAMEBUFFER,
+      gl.COLOR_ATTACHMENT0,
+      gl.TEXTURE_2D,
+      framebuffer.color_texture,
+      0
+    )
+  }
+
+  if type == .COLOR_DEPTH_AND_NORMAL {
+    gl.GenTextures(1, &framebuffer.normal_texture)
+    gl.BindTexture(gl.TEXTURE_2D, framebuffer.normal_texture)
+
+    gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, size.x, size.y, 0, gl.RGBA, gl.FLOAT, nil)
+
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+    gl.FramebufferTexture2D(
+      gl.FRAMEBUFFER,
+      gl.COLOR_ATTACHMENT1,
+      gl.TEXTURE_2D,
+      framebuffer.normal_texture,
+      0
+    )
+
+    draw_attachments := []u32 {
+      gl.COLOR_ATTACHMENT0,
+      gl.COLOR_ATTACHMENT1,
+    }
+    gl.DrawBuffers(2, &draw_attachments[0])
+  }
 
   if gl.CheckFramebufferStatus(gl.FRAMEBUFFER) != gl.FRAMEBUFFER_COMPLETE {
     fmt.printfln("Failed to init framebuffer")
@@ -389,8 +441,11 @@ framebuffer_init :: proc(
   }
 }
 
+// TODO: add framebuffer_resize
+
 framebuffer_delete :: proc(framebuffer: Framebuffer) {
   framebuffer := framebuffer
-  gl.DeleteTextures(1, &framebuffer.texture)
+  gl.DeleteTextures(1, &framebuffer.color_texture)
+  gl.DeleteTextures(1, &framebuffer.depth_texture)
   gl.DeleteFramebuffers(1, &framebuffer.framebuffer)
 }

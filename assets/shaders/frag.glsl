@@ -1,11 +1,12 @@
 #version 330 core
+layout (location = 0) out vec4 out_frag_color;
+layout (location = 1) out vec4 out_frag_normal;
+
 in vec2 frag_uv;
 in vec3 frag_pos;
 in vec3 frag_normal;
 in vec4 frag_pos_lightspace;
 in vec3 frag_vert_color;
-
-out vec4 frag_color;
 
 uniform sampler2D albedo_texture;
 uniform sampler2D shadowmap_texture;
@@ -124,8 +125,10 @@ float calculate_shadow(vec4 light_space_pos, vec3 light_dir) {
 }
 
 void main() {
+  out_frag_normal = vec4(normalize(frag_normal), 1);
+
   vec4 textureSample = texture(albedo_texture, frag_uv);
-  frag_color = textureSample * vec4(tint, 1) * vec4(frag_vert_color, 1);
+  out_frag_color = textureSample * vec4(tint, 1) * vec4(frag_vert_color, 1);
 
   vec3 light_dir = normalize(-light_pos); // TODO change this to point from an actual light
   vec3 view_dir = normalize(frag_pos - camera_pos);
@@ -139,11 +142,11 @@ void main() {
 
   vec4 ambient = vec4(0.2 * vec3(0.094, 0.345, 0.729), 1.0); // NOTE multiplying by the color of the sky, make sure it always corresponds
   float shadow_darkness = 0.9;
-  // frag_color += ambient;
+  out_frag_color += 0.1;
   
   float shadow = calculate_shadow(frag_pos_lightspace, light_dir);
   shadow = clamp(pow(shadow, shadow_pcf_border_exponent), 0, 1);
   float inv_shadow = 1 - shadow;
-  // frag_color = mix(frag_color, frag_color * shadow_ambient, clamp(pow(shadow, shadow_pcf_border_exponent), 0.0, 1.0));
-  frag_color *= (diffuse * inv_shadow + ambient + specular * inv_shadow) * ((1 + shadow_darkness) - shadow);
+  // out_frag_color = mix(out_frag_color, out_frag_color * shadow_ambient, clamp(pow(shadow, shadow_pcf_border_exponent), 0.0, 1.0));
+  out_frag_color *= (diffuse * inv_shadow + ambient + specular * inv_shadow) * ((1 + shadow_darkness) - shadow);
 }

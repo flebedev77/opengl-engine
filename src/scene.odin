@@ -24,7 +24,7 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
 
   renderer_init(renderer, scene)
 
-  framebuffer_init(&scene.back_framebuffer, {1920, 1080}, .COLOR)
+  framebuffer_init(&scene.back_framebuffer, {1920, 1080}, .COLOR_DEPTH_AND_NORMAL)
 
   // scene.post_process_quad = mesh_make_quad()
 }
@@ -52,6 +52,12 @@ scene_update :: proc(scene: ^Scene) {
   scene.renderer.bound_framebuffer = scene.default_framebuffer
   scene.renderer.bound_framebuffer.size = {FrameBuffer.w, FrameBuffer.h}
   render_begin(scene.renderer)
+  gl.ActiveTexture(gl.TEXTURE2)
+  gl.BindTexture(gl.TEXTURE_2D, scene.back_framebuffer.color_texture)
+  gl.ActiveTexture(gl.TEXTURE3)
+  gl.BindTexture(gl.TEXTURE_2D, scene.back_framebuffer.depth_texture)
+  gl.ActiveTexture(gl.TEXTURE4)
+  gl.BindTexture(gl.TEXTURE_2D, scene.back_framebuffer.normal_texture)
   render_mesh(scene.renderer, &scene.post_process_quad) 
 
   camera_update(&scene.camera)

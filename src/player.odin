@@ -12,7 +12,9 @@ Player :: struct {
   position,
   velocity: Vec3,
   is_onground: bool,
-  is_flying: bool
+  is_flying: bool,
+  debug_movement: bool,
+  mesh: ^Mesh
 }
 
 player_init :: proc(player: ^Player) {
@@ -20,9 +22,35 @@ player_init :: proc(player: ^Player) {
   player.walk_speed = PLAYER_WALK_SPEED
   player.look_sensitivity = PLAYER_LOOK_SENSITIVITY
   player.is_flying = true
+  player.debug_movement = true
 }
 
 player_update :: proc(scene: ^Scene, player: ^Player) {
+  if player.debug_movement {
+    player_debug_update(scene, player)
+    return
+  }
+
+  player.yaw += scene.mouse.delta_position.x * player.look_sensitivity.x * scene.delta_time
+  player.pitch -= scene.mouse.delta_position.y * player.look_sensitivity.y * scene.delta_time
+
+  pitch_limit_padding: f32 = 0.003
+  if player.pitch > math.PI/2 - pitch_limit_padding {
+    player.pitch = math.PI/2 - pitch_limit_padding 
+  }
+
+  if player.pitch < -math.PI/2 + pitch_limit_padding {
+    player.pitch = -math.PI/2 + pitch_limit_padding
+  }
+
+  look_direction := Vec3{
+    math.cos(player.yaw) * math.cos(player.pitch),
+    math.sin(player.pitch),
+    math.sin(player.yaw) * math.cos(player.pitch)
+  }
+}
+
+player_debug_update :: proc(scene: ^Scene, player: ^Player) {
   player.yaw += scene.mouse.delta_position.x * player.look_sensitivity.x * scene.delta_time
   player.pitch -= scene.mouse.delta_position.y * player.look_sensitivity.y * scene.delta_time
 
@@ -45,7 +73,7 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
   player.viewmatrix = linalg.matrix4_look_at_f32(player.position, player.position + look_direction, {0, 1, 0})
 
   forward := linalg.normalize(Vec3{look_direction.x, 0, look_direction.z}) 
-  
+
 
   right := linalg.cross(forward, GLOBAL_UP)
 
@@ -81,31 +109,31 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
     player.velocity.y = 0.14
   }
 
-  
+
   if linalg.length2(moveinput) > 0 &&
-     linalg.length(player.velocity.xz) < player.walk_speed {
-    moveinput = linalg.normalize(moveinput)
-    if player.is_flying && math.abs(player.velocity.y) > player.walk_speed {
-      moveinput *= 0
+    linalg.length(player.velocity.xz) < player.walk_speed {
+      moveinput = linalg.normalize(moveinput)
+      if player.is_flying && math.abs(player.velocity.y) > player.walk_speed {
+        moveinput *= 0
+      }
+
+      player.velocity += moveinput * player.walk_speed * 0.5
     }
 
-    player.velocity += moveinput * player.walk_speed * 0.5
-  }
+    if glfw.GetKey(GlfwWindow, glfw.KEY_TAB) > 0 {
+      player.is_flying = true
+    }
+    if glfw.GetKey(GlfwWindow, glfw.KEY_LEFT_CONTROL) > 0 {
+      player.is_flying = false
+    }
 
-  if glfw.GetKey(GlfwWindow, glfw.KEY_TAB) > 0 {
-    player.is_flying = true
-  }
-  if glfw.GetKey(GlfwWindow, glfw.KEY_LEFT_CONTROL) > 0 {
-    player.is_flying = false
-  }
-
-  if !player.is_flying {
-    player.velocity.y -= 0.004
-  } else {
-    player.velocity.y *= 0.9
-  }
-  player.velocity.xz *= 0.9
-  player.position += player.velocity
-  scene.camera.position = player.position
-  scene.camera.view_matrix = player.viewmatrix
+    if !player.is_flying {
+      player.velocity.y -= 0.004
+    } else {
+      player.velocity.y *= 0.9
+    }
+    player.velocity.xz *= 0.9
+    player.position += player.velocity
+    scene.camera.position = player.position
+    scene.camera.view_matrix = player.viewmatrix
 }
