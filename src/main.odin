@@ -149,6 +149,7 @@ main :: proc() {
 
   albedo_texture := texture_load("assets/textures/box_placeholder.ppm")
   airplane_texture := texture_load("assets/textures/su_body.ppm")
+  angel_texture := texture_load("assets/models/angel/angel.ppm")
 
   default_material := Material{
     is_valid = true,
@@ -160,6 +161,11 @@ main :: proc() {
     is_valid = true,
     albedo_texture = airplane_texture,
     albedo_tint = {0,0,0},
+    shader = shader
+  }
+  angel_material := Material{
+    is_valid = true,
+    albedo_texture = angel_texture,
     shader = shader
   }
   sky_material := Material{
@@ -191,7 +197,7 @@ main :: proc() {
   cube_mesh.model_matrix = translation_matrix({1, 0, 1})
   cube_mesh.model_matrix *= scale_matrix({1, 0.8, 1})
 
-  obj_mesh := asset_loader_obj_mesh("assets/models/monk.obj", airplane_material)
+  obj_mesh := asset_loader_obj_mesh("assets/models/angel/angel.obj", angel_material, true)
   scl := f32(0.02)
   obj_mesh.model_matrix *= translation_matrix({0, 1.3, 0})
   obj_mesh.model_matrix *= scale_matrix({scl, scl, scl})

@@ -189,6 +189,7 @@ mesh_draw :: proc(mesh: Mesh, material_override: Material = {}) {
   shader := material.shader
 
   gl.UniformMatrix4fv(shader.parameters.inv_projection_matrix_location, 1, gl.FALSE, &shader.parameters.inv_projection_matrix[0, 0])
+  gl.UniformMatrix4fv(shader.parameters.projection_matrix_location, 1, gl.FALSE, &shader.parameters.projection_matrix[0,0])
   if mesh.material.shader.type == .TWO_DIMENTIONAL {
     gl.BindVertexArray(mesh.vao)
     gl.Uniform1i(shader.parameters.screen_texture_location, 2)
@@ -272,6 +273,7 @@ shader_init :: proc(shader: ^Shader) {
   shader.parameters.tint_location = gl.GetUniformLocation(shader.program, "tint")
   shader.parameters.shadowmap_matrix_location = gl.GetUniformLocation(shader.program, "shadowmap_matrix")
   shader.parameters.inv_projection_matrix_location = gl.GetUniformLocation(shader.program, "inv_projection_matrix")
+  shader.parameters.projection_matrix_location = gl.GetUniformLocation(shader.program, "projection_matrix")
   switch shader.type {
     case .THREE_DIMENSIONAL:
       shader.parameters.albedo_texture_location = gl.GetUniformLocation(shader.program, "albedo_texture")
@@ -280,7 +282,6 @@ shader_init :: proc(shader: ^Shader) {
       shader.parameters.camera_position_location = gl.GetUniformLocation(shader.program, "camera_pos")
       shader.parameters.model_matrix_location = gl.GetUniformLocation(shader.program, "model_matrix")
       shader.parameters.view_matrix_location = gl.GetUniformLocation(shader.program, "view_matrix")
-      shader.parameters.projection_matrix_location = gl.GetUniformLocation(shader.program, "projection_matrix")
     case .TWO_DIMENTIONAL:
       shader.parameters.screen_texture_location = gl.GetUniformLocation(shader.program, "screen_texture")
       shader.parameters.depth_texture_location = gl.GetUniformLocation(shader.program, "depth_texture")

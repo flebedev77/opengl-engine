@@ -13,6 +13,7 @@ uniform sampler2D shadowmap_texture;
 uniform vec3 tint;
 uniform vec3 camera_pos;
 uniform vec3 light_pos;
+uniform mat4 view_matrix;
 
 const float PI = 3.141592653589793;
 const float shadow_pcf_border_exponent = 6; // Helps make the transition between nonshadow and shadow more natural and non linear
@@ -125,7 +126,7 @@ float calculate_shadow(vec4 light_space_pos, vec3 light_dir) {
 }
 
 void main() {
-  out_frag_normal = vec4(normalize(frag_normal), 1);
+  out_frag_normal = vec4(normalize((view_matrix * vec4(frag_normal, 0)).xyz), 0);
 
   vec4 textureSample = texture(albedo_texture, frag_uv);
   out_frag_color = textureSample * vec4(tint, 1) * vec4(frag_vert_color, 1);

@@ -81,6 +81,25 @@ export_poisson_offsets :: proc(disks: [dynamic]PoissonDisk) -> os.Error {
   return nil
 }
 
+export_hemi_offsets :: proc(points: [dynamic]HemiPoint) -> os.Error {
+  sb := strings.builder_make(context.temp_allocator)
+  for point in points {
+    strings.write_string(&sb, "vec3(")
+    strings.write_f32(&sb, point.position.x, 'f')
+    strings.write_string(&sb, ", ")
+
+    strings.write_f32(&sb, point.position.y, 'f')
+    strings.write_string(&sb, ", ")
+
+    strings.write_f32(&sb, point.position.z, 'f')
+    strings.write_string(&sb, "), \n")
+  }
+
+  os.write_entire_file("poisson_offsets.txt", sb.buf[:])
+
+  return nil
+}
+
 HemiPoint :: struct {
   position: v3,
   radius: f32
@@ -94,6 +113,12 @@ generate_hemi_distribution :: proc() -> [dynamic]HemiPoint {
   for i in 0..<(desired_amount * 2) {
     pos := v3{rand.float32_range(-1, 1), rand.float32_range(-1, 1), rand.float32_range(0, 1)}
     leng := linalg.length(pos)
+    p := f32(i)/f32(desired_amount)
+    pos *= p*p
+
+    if linalg.length(pos) < 0.06 {
+      continue
+    }
     for point in arr {
       dist := linalg.length(point.position - pos)
       if dist < point.radius {
@@ -169,7 +194,7 @@ main :: proc() {
   )
   defer rl.UnloadShader(point_shader)
 
-  point_mesh := rl.GenMeshSphere(1, 20, 20)
+  point_mesh := rl.GenMeshSphere(1, 60, 60)
   fmt.printfln("%d", point_mesh.normals)
   point_model := rl.LoadModelFromMesh(point_mesh)
   point_model.materials[0].shader = point_shader
@@ -194,7 +219,7 @@ main :: proc() {
       if launch_mode == .Disk {
         export_poisson_offsets(disks)
       } else if launch_mode == .Hemisphere {
-        // export_hemi_offsets(points)
+        export_hemi_offsets(points)
       }
       is_running = false
     }
@@ -206,6 +231,14 @@ main :: proc() {
     } else if launch_mode == .Hemisphere {
       rl.BeginMode3D(hemi_cam)
       rl.UpdateCamera(&hemi_cam, .THIRD_PERSON)
+
+      grid_zoff := f32(0.01)
+      for i in -5..=5 {
+        for j in -5..=5 {
+          rl.DrawLine3D({-5, f32(j), grid_zoff}, {5, f32(j), grid_zoff}, {180, 180, 180, 255})
+        }
+        rl.DrawLine3D({f32(i), -5, grid_zoff}, {f32(i), 5, grid_zoff}, {180, 180, 180, 255})
+      }
 
       // rl.DrawCube({0,0,0}, 1, 1, 1, rl.RAYWHITE)
       // rl.DrawCubeWires({0,0,0}, 1.1, 1.1, 1., rl.BLUE)

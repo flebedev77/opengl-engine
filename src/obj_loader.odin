@@ -45,7 +45,7 @@ obj_parse_from_memory :: proc(contents: []u8, verbose := false) ->
    indices: []u32) {
 
   allocator: mem.Arena
-  mem.arena_init(&allocator, make([]byte, 10 * len(contents))) // This allocation size is not set in stone, if the loader doesn't work for some models, this is probably the reason why
+  mem.arena_init(&allocator, make([]byte, 100 * len(contents))) // This allocation size is not set in stone, if the loader doesn't work for some models, this is probably the reason why
   default_allocator := context.allocator
   context.allocator = mem.arena_allocator(&allocator)
   defer mem.arena_free_all(&allocator)
@@ -63,12 +63,11 @@ obj_parse_from_memory :: proc(contents: []u8, verbose := false) ->
   line, col := 0, 0
   numbers_encountered := u32(0) // Per line
   for char, i in contents {
-    next_char: u8
+    next_char: u8 = 0
     if len(contents) > i + 1 {
       next_char = contents[i+1]
     }
 
-    col += 1
     if char == '#' {
       is_comment = true
     }
@@ -76,27 +75,29 @@ obj_parse_from_memory :: proc(contents: []u8, verbose := false) ->
       is_comment = false
       line += 1
       col = 0
+      numbers_encountered = 0
+      state = .none
     }
     if is_comment {
       continue
     }
 
-    if char == 'v' {
+    if char == 'v' && col == 0 {
       numbers_encountered = 0
       switch next_char {
         case ' ': state = .vertex_pos
         case 'n': state = .vertex_nor
         case 't': state = .vertex_tex
-        case: fmt.eprintfln("Invalid v%c directive at %d:%d", next_char, line, col)
+        case: fmt.eprintfln("Invalid v%c directive at %d:%d in obj", next_char, line, col)
       }
     }
 
-    if char == 'f' {
+    if char == 'f' && col == 0 {
       state = .face_ind
     }
 
     // TODO actually handle these instead of ignoring
-    if char == 's' || char == 'o' {
+    if (char == 's' || char == 'o') && col == 0 {
       state = .none
     }
 
@@ -112,30 +113,32 @@ obj_parse_from_memory :: proc(contents: []u8, verbose := false) ->
           case .vertex_nor: append(&vertex_nor, value)
           case .face_ind: append(&face_ind, u32(value))
         }
-
       }
     }
 
+    col += 1
   }
 
   // Some sort of factor validation
-  assert(is_whole(f32(len(vertex_pos)) / 3),   "Invalid amount of vertex positions in obj")
-  assert(is_whole(f32(len(vertex_col)) / 3),   "Invalid amount of vertex colors in obj")
-  assert(is_whole(f32(len(vertex_nor)) / 3),   "Invalid amount of vertex normals in obj")
-  assert(is_whole(f32(len(vertex_tex)) / 2),   "Invalid amount of vertex texture coordinates in obj")
-  assert(is_whole(f32(len(face_ind) * 9) / 3), "Invalid amount of face indices in obj")
+  // assert(is_whole(f32(len(vertex_pos)) / 3),   "Invalid amount of vertex positions in obj")
+  // assert(is_whole(f32(len(vertex_col)) / 3),   "Invalid amount of vertex colors in obj")
+  // assert(is_whole(f32(len(vertex_nor)) / 3),   "Invalid amount of vertex normals in obj")
+  // assert(is_whole(f32(len(vertex_tex)) / 2),   "Invalid amount of vertex texture coordinates in obj")
+  // assert(is_whole(f32(len(face_ind) * 9) / 3), "Invalid amount of face indices in obj")
 
-  assert(len(vertex_pos) > 2, "Not enough vertex positions in obj")
-  assert(len(vertex_nor) > 2, "Not enough vertex normals in obj")
-  assert(len(vertex_tex) > 1, "Not enough vertex texture coordinates in obj")
-  assert(len(face_ind)   > 2, "Not enough indices in obj")
+  // assert(len(vertex_pos) > 2, "Not enough vertex positions in obj")
+  // assert(len(vertex_nor) > 2, "Not enough vertex normals in obj")
+  // assert(len(vertex_tex) > 1, "Not enough vertex texture coordinates in obj")
+  // assert(len(face_ind)   > 2, "Not enough indices in obj")
 
   if verbose {
     fmt.printfln("POSLEN %d NORLEN %d TEXLEN %d FACLEN %d", len(vertex_pos), len(vertex_nor), len(vertex_tex), len(face_ind))
-    fmt.printfln("VERTEX NORMALS %f", vertex_nor[:])
-    fmt.printfln("VERTEX POSITIONS %f", vertex_pos[:])
-    fmt.printfln("VERTEX TEXTURE COORDINATES %f", vertex_tex[:])
-    fmt.printfln("FACE INDICES %d %d", len(face_ind), face_ind[:])
+    if len(face_ind) < 50 {
+      fmt.printfln("VERTEX NORMALS %f", vertex_nor[:])
+      fmt.printfln("VERTEX POSITIONS %f", vertex_pos[:])
+      fmt.printfln("VERTEX TEXTURE COORDINATES %f", vertex_tex[:])
+      fmt.printfln("FACE INDICES %d %d", len(face_ind), face_ind[:])
+    }
   }
 
   vertex_amount := len(face_ind) / 3

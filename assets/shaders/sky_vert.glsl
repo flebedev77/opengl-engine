@@ -12,6 +12,8 @@ out vec3 frag_normal;
 
 void main() {
   frag_normal = vert_normal;
-  frag_pos = vec3(model_matrix * vec4(vert_pos, 1.0));
-  gl_Position = projection_matrix * view_matrix * model_matrix * vec4(vert_pos, 1.0);
+  frag_pos = vec3(model_matrix * vec4(vert_pos, 1));
+
+  mat4 view_no_translation = mat4(mat3(view_matrix));
+  gl_Position = projection_matrix * view_no_translation * model_matrix * vec4(vert_pos, 1);
 }
