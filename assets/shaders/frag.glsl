@@ -9,6 +9,7 @@ in vec4 frag_pos_lightspace;
 in vec3 frag_vert_color;
 
 uniform sampler2D albedo_texture;
+uniform sampler2D roughness_texture;
 uniform sampler2D shadowmap_texture;
 uniform vec3 tint;
 uniform vec3 camera_pos;
@@ -17,7 +18,7 @@ uniform mat4 view_matrix;
 
 const float PI = 3.141592653589793;
 const float shadow_pcf_border_exponent = 6; // Helps make the transition between nonshadow and shadow more natural and non linear
-const float shadow_pcf_noisiness = 0.2;
+const float shadow_pcf_noisiness = 0.1;
 const int shadow_pcf_samples = 2;
 
 const vec2 poisson_offsets[16] = vec2[](
@@ -108,10 +109,10 @@ float calculate_shadow(vec4 light_space_pos, vec3 light_dir) {
 
     // Poisson sampling
     for (int i = 0; i < 16; i++) {
-        vec2 noise_offset = vec2(
-            rand(vec2(i, frag_pos.z)) * 2.0 - 1.0,
-            rand(frag_pos.xy) * 2.0 - 1.0
-        ) * shadow_pcf_noisiness;
+        vec2 noise_offset = vec2(0);//vec2(
+        //     rand(vec2(i, frag_pos.z)) * 2.0 - 1.0,
+        //     rand(frag_pos.xy) * 2.0 - 1.0
+        // ) * shadow_pcf_noisiness;
         vec2 sample_pos = (poisson_offsets[i] + noise_offset) * texel_size;
         float depth = texture(shadowmap_texture, proj_coords.xy + sample_pos).r;
         shadow += (pixel_depth - bias > depth) ? 1.0 : 0.0;
@@ -150,4 +151,9 @@ void main() {
   float inv_shadow = 1 - shadow;
   // out_frag_color = mix(out_frag_color, out_frag_color * shadow_ambient, clamp(pow(shadow, shadow_pcf_border_exponent), 0.0, 1.0));
   out_frag_color *= (diffuse * inv_shadow + ambient + specular * inv_shadow) * ((1 + shadow_darkness) - shadow);
+
+
+  // out_frag_color = vec4(frag_uv, 1, 1);
+  // out_frag_color = vec4(1, 1, 1, 1);
+  // out_frag_color = vec4(frag_normal, 1);
 }

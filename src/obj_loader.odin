@@ -45,10 +45,10 @@ obj_parse_from_memory :: proc(contents: []u8, verbose := false) ->
    indices: []u32) {
 
   allocator: mem.Arena
-  mem.arena_init(&allocator, make([]byte, 100 * len(contents))) // This allocation size is not set in stone, if the loader doesn't work for some models, this is probably the reason why
+  // mem.arena_init(&allocator, make([]byte, 1000000000)) // This allocation size is not set in stone, if the loader doesn't work for some models, this is probably the reason why
   default_allocator := context.allocator
-  context.allocator = mem.arena_allocator(&allocator)
-  defer mem.arena_free_all(&allocator)
+  // context.allocator = mem.arena_allocator(&allocator)
+  // defer mem.arena_free_all(&allocator)
   
   vertex_pos: [dynamic]f32
   vertex_col: [dynamic]f32
@@ -62,6 +62,7 @@ obj_parse_from_memory :: proc(contents: []u8, verbose := false) ->
   is_comment := false
   line, col := 0, 0
   numbers_encountered := u32(0) // Per line
+  is_beginning_of_line := true
   for char, i in contents {
     next_char: u8 = 0
     if len(contents) > i + 1 {
@@ -71,34 +72,42 @@ obj_parse_from_memory :: proc(contents: []u8, verbose := false) ->
     if char == '#' {
       is_comment = true
     }
+    col += 1
     if char == '\n' {
       is_comment = false
+      is_beginning_of_line = true
       line += 1
       col = 0
       numbers_encountered = 0
-      state = .none
+      continue
     }
-    if is_comment {
+    if is_comment || (is_beginning_of_line && (char == ' ' || char == '\t')) {
       continue
     }
 
-    if char == 'v' && col == 0 {
-      numbers_encountered = 0
-      switch next_char {
+    if is_beginning_of_line {
+      state = .none
+      is_beginning_of_line = false
+      if char == 'v' {
+        numbers_encountered = 0
+        switch next_char {
         case ' ': state = .vertex_pos
         case 'n': state = .vertex_nor
         case 't': state = .vertex_tex
         case: fmt.eprintfln("Invalid v%c directive at %d:%d in obj", next_char, line, col)
+        }
       }
-    }
 
-    if char == 'f' && col == 0 {
-      state = .face_ind
-    }
+      if char == 'f' {
+        state = .face_ind
+      }
 
-    // TODO actually handle these instead of ignoring
-    if (char == 's' || char == 'o') && col == 0 {
-      state = .none
+      // TODO actually handle these instead of ignoring
+      if char == 's' || char == 'o' {
+        state = .none
+      }
+
+      continue
     }
 
     if state != .none && is_numeric(char) {
@@ -116,7 +125,6 @@ obj_parse_from_memory :: proc(contents: []u8, verbose := false) ->
       }
     }
 
-    col += 1
   }
 
   // Some sort of factor validation
@@ -169,7 +177,7 @@ obj_parse_from_memory :: proc(contents: []u8, verbose := false) ->
     out_vertex_normals[i * 3 + 2] = vertex_nor[nor_index * 3 + 2]
 
     out_vertex_texture_coordinates[i * 2] = vertex_tex[tex_index * 2]
-    out_vertex_texture_coordinates[i * 2 + 1] = vertex_tex[tex_index * 2 + 1]
+    out_vertex_texture_coordinates[i * 2 + 1] = 1-vertex_tex[tex_index * 2 + 1]
 
     out_indices[i] = u32(i)
   }

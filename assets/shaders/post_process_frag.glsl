@@ -62,9 +62,9 @@ float ssao() {
   vec3 position = reconstruct_position(frag_uv, texture(depth_texture, frag_uv).r);
 
   vec3 random_vec = vec3(
-    rand(frag_uv + position.xy) * 2 - 1,
-    rand(frag_uv*2 + position.zx) * 2 - 1,
-    rand(frag_uv*3 + position.yz) * 2 - 1
+    rand(frag_uv + position.xy + normal.yx) * 2 - 1,
+    rand(frag_uv*2 + position.zx + normal.xz) * 2 - 1,
+    rand(frag_uv*3 + position.yz + normal.zy) * 2 - 1
   );
   vec3 tangent = normalize(random_vec - normal * dot(random_vec, normal));
   vec3 bitangent = cross(normal, tangent);

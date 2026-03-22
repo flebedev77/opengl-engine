@@ -17,7 +17,7 @@ WINDOW_WIDTH :: 800
 WINDOW_HEIGHT :: 600
 SCALE :: WINDOW_HEIGHT / 2 - 20
 
-desired_amount := 16
+desired_amount := 64
 
 PoissonDisk :: struct {
   position: v2,

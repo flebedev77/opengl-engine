@@ -48,6 +48,7 @@ scene_update :: proc(scene: ^Scene) {
   // scene.renderer.bound_framebuffer = scene.default_framebuffer
   // scene.renderer.bound_framebuffer.size = {FrameBuffer.w, FrameBuffer.h}
   scene_render(scene)
+  player_update(scene, &scene.player)
 
   scene.renderer.bound_framebuffer = scene.default_framebuffer
   scene.renderer.bound_framebuffer.size = {FrameBuffer.w, FrameBuffer.h}
@@ -61,7 +62,6 @@ scene_update :: proc(scene: ^Scene) {
   render_mesh(scene.renderer, &scene.post_process_quad) 
 
   camera_update(&scene.camera)
-  player_update(scene, &scene.player)
 }
 
 scene_render :: proc(scene: ^Scene, material_override: Material = {}) {

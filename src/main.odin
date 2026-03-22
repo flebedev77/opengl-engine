@@ -18,7 +18,7 @@ MIN_WINDOW_HEIGHT :: 480
 GL_VERSION_MAJOR :: 3
 GL_VERSION_MINOR :: 3
 
-PLAYER_WALK_SPEED :: 0.03
+PLAYER_WALK_SPEED :: 0.01
 PLAYER_LOOK_SENSITIVITY :: Vec2{0.0001, 0.0002}
 
 VAO :: distinct u32
@@ -42,6 +42,7 @@ Mouse :: struct {
 }
 
 shadowmap_material: Material
+shader: Shader
 
 main :: proc() {
   defer glfw.Terminate()
@@ -66,16 +67,11 @@ main :: proc() {
   renderer_info()
   update_framebuffer()
 
-  scene: Scene
-  renderer: Renderer
-  scene_init(&scene, &renderer)
-  defer scene_delete(&scene)
-
-  shader := shader_compileprogram(
-                    cstring(#load("../assets/shaders/frag.glsl")),
-                    cstring(#load("../assets/shaders/vert.glsl")),
-                    .THREE_DIMENSIONAL
-                   )
+  shader = shader_compileprogram(
+    cstring(#load("../assets/shaders/frag.glsl")),
+    cstring(#load("../assets/shaders/vert.glsl")),
+    .THREE_DIMENSIONAL
+  )
   defer gl.DeleteProgram(shader.program)
 
   light_viewmatrix := linalg.matrix4_look_at_f32(
@@ -116,6 +112,11 @@ main :: proc() {
   )
   defer gl.DeleteProgram(post_process_shader.program)
 
+  scene: Scene
+  renderer: Renderer
+  scene_init(&scene, &renderer)
+  defer scene_delete(&scene)
+
   shadowmap_width, shadowmap_height: i32 = 4096, 4096
   shadowmap_material: Material
   shadowmap_framebuffer, shadowmap_texture: u32
@@ -149,7 +150,7 @@ main :: proc() {
 
   albedo_texture := texture_load("assets/textures/box_placeholder.ppm")
   airplane_texture := texture_load("assets/textures/su_body.ppm")
-  angel_texture := texture_load("assets/models/angel/angel.ppm")
+  angel_texture := texture_load("assets/models/pavlov/albedo.ppm")
 
   default_material := Material{
     is_valid = true,
@@ -197,9 +198,9 @@ main :: proc() {
   cube_mesh.model_matrix = translation_matrix({1, 0, 1})
   cube_mesh.model_matrix *= scale_matrix({1, 0.8, 1})
 
-  obj_mesh := asset_loader_obj_mesh("assets/models/angel/angel.obj", angel_material, true)
+  obj_mesh := asset_loader_obj_mesh("assets/models/pavlov.obj", angel_material, true)
   scl := f32(0.02)
-  obj_mesh.model_matrix *= translation_matrix({0, 1.3, 0})
+  obj_mesh.model_matrix *= translation_matrix({0, 0, 0})
   obj_mesh.model_matrix *= scale_matrix({scl, scl, scl})
 
   
@@ -217,7 +218,6 @@ main :: proc() {
   
   append(&scene.meshes, cube_mesh)
   append(&scene.meshes, sky_mesh)
-  scene.player.mesh = &obj_mesh
   append(&scene.meshes, obj_mesh)
   append(&scene.meshes, light_mesh)
   append(&scene.meshes, ground_mesh)
