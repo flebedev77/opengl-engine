@@ -36,6 +36,7 @@ start_time := f64(time.now()._nsec)
 prev_time := start_time
 
 Mouse :: struct {
+  scroll: f32,
   previous_position,
   current_position,
   delta_position: Vec2
@@ -52,7 +53,7 @@ main :: proc() {
   glfw.WindowHint(glfw.CONTEXT_VERSION_MAJOR, GL_VERSION_MAJOR)
   glfw.WindowHint(glfw.CONTEXT_VERSION_MINOR, GL_VERSION_MINOR)
   glfw.WindowHint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
-  glfw.WindowHint(glfw.SAMPLES, 8)
+  glfw.WindowHint(glfw.SAMPLES, 4)
 
   GlfwWindow = glfw.CreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Hello world", nil, nil)
   defer glfw.DestroyWindow(GlfwWindow)
@@ -105,13 +106,6 @@ main :: proc() {
   )
   defer gl.DeleteProgram(sky_shader.program)
 
-  post_process_shader := shader_compileprogram(
-    cstring(#load("../assets/shaders/post_process_frag.glsl")),
-    cstring(#load("../assets/shaders/post_process_vert.glsl")),
-    .TWO_DIMENTIONAL
-  )
-  defer gl.DeleteProgram(post_process_shader.program)
-
   scene: Scene
   renderer: Renderer
   scene_init(&scene, &renderer)
@@ -142,7 +136,7 @@ main :: proc() {
   }
   gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
 
-  scene.shadowmap_framebuffer = {
+  renderer.shadowmap_framebuffer = {
     framebuffer = shadowmap_framebuffer,
     size = {shadowmap_width, shadowmap_height}
   }
@@ -167,6 +161,7 @@ main :: proc() {
   angel_material := Material{
     is_valid = true,
     albedo_texture = angel_texture,
+    roughness_texture = texture_load("assets/models/pavlov/roughness.ppm"),
     shader = shader
   }
   sky_material := Material{
@@ -183,7 +178,7 @@ main :: proc() {
     is_valid = true,
     shader = shadowmap_shader
   }
-  scene.shadowmap_material = shadowmap_material
+  renderer.shadowmap_material = shadowmap_material
 
   glfw.SetWindowRefreshCallback(GlfwWindow, window_refresh)
 
@@ -211,10 +206,6 @@ main :: proc() {
   scl = 0.2
   ground_mesh.model_matrix *= scale_matrix({scl, scl, scl})
   ground_mesh.model_matrix *= translation_matrix({0, 0, 0})
-
-  quad_mesh := mesh_make_quad(post_process_material)
-  // quad_mesh.model_matrix *= translation_matrix({1, 0, 0})
-  scene.post_process_quad = quad_mesh
   
   append(&scene.meshes, cube_mesh)
   append(&scene.meshes, sky_mesh)

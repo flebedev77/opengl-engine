@@ -12,8 +12,6 @@ uniform sampler2D depth_texture;
 uniform mat4 inv_projection_matrix;
 uniform mat4 projection_matrix;
 
-vec2 screen_size = vec2(1920, 1080);
-
 #define near 0.001
 #define far  1000
 #define fov 80

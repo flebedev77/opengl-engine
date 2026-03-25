@@ -22,6 +22,7 @@ ShaderParameters :: struct {
   depth_texture_location,
   normal_texture_location,
   albedo_texture_location,
+  roughness_texture_location,
   shadowmap_texture_location,
   shadowmap_matrix_location,
   tint_location,
@@ -48,6 +49,7 @@ Shader :: struct {
 
 Material :: struct {
   is_valid: bool,
+  roughness_texture,
   albedo_texture: GpuID,
   albedo_tint: Vec3,
   shader: Shader,
@@ -68,7 +70,12 @@ Mesh :: struct {
 
 Renderer :: struct {
   scene: ^Scene,
-  bound_framebuffer: Framebuffer
+  bound_framebuffer: Framebuffer,
+  default_framebuffer: Framebuffer,
+  back_framebuffer: Framebuffer,
+  shadowmap_framebuffer: Framebuffer,
+  shadowmap_material: Material,
+  post_process_quad: Mesh
 }
 
 renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
@@ -79,13 +86,56 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   gl.CullFace(gl.BACK)
   gl.FrontFace(gl.CCW)
 
-  // gl.PolygonMode(gl.FRONT_AND_BACK, gl.LINE)// : GL_FILL); 
+  gl.PolygonMode(gl.FRONT_AND_BACK, gl.LINE)// : GL_FILL); 
 
   renderer.scene = scene
   scene.renderer = renderer
+
+  // TODO: Make this resizable
+  framebuffer_init(&renderer.back_framebuffer, {1920, 1080}, .COLOR_DEPTH_AND_NORMAL)
+
+
+  renderer.post_process_quad = mesh_make_quad(
+    asset_loader_material(0, 0, "post_process", .TWO_DIMENTIONAL)
+  )
 }
 
-render_begin :: proc(renderer: ^Renderer) {
+renderer_delete :: proc(renderer: ^Renderer) {
+
+}
+
+renderer_draw_meshes :: proc(renderer: ^Renderer, material_override: Material = {}) {
+  render_bind_and_clear_framebuffer(renderer)
+  player_render(renderer.scene, &renderer.scene.player, material_override)
+  for &mesh in renderer.scene.meshes {
+    render_mesh(renderer, &mesh, material_override)
+  }
+}
+
+renderer_render :: proc(renderer: ^Renderer) {
+  renderer.bound_framebuffer = renderer.shadowmap_framebuffer
+  renderer.bound_framebuffer.size = {4096, 4096}
+  renderer_draw_meshes(renderer, renderer.shadowmap_material)
+
+  renderer.bound_framebuffer = renderer.back_framebuffer
+  // scene.renderer.bound_framebuffer = scene.default_framebuffer
+  // scene.renderer.bound_framebuffer.size = {FrameBuffer.w, FrameBuffer.h}
+  renderer_draw_meshes(renderer)
+
+  renderer.bound_framebuffer = renderer.default_framebuffer
+  renderer.bound_framebuffer.size = {FrameBuffer.w, FrameBuffer.h}
+  render_bind_and_clear_framebuffer(renderer)
+  gl.ActiveTexture(gl.TEXTURE2)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.back_framebuffer.color_texture)
+  gl.ActiveTexture(gl.TEXTURE3)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.back_framebuffer.depth_texture)
+  gl.ActiveTexture(gl.TEXTURE4)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.back_framebuffer.normal_texture)
+  gl.PolygonMode(gl.FRONT_AND_BACK, gl.FILL); 
+  render_mesh(renderer, &renderer.post_process_quad) 
+}
+
+render_bind_and_clear_framebuffer :: proc(renderer: ^Renderer) {
   gl.BindFramebuffer(gl.FRAMEBUFFER, renderer.bound_framebuffer.framebuffer)
   gl.Viewport(0, 0,
     renderer.bound_framebuffer.size.x,
@@ -208,9 +258,12 @@ mesh_draw :: proc(mesh: Mesh, material_override: Material = {}) {
 
     gl.ActiveTexture(gl.TEXTURE0)
     gl.BindTexture(gl.TEXTURE_2D, material.albedo_texture)
+    gl.ActiveTexture(gl.TEXTURE2)
+    gl.BindTexture(gl.TEXTURE_2D, material.roughness_texture)
 
     gl.Uniform1i(shader.parameters.albedo_texture_location, 0)
     gl.Uniform1i(shader.parameters.shadowmap_texture_location, 1)
+    gl.Uniform1i(shader.parameters.roughness_texture_location, 2)
 
     gl.UniformMatrix4fv(shader.parameters.model_matrix_location, 1, gl.FALSE, &mesh.model_matrix[0,0])
     gl.UniformMatrix4fv(shader.parameters.projection_matrix_location, 1, gl.FALSE, &shader.parameters.projection_matrix[0,0])
@@ -239,7 +292,6 @@ shader_compilemodule :: proc(source: cstring, type: u32) -> GpuID {
 
   success: i32
   gl.GetShaderiv(shader, gl.COMPILE_STATUS, &success)
-  // assert(success == i32(gl.TRUE))
   if success != i32(gl.TRUE) {
     shader_error_log: [512]u8
     len: i32
@@ -282,6 +334,7 @@ shader_init :: proc(shader: ^Shader) {
       shader.parameters.camera_position_location = gl.GetUniformLocation(shader.program, "camera_pos")
       shader.parameters.model_matrix_location = gl.GetUniformLocation(shader.program, "model_matrix")
       shader.parameters.view_matrix_location = gl.GetUniformLocation(shader.program, "view_matrix")
+      shader.parameters.roughness_texture_location = gl.GetUniformLocation(shader.program, "roughness_texture")
     case .TWO_DIMENTIONAL:
       shader.parameters.screen_texture_location = gl.GetUniformLocation(shader.program, "screen_texture")
       shader.parameters.depth_texture_location = gl.GetUniformLocation(shader.program, "depth_texture")
@@ -291,6 +344,10 @@ shader_init :: proc(shader: ^Shader) {
       shader.parameters.view_matrix_location = gl.GetUniformLocation(shader.program, "view_matrix")
       shader.parameters.projection_matrix_location = gl.GetUniformLocation(shader.program, "projection_matrix")
   }
+}
+
+shader_delete :: proc(shader: Shader) {
+  gl.DeleteProgram(shader.program)
 }
 
 renderer_info :: proc() {

@@ -89,9 +89,9 @@ float calculate_shadow(vec4 light_space_pos, vec3 light_dir) {
     // shadow /= 16;
 
     // Circular sampling
-    // float circle_sample_step = 0.1;
+    // float circle_sample_step = 0.4;
     // float samples = 0;
-    // for (int radius = 0; radius < 1; radius++) {
+    // for (int radius = 0; radius < 10; radius++) {
     //   for (float theta = 0; theta < 2 * PI; theta += circle_sample_step) {
     //     samples++;
     //     vec2 noise_offset = vec2(
@@ -135,7 +135,7 @@ void main() {
   vec3 light_dir = normalize(-light_pos); // TODO change this to point from an actual light
   vec3 view_dir = normalize(frag_pos - camera_pos);
 
-  float specularity = (textureSample.r) * 1.5;//step(0.99, (textureSample.r + textureSample.g + textureSample.b));
+  float specularity = 1-texture(roughness_texture, frag_uv).r;//step(0.99, (textureSample.r + textureSample.g + textureSample.b));
   vec3 light_view_midway = normalize((-light_dir) + (-view_dir));
   float specular = clamp(pow(dot(light_view_midway, frag_normal), 20), 0, 1);
   specular *= clamp(specularity, 0, 1.0);

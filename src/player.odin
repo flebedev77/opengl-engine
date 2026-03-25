@@ -6,7 +6,9 @@ import "vendor:glfw"
 
 Player :: struct {
   viewmatrix: matrix[4,4]f32,
-  yaw, pitch: f32,
+  camera_yaw, camera_pitch: f32,
+  roll, pitch, yaw: f32,
+  zoom: f32,
   look_sensitivity: Vec2,
   walk_speed: f32,
   position,
@@ -14,7 +16,8 @@ Player :: struct {
   is_onground: bool,
   is_flying: bool,
   debug_movement: bool,
-  mesh: Mesh
+  mesh: Mesh,
+  basis: Basis
 }
 
 player_init :: proc(player: ^Player) {
@@ -23,7 +26,14 @@ player_init :: proc(player: ^Player) {
   player.look_sensitivity = PLAYER_LOOK_SENSITIVITY
   player.is_flying = false
   player.debug_movement = false
-  player.pitch = math.PI * 3/2
+  player.camera_pitch = math.PI * 3/2
+  player.zoom = 1.2
+
+  player.basis = {
+    up = GLOBAL_UP,
+    right = {1, 0, 0},
+    forward = {0, 0, -1}
+  }
 
   player_material := Material{
     is_valid = true,
@@ -48,29 +58,30 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
     return
   }
 
-  player.yaw += scene.mouse.delta_position.x * player.look_sensitivity.x * scene.delta_time
-  player.pitch += scene.mouse.delta_position.y * player.look_sensitivity.y * scene.delta_time
+  player.camera_yaw += scene.mouse.delta_position.x * player.look_sensitivity.x * scene.delta_time
+  player.camera_pitch += scene.mouse.delta_position.y * player.look_sensitivity.y * scene.delta_time
 
-  pitch_limit_padding: f32 = 0.003
-  if player.pitch > math.PI/2 - pitch_limit_padding {
-    player.pitch = math.PI/2 - pitch_limit_padding 
+  camera_pitch_limit_padding: f32 = 0.003
+  if player.camera_pitch > math.PI/2 - camera_pitch_limit_padding {
+    player.camera_pitch = math.PI/2 - camera_pitch_limit_padding 
   }
 
-  if player.pitch < -math.PI/2 + pitch_limit_padding {
-    player.pitch = -math.PI/2 + pitch_limit_padding
+  if player.camera_pitch < -math.PI/2 + camera_pitch_limit_padding {
+    player.camera_pitch = -math.PI/2 + camera_pitch_limit_padding
   }
 
   look_direction := Vec3{
-    math.cos(player.yaw) * math.cos(player.pitch),
-    math.sin(player.pitch),
-    math.sin(player.yaw) * math.cos(player.pitch)
+    math.cos(player.camera_yaw) * math.cos(player.camera_pitch),
+    math.sin(player.camera_pitch),
+    math.sin(player.camera_yaw) * math.cos(player.camera_pitch)
   }
 
   player.viewmatrix = linalg.matrix4_look_at_f32(
-    player.position + look_direction * 1.2,
+    player.position + look_direction * player.zoom,
     player.position,
     {0, 1, 0}
   )
+  player.zoom -= scene.mouse.scroll * 0.1
 
   forward := linalg.normalize(Vec3{look_direction.x, 0, look_direction.z}) 
 
@@ -78,28 +89,24 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
   right := linalg.cross(forward, GLOBAL_UP)
 
   moveinput: Vec3
+  rotation_speed := f32(0.1)
   // TODO move this to glfw layer
   if glfw.GetKey(GlfwWindow, glfw.KEY_W) > 0 {
-    moveinput += forward
+    player.pitch += rotation_speed
   }
   if glfw.GetKey(GlfwWindow, glfw.KEY_S) > 0 {
-    moveinput -= forward
+    player.pitch -= rotation_speed
   }
   if glfw.GetKey(GlfwWindow, glfw.KEY_A) > 0 {
-    moveinput -= right
+    player.yaw -= rotation_speed
   }
   if glfw.GetKey(GlfwWindow, glfw.KEY_D) > 0 {
-    moveinput += right
+    player.yaw += rotation_speed
   }
   if glfw.GetKey(GlfwWindow, glfw.KEY_SPACE) > 0 {
   }
 
   player.position = {0, 2, 0}
-  scale := f32(0.01)
-  player.mesh.model_matrix = identity_matrix() 
-  player.mesh.model_matrix *= translation_matrix(player.position)
-  player.mesh.model_matrix *= scale_matrix({scale, scale, scale})
-  render_mesh(scene.renderer, &player.mesh)
 
 
   scene.camera.position = player.position
@@ -107,22 +114,22 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
 }
 
 player_debug_update :: proc(scene: ^Scene, player: ^Player) {
-  player.yaw += scene.mouse.delta_position.x * player.look_sensitivity.x * scene.delta_time
-  player.pitch -= scene.mouse.delta_position.y * player.look_sensitivity.y * scene.delta_time
+  player.camera_yaw += scene.mouse.delta_position.x * player.look_sensitivity.x * scene.delta_time
+  player.camera_pitch -= scene.mouse.delta_position.y * player.look_sensitivity.y * scene.delta_time
 
-  pitch_limit_padding: f32 = 0.003
-  if player.pitch > math.PI/2 - pitch_limit_padding {
-    player.pitch = math.PI/2 - pitch_limit_padding 
+  camera_pitch_limit_padding: f32 = 0.003
+  if player.camera_pitch > math.PI/2 - camera_pitch_limit_padding {
+    player.camera_pitch = math.PI/2 - camera_pitch_limit_padding 
   }
 
-  if player.pitch < -math.PI/2 + pitch_limit_padding {
-    player.pitch = -math.PI/2 + pitch_limit_padding
+  if player.camera_pitch < -math.PI/2 + camera_pitch_limit_padding {
+    player.camera_pitch = -math.PI/2 + camera_pitch_limit_padding
   }
 
   look_direction := Vec3{
-    math.cos(player.yaw) * math.cos(player.pitch),
-    math.sin(player.pitch),
-    math.sin(player.yaw) * math.cos(player.pitch)
+    math.cos(player.camera_yaw) * math.cos(player.camera_pitch),
+    math.sin(player.camera_pitch),
+    math.sin(player.camera_yaw) * math.cos(player.camera_pitch)
   }
 
 
@@ -186,4 +193,24 @@ player_debug_update :: proc(scene: ^Scene, player: ^Player) {
     player.position += player.velocity
     scene.camera.position = player.position
     scene.camera.view_matrix = player.viewmatrix
+}
+
+player_render :: proc(scene: ^Scene, player: ^Player, material_override: Material = {}) {
+  if player.debug_movement {
+    return
+  }
+
+  forward_rotation := Vec3{
+    math.cos(player.yaw) * math.cos(player.pitch),
+    math.sin(player.pitch),
+    math.sin(player.yaw) * math.cos(player.pitch)
+  }
+
+
+  scale := f32(0.01)
+  player.mesh.model_matrix = identity_matrix() 
+  player.mesh.model_matrix *= translation_matrix(player.position)
+  player.mesh.model_matrix *= linalg.matrix4_look_at_f32({0,0,0}, forward_rotation, {0, 1, 0})
+  player.mesh.model_matrix *= scale_matrix({scale, scale, scale})
+  render_mesh(scene.renderer, &player.mesh, material_override)
 }

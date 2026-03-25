@@ -7,7 +7,13 @@ Vec2 :: [2]f32
 IVec2 :: [2]i32
 Mat4 :: matrix[4,4]f32
 
-GLOBAL_UP : Vec3 : {0, 1, 0}
+Basis :: struct {
+  right,
+  up,
+  forward: Vec3
+}
+
+GLOBAL_UP :: Vec3{0, 1, 0}
 
 @(require_results) is_numeric :: proc(c: u8) -> bool {
   return (c == '-' || c == '.' || (c > 0x2F && c < 0x3A))
