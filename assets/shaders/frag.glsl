@@ -21,23 +21,71 @@ const float shadow_pcf_border_exponent = 6; // Helps make the transition between
 const float shadow_pcf_noisiness = 0.1;
 const int shadow_pcf_samples = 2;
 
-const vec2 poisson_offsets[16] = vec2[](
-    vec2(0.00087641, -0.63862264), 
-    vec2(-0.13883482, 0.45381424), 
-    vec2(0.06422021, -0.18769506), 
-    vec2(-0.57479477, -0.25208041), 
-    vec2(-0.14291742, -0.86147839), 
-    vec2(-0.36587161, -0.47558826), 
-    vec2(0.34885627, 0.82500464), 
-    vec2(0.69631511, -0.55897927), 
-    vec2(-0.58133727, 0.72104436), 
-    vec2(0.64826161, 0.28402969), 
-    vec2(-0.86492872, 0.07038971), 
-    vec2(0.42102033, 0.30327117), 
-    vec2(0.11165676, 0.87970036), 
-    vec2(-0.77341479, -0.35967383), 
-    vec2(-0.36183363, -0.56892765), 
-    vec2(0.17042206, -0.71032268) 
+const vec2 poisson_offsets[64] = vec2[](
+vec2(0.24772918, 0.42333201), 
+vec2(-0.49345073, -0.56058770), 
+vec2(0.33773723, -0.33185625), 
+vec2(-0.42333335, -0.67931640), 
+vec2(-0.56918424, 0.50545412), 
+vec2(0.61495525, -0.56252587), 
+vec2(-0.67867583, 0.08087199), 
+vec2(0.23042901, -0.38165757), 
+vec2(0.00572612, -0.63751310), 
+vec2(0.24972799, 0.45497194), 
+vec2(0.60606140, 0.09318615), 
+vec2(0.44612327, 0.19621556), 
+vec2(-0.66485894, -0.06752378), 
+vec2(-0.94160569, -0.22511423), 
+vec2(0.02352239, -0.02492522), 
+vec2(0.75924087, 0.46712619), 
+vec2(-0.03723203, 0.42882612), 
+vec2(-0.20740692, -0.33882591), 
+vec2(0.78905636, 0.17830573), 
+vec2(-0.12130364, 0.89415163), 
+vec2(0.18524505, -0.16827337), 
+vec2(0.69696110, -0.71203583), 
+vec2(-0.21347535, -0.93752778), 
+vec2(0.21920304, -0.28975391), 
+vec2(-0.36250681, -0.14360578), 
+vec2(-0.52363777, 0.82716507), 
+vec2(0.19863699, -0.05758470), 
+vec2(0.28176853, 0.82335269), 
+vec2(-0.16420561, -0.66520327), 
+vec2(-0.22581151, 0.40243334), 
+vec2(0.88885278, -0.08475550), 
+vec2(0.63730830, -0.28425556), 
+vec2(0.17913473, 0.85945350), 
+vec2(-0.22355738, 0.12447221), 
+vec2(-0.47471470, 0.42998087), 
+vec2(-0.87762588, -0.22661512), 
+vec2(0.52406353, 0.72567666), 
+vec2(-0.36563814, -0.60846978), 
+vec2(-0.75840884, -0.44909629), 
+vec2(-0.64087528, 0.04041982), 
+vec2(0.48745134, 0.83716547), 
+vec2(-0.06525695, -0.71009201), 
+vec2(-0.96412289, -0.23523238), 
+vec2(-0.16232638, 0.55210590), 
+vec2(0.28586948, -0.76331109), 
+vec2(0.98136264, 0.14953384), 
+vec2(0.09105146, -0.78715026), 
+vec2(0.06548858, -0.35983145), 
+vec2(0.75632578, -0.55447483), 
+vec2(0.08975850, -0.53518254), 
+vec2(-0.35269159, 0.71880257), 
+vec2(-0.68824291, -0.12898995), 
+vec2(-0.19524200, 0.60467082), 
+vec2(-0.49216211, 0.76259518), 
+vec2(-0.16087414, 0.87056315), 
+vec2(0.02998847, -0.60004658), 
+vec2(-0.51174641, -0.10292845), 
+vec2(-0.73968518, 0.30407849), 
+vec2(-0.73906046, 0.66284049), 
+vec2(-0.10300110, 0.53295016), 
+vec2(-0.52906251, -0.54112375), 
+vec2(0.63081646, -0.04855106), 
+vec2(0.43956539, -0.09492128), 
+vec2(-0.22184938, 0.03012371)
 );
 
 float rand(vec2 co){
@@ -54,14 +102,15 @@ float calculate_shadow(vec4 light_space_pos, vec3 light_dir) {
   float min_bias = 0.0001;
   // float max_bias = 0.05;
   // float min_bias = 0.01;
-  float bias = max(max_bias * (1.0 - dot(frag_normal, light_dir)), min_bias);  
+  float bias = 0.00001;//max(max_bias * (1.0 - dot(frag_normal, light_dir)), min_bias);  
 
 
   float closest_depth = texture(shadowmap_texture, proj_coords.xy).r;
   float pixel_depth = proj_coords.z;
 
   if (closest_depth < pixel_depth - bias) {
-    vec2 texel_size = 1.0 / textureSize(shadowmap_texture, 0);// + 0.0001;
+    vec2 texel_size = 1.0 / textureSize(shadowmap_texture, 0);
+    texel_size *= 2;
     float shadow = 0.0;
 
     // Box sampling
@@ -108,16 +157,16 @@ float calculate_shadow(vec4 light_space_pos, vec3 light_dir) {
     // shadow /= samples;
 
     // Poisson sampling
-    for (int i = 0; i < 16; i++) {
-        vec2 noise_offset = vec2(0);//vec2(
-        //     rand(vec2(i, frag_pos.z)) * 2.0 - 1.0,
-        //     rand(frag_pos.xy) * 2.0 - 1.0
-        // ) * shadow_pcf_noisiness;
+    for (int i = 0; i < 64; i++) {
+        vec2 noise_offset = vec2(
+            rand(poisson_offsets[i]) * 2.0 - 1.0,
+            rand(poisson_offsets[i] + vec2(1, 1)) * 2.0 - 1.0
+        ) * shadow_pcf_noisiness;
         vec2 sample_pos = (poisson_offsets[i] + noise_offset) * texel_size;
         float depth = texture(shadowmap_texture, proj_coords.xy + sample_pos).r;
         shadow += (pixel_depth - bias > depth) ? 1.0 : 0.0;
     }
-    shadow /= 16;
+    shadow /= 64;
 
     // shadow = 1;
 
@@ -137,8 +186,15 @@ void main() {
 
   float specularity = 1-texture(roughness_texture, frag_uv).r;//step(0.99, (textureSample.r + textureSample.g + textureSample.b));
   vec3 light_view_midway = normalize((-light_dir) + (-view_dir));
-  float specular = clamp(pow(dot(light_view_midway, frag_normal), 20), 0, 1);
-  specular *= clamp(specularity, 0, 1.0);
+  float specular = clamp(
+      pow(
+        dot(light_view_midway, frag_normal),
+        20 - specularity * 30
+      ),
+      0,
+      1
+  );
+  // specular *= clamp(specularity, 0, 1.0);
 
   float diffuse = clamp(dot(light_dir, -frag_normal), 0, 1) * 0.5;
 

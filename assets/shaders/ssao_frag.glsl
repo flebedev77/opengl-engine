@@ -85,7 +85,7 @@ float ssao() {
 
   occlusion /= ssao_samples;
   
-  return occlusion;
+  return occlusion * 1.1;
 }
 
 void main() {

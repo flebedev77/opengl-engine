@@ -18,7 +18,7 @@ MIN_WINDOW_HEIGHT :: 480
 GL_VERSION_MAJOR :: 3
 GL_VERSION_MINOR :: 3
 
-PLAYER_WALK_SPEED :: 0.01
+PLAYER_WALK_SPEED :: 0.006
 PLAYER_LOOK_SENSITIVITY :: Vec2{0.0001, 0.0002}
 
 VAO :: distinct u32
@@ -174,10 +174,10 @@ main :: proc() {
   cube_mesh.model_matrix = translation_matrix({1, 0, 1})
   cube_mesh.model_matrix *= scale_matrix({1, 0.8, 1})
 
-  // obj_mesh := asset_loader_obj_mesh("assets/models/pavlov.obj", angel_material, true)
+  obj_mesh := asset_loader_obj_mesh("assets/models/pavlov.obj", angel_material, true)
   scl := f32(0.02)
-  // obj_mesh.model_matrix *= translation_matrix({0, 0, 0})
-  // obj_mesh.model_matrix *= scale_matrix({scl, scl, scl})
+  obj_mesh.model_matrix *= translation_matrix({0, 0, 0})
+  obj_mesh.model_matrix *= scale_matrix({scl, scl, scl})
 
   
   sky_mesh := asset_loader_obj_mesh("assets/models/skydome.obj", sky_material)
@@ -190,7 +190,7 @@ main :: proc() {
   
   append(&scene.meshes, cube_mesh)
   append(&scene.meshes, sky_mesh)
-  // append(&scene.meshes, obj_mesh)
+  append(&scene.meshes, obj_mesh)
   append(&scene.meshes, light_mesh)
   append(&scene.meshes, ground_mesh)
 
@@ -201,98 +201,16 @@ main :: proc() {
     prev_time = current_time
     time_since_start := f32((current_time - start_time) / f64(time.Millisecond))
 
-
-
-    // cube_mesh.model_matrix *= rotation_matrix_y(delta_time * 0.001)
-    // model_matrix *= translation_matrix({0, 0, f32(math.sin(time_since_start*0.00001))*0.1})
-    // gl.Viewport(0, 0, shadowmap_width, shadowmap_height)
-    // gl.BindFramebuffer(gl.FRAMEBUFFER, shadowmap_framebuffer)
-    // gl.Clear(gl.DEPTH_BUFFER_BIT)
-    // gl.BindTexture(gl.TEXTURE_2D, shadowmap_texture)
-    //
-    // scene_render(&scene, shadowmap_material)
-
-    // fmt.printfln("%d", shadowmap_shader.parameters)
-    // gl.UseProgram(shadowmap_shader.program)
-    // gl.UniformMatrix4fv(shadowmap_shader.parameters.shadowmap_matrix_location, 1, gl.FALSE, &shadowmap_matrix[0][0])
-    // gl.UniformMatrix4fv(shadowmap_shader.parameters.projection_matrix_location, 1, gl.FALSE, &light_projmatrix[0][0])
-    // gl.UniformMatrix4fv(shadowmap_shader.parameters.view_matrix_location, 1, gl.FALSE, &light_viewmatrix[0][0])
-    // gl.UniformMatrix4fv(shadowmap_shader.parameters.projection_matrix_location, 1, gl.FALSE, &camera.projection_matrix[0][0])
-    // grid_draw(&grid, camera, shadowmap_shader)
-    // mesh_draw(obj_mesh, shadowmap_shader)
-
-    // gl.CullFace(gl.FRONT)
-    // mesh_draw(cube_mesh, shadowmap_shader)
-
-
-    // gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
-    //
-    // gl.Viewport(0, 0, FrameBuffer.w, FrameBuffer.h)
-
-    gl.ActiveTexture(gl.TEXTURE0)
-    gl.BindTexture(gl.TEXTURE_2D, albedo_texture)
-    // gl.ActiveTexture(gl.TEXTURE1)
-    // gl.BindTexture(gl.TEXTURE_2D, shadowmap_texture) 
-
-    // window_render()
     scene_update(&scene)
-
-    {
-      // light_mesh.shader.parameters.view_matrix = camera.view_matrix
-      // light_mesh.shader.parameters.camera_position = player.position
-      // light_mesh.shader.parameters.projection_matrix = camera.projection_matrix
-      // light_mesh.shader.parameters.tint = {0, 0.4, 0.6}
-
-      // obj_mesh.shader.parameters.view_matrix = camera.view_matrix
-      // obj_mesh.shader.parameters.camera_position = player.position
-      // obj_mesh.shader.parameters.projection_matrix = camera.projection_matrix
-      // obj_mesh.shader.parameters.tint = {0.9, 0.1, 0.1}
-      // obj_mesh.model_matrix *= rotation_matrix_y(delta_time * 0.001)
-      // obj_mesh.model_matrix *= translation_matrix({0, math.sin(time_since_start * 0.001) * 0.007, 0})
-
-
-      // cube_mesh.shader.parameters.view_matrix = camera.view_matrix
-      // cube_mesh.shader.parameters.camera_position = player.position
-      // cube_mesh.shader.parameters.projection_matrix = camera.projection_matrix
-      // cube_mesh.shader.parameters.tint = {0.9, 0.1, 0.1}
-      // cube_mesh.model_matrix *= rotation_matrix_y(delta_time * 0.001)
-
-      // sky_view_mat := camera.view_matrix
-      // sky_view_mat[0, 3] = 0
-      // sky_view_mat[1, 3] = 0
-      // sky_view_mat[2, 3] = 0
-      // sky_mesh.shader.parameters.view_matrix = sky_view_mat
-      // sky_mesh.shader.parameters.camera_position = player.position
-      // sky_mesh.shader.parameters.projection_matrix = camera.projection_matrix
-
-      // mesh_draw(sky_mesh)
-
-      // grid_draw(&grid, camera)
-      // mesh_draw(light_mesh)
-      // mesh_draw(obj_mesh)
-      // mesh_draw(cube_mesh)
-      // fmt.printfln("%d", shader.parameters.model_matrix)
-    }
-
 
     if glfw.GetKey(GlfwWindow, glfw.KEY_ESCAPE) > 0 {
       break
     }
 
-
-    // player_update(&player, delta_time)
-
     glfw.SwapBuffers(GlfwWindow)
     glfw.PollEvents()
   }
 
-}
-
-window_render :: proc() {
-  gl.ClearColor(0.918, 0.584, 0.231, 1.0)
-  gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
-
-  // gl.DrawElements(gl.TRIANGLES, 6, gl.UNSIGNED_INT, cast(rawptr)(cast(uintptr)0))
 }
 
 window_refresh :: proc "c" (window: glfw.WindowHandle) {
@@ -303,5 +221,5 @@ window_refresh :: proc "c" (window: glfw.WindowHandle) {
 update_framebuffer :: proc() {
   FrameBuffer.w, FrameBuffer.h = glfw.GetFramebufferSize(GlfwWindow)
   gl.Viewport(0, 0, FrameBuffer.w, FrameBuffer.h)
-  fmt.printfln("Working with framebuffer %d %d", FrameBuffer.w, FrameBuffer.h)
+  fmt.printfln("Resized framebuffer [%d, %d]", FrameBuffer.w, FrameBuffer.h)
 }

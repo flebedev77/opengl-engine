@@ -79,10 +79,10 @@ Renderer :: struct {
   ssaoblur_framebuffer: Framebuffer,
   shadowmap_framebuffer: Framebuffer,
   shadowmap_material: Material,
+  ssao_pass_material: Material,
+  ssaoblur_pass_material: Material,
+  final_pass_material: Material,
   post_process_quad: Mesh,
-  ssao_pass_shader: Shader,
-  ssaoblur_pass_shader: Shader,
-  final_pass_shader: Shader
 }
 
 renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
@@ -102,17 +102,18 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   framebuffer_init(&renderer.back_framebuffer, {1920, 1080}, .COLOR_DEPTH_AND_NORMAL)
   framebuffer_init(&renderer.shadowmap_framebuffer, {4096, 4096}, .DEPTH)
 
-  framebuffer_init(&renderer.ssao_framebuffer,     {1920, 1080}, .RED)
-  framebuffer_init(&renderer.ssaoblur_framebuffer, {1920, 1080}, .RED)
+  ssao_resolution_factor := f32(0.3)
+  ssao_resolution := Vec2{1920, 1080} * ssao_resolution_factor
+  ssao_resolution_int := IVec2{i32(ssao_resolution.x), i32(ssao_resolution.y)}
+  fmt.printfln("SSAO resolution %d", ssao_resolution_int)
+  framebuffer_init(&renderer.ssao_framebuffer,     ssao_resolution_int, .RED)
+  framebuffer_init(&renderer.ssaoblur_framebuffer, ssao_resolution_int, .RED)
 
-  renderer.ssao_pass_shader = asset_loader_material(0, 0, "ssao", .TWO_DIMENTIONAL).shader
-  renderer.ssaoblur_pass_shader = asset_loader_material(0, 0, "ssaoblur", .TWO_DIMENTIONAL).shader
-  renderer.final_pass_shader = asset_loader_material(0, 0, "post_process", .TWO_DIMENTIONAL).shader
+  renderer.ssao_pass_material = asset_loader_material(0, 0, "ssao", .TWO_DIMENTIONAL)
+  renderer.ssaoblur_pass_material = asset_loader_material(0, 0, "ssaoblur", .TWO_DIMENTIONAL)
+  renderer.final_pass_material = asset_loader_material(0, 0, "post_process", .TWO_DIMENTIONAL)
 
-  renderer.post_process_quad = mesh_make_quad(Material{
-    is_valid = true,
-    shader = renderer.final_pass_shader
-  })
+  renderer.post_process_quad = mesh_make_quad(renderer.final_pass_material)
 
   light_viewmatrix := linalg.matrix4_look_at_f32(
     linalg.normalize(Vec3{10, 50, 10}) * 5, 
@@ -169,14 +170,12 @@ renderer_render :: proc(renderer: ^Renderer) {
   // SSAO
   renderer.bound_framebuffer = renderer.ssao_framebuffer
   render_bind_and_clear_framebuffer(renderer)
-  renderer.post_process_quad.material.shader = renderer.ssao_pass_shader
-  render_mesh(renderer, &renderer.post_process_quad)
+  render_mesh(renderer, &renderer.post_process_quad, renderer.ssao_pass_material)
 
   // SSAO blur pass
   renderer.bound_framebuffer = renderer.ssaoblur_framebuffer
   render_bind_and_clear_framebuffer(renderer)
-  renderer.post_process_quad.material.shader = renderer.ssaoblur_pass_shader
-  render_mesh(renderer, &renderer.post_process_quad)
+  render_mesh(renderer, &renderer.post_process_quad, renderer.ssaoblur_pass_material)
   gl.ActiveTexture(gl.TEXTURE5)
   gl.BindTexture(gl.TEXTURE_2D, renderer.ssaoblur_framebuffer.red_texture)
 
@@ -184,7 +183,6 @@ renderer_render :: proc(renderer: ^Renderer) {
   renderer.bound_framebuffer = renderer.default_framebuffer
   renderer.bound_framebuffer.size = {FrameBuffer.w, FrameBuffer.h}
   render_bind_and_clear_framebuffer(renderer)
-  renderer.post_process_quad.material.shader = renderer.final_pass_shader
   render_mesh(renderer, &renderer.post_process_quad) 
 }
 
@@ -198,18 +196,17 @@ render_bind_and_clear_framebuffer :: proc(renderer: ^Renderer) {
 }
 
 render_mesh :: proc(renderer: ^Renderer, mesh: ^Mesh, material_override: Material = {}) {
-  // Wtf is going on?
+  material_override := material_override
+
+  shader_parameters := &mesh.material.shader.parameters
   if material_override.is_valid {
-    shader_override := material_override.shader
-    shader_override.parameters.view_matrix = renderer.scene.camera.view_matrix
-    shader_override.parameters.projection_matrix = renderer.scene.camera.projection_matrix
-    shader_override.parameters.camera_position = renderer.scene.camera.position
-  } else {
-    mesh.material.shader.parameters.view_matrix = renderer.scene.camera.view_matrix
-    mesh.material.shader.parameters.projection_matrix = renderer.scene.camera.projection_matrix
-    mesh.material.shader.parameters.camera_position = renderer.scene.camera.position
-    mesh.material.shader.parameters.inv_projection_matrix = renderer.scene.camera.inv_projection_matrix
+    shader_parameters = &material_override.shader.parameters
   }
+
+  shader_parameters.view_matrix = renderer.scene.camera.view_matrix
+  shader_parameters.projection_matrix = renderer.scene.camera.projection_matrix
+  shader_parameters.inv_projection_matrix = renderer.scene.camera.inv_projection_matrix
+  shader_parameters.camera_position = renderer.scene.camera.position
   mesh_draw(mesh^, material_override)
 }
 
@@ -293,7 +290,7 @@ mesh_draw :: proc(mesh: Mesh, material_override: Material = {}) {
 
   gl.UniformMatrix4fv(shader.parameters.inv_projection_matrix_location, 1, gl.FALSE, &shader.parameters.inv_projection_matrix[0, 0])
   gl.UniformMatrix4fv(shader.parameters.projection_matrix_location, 1, gl.FALSE, &shader.parameters.projection_matrix[0,0])
-  if mesh.material.shader.type == .TWO_DIMENTIONAL {
+  if material.shader.type == .TWO_DIMENTIONAL {
     gl.BindVertexArray(mesh.vao)
     gl.Uniform1i(shader.parameters.screen_texture_location, 2)
     gl.Uniform1i(shader.parameters.depth_texture_location, 3)
@@ -504,6 +501,9 @@ framebuffer_init :: proc(
 
     gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
     gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
 
     gl.FramebufferTexture2D(
       gl.FRAMEBUFFER,
