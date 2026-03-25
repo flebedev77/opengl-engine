@@ -90,15 +90,6 @@ main :: proc() {
   shadowmap_matrix := light_projmatrix * light_viewmatrix
   shader.parameters.shadowmap_matrix = shadowmap_matrix
 
-  shadowmap_shader := shader_compileprogram(
-    cstring(#load("../assets/shaders/shadowmap_frag.glsl")),
-    cstring(#load("../assets/shaders/shadowmap_vert.glsl")),
-    .SHADOWMAP
-  )
-  shadowmap_shader.parameters.shadowmap_matrix = shadowmap_matrix
-  defer gl.DeleteProgram(shadowmap_shader.program)
-
-
   sky_shader := shader_compileprogram(
     cstring(#load("../assets/shaders/sky_frag.glsl")),
     cstring(#load("../assets/shaders/sky_vert.glsl")),
@@ -111,35 +102,35 @@ main :: proc() {
   scene_init(&scene, &renderer)
   defer scene_delete(&scene)
 
-  shadowmap_width, shadowmap_height: i32 = 4096, 4096
-  shadowmap_material: Material
-  shadowmap_framebuffer, shadowmap_texture: u32
-  gl.GenTextures(1, &shadowmap_texture)
-  gl.BindTexture(gl.TEXTURE_2D, shadowmap_texture)
-  gl.TexImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT, shadowmap_width, shadowmap_height, 0, gl.DEPTH_COMPONENT, gl.FLOAT, nil)
-  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-
-  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_BORDER)
-  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_BORDER)
-  border_col: []f32 = {1, 1, 1}
-  gl.TexParameterfv(gl.TEXTURE_2D, gl.TEXTURE_BORDER_COLOR, &border_col[0])
-
-  gl.GenFramebuffers(1, &shadowmap_framebuffer)
-  gl.BindFramebuffer(gl.FRAMEBUFFER, shadowmap_framebuffer)
-  gl.DrawBuffer(gl.NONE)
-  gl.ReadBuffer(gl.NONE)
-  gl.FramebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, shadowmap_texture, 0)
-  if gl.CheckFramebufferStatus(gl.FRAMEBUFFER) != gl.FRAMEBUFFER_COMPLETE {
-    fmt.printfln("Shadow framebuffer not complete!")
-    fmt.printfln("%d", gl.CheckFramebufferStatus(gl.FRAMEBUFFER))
-  }
-  gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
-
-  renderer.shadowmap_framebuffer = {
-    framebuffer = shadowmap_framebuffer,
-    size = {shadowmap_width, shadowmap_height}
-  }
+  // shadowmap_width, shadowmap_height: i32 = 4096, 4096
+  // shadowmap_material: Material
+  // shadowmap_framebuffer, shadowmap_texture: u32
+  // gl.GenTextures(1, &shadowmap_texture)
+  // gl.BindTexture(gl.TEXTURE_2D, shadowmap_texture)
+  // gl.TexImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT, shadowmap_width, shadowmap_height, 0, gl.DEPTH_COMPONENT, gl.FLOAT, nil)
+  // gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+  // gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+  //
+  // gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_BORDER)
+  // gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_BORDER)
+  // border_col: []f32 = {1, 1, 1}
+  // gl.TexParameterfv(gl.TEXTURE_2D, gl.TEXTURE_BORDER_COLOR, &border_col[0])
+  //
+  // gl.GenFramebuffers(1, &shadowmap_framebuffer)
+  // gl.BindFramebuffer(gl.FRAMEBUFFER, shadowmap_framebuffer)
+  // gl.DrawBuffer(gl.NONE)
+  // gl.ReadBuffer(gl.NONE)
+  // gl.FramebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, shadowmap_texture, 0)
+  // if gl.CheckFramebufferStatus(gl.FRAMEBUFFER) != gl.FRAMEBUFFER_COMPLETE {
+  //   fmt.printfln("Shadow framebuffer not complete!")
+  //   fmt.printfln("%d", gl.CheckFramebufferStatus(gl.FRAMEBUFFER))
+  // }
+  // gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
+  //
+  // renderer.shadowmap_framebuffer = {
+  //   framebuffer = shadowmap_framebuffer,
+  //   size = {shadowmap_width, shadowmap_height}
+  // }
 
 
   albedo_texture := texture_load("assets/textures/box_placeholder.ppm")
@@ -169,23 +160,13 @@ main :: proc() {
     shader = sky_shader
   }
 
-  post_process_material := Material{
-    is_valid = true,
-    shader = post_process_shader
-  }
-
-  shadowmap_material = Material{
-    is_valid = true,
-    shader = shadowmap_shader
-  }
-  renderer.shadowmap_material = shadowmap_material
+  // shadowmap_material = Material{
+  //   is_valid = true,
+  //   shader = shadowmap_shader
+  // }
+  // renderer.shadowmap_material = shadowmap_material
 
   glfw.SetWindowRefreshCallback(GlfwWindow, window_refresh)
-
-
-  // grid: Grid
-  // grid_init(&grid, 5, 5, {-2.5, -0.8, -2.5}, shader)
-  // defer grid_delete(grid)
 
   light_mesh := mesh_make_cube(default_material, {10, 10, 10})  
 
@@ -193,10 +174,10 @@ main :: proc() {
   cube_mesh.model_matrix = translation_matrix({1, 0, 1})
   cube_mesh.model_matrix *= scale_matrix({1, 0.8, 1})
 
-  obj_mesh := asset_loader_obj_mesh("assets/models/pavlov.obj", angel_material, true)
+  // obj_mesh := asset_loader_obj_mesh("assets/models/pavlov.obj", angel_material, true)
   scl := f32(0.02)
-  obj_mesh.model_matrix *= translation_matrix({0, 0, 0})
-  obj_mesh.model_matrix *= scale_matrix({scl, scl, scl})
+  // obj_mesh.model_matrix *= translation_matrix({0, 0, 0})
+  // obj_mesh.model_matrix *= scale_matrix({scl, scl, scl})
 
   
   sky_mesh := asset_loader_obj_mesh("assets/models/skydome.obj", sky_material)
@@ -209,7 +190,7 @@ main :: proc() {
   
   append(&scene.meshes, cube_mesh)
   append(&scene.meshes, sky_mesh)
-  append(&scene.meshes, obj_mesh)
+  // append(&scene.meshes, obj_mesh)
   append(&scene.meshes, light_mesh)
   append(&scene.meshes, ground_mesh)
 
@@ -250,8 +231,8 @@ main :: proc() {
 
     gl.ActiveTexture(gl.TEXTURE0)
     gl.BindTexture(gl.TEXTURE_2D, albedo_texture)
-    gl.ActiveTexture(gl.TEXTURE1)
-    gl.BindTexture(gl.TEXTURE_2D, shadowmap_texture) 
+    // gl.ActiveTexture(gl.TEXTURE1)
+    // gl.BindTexture(gl.TEXTURE_2D, shadowmap_texture) 
 
     // window_render()
     scene_update(&scene)

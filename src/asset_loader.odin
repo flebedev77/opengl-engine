@@ -24,6 +24,7 @@ asset_loader_material :: proc(
 ) -> Material {
   frag_path, vert_path :=
   fmt.tprintf("./assets/shaders/%s_frag.glsl", shader_name),
+  (shader_type == .TWO_DIMENTIONAL) ? "./assets/shaders/quad_vert.glsl" :
   fmt.tprintf("./assets/shaders/%s_vert.glsl", shader_name)
 
   frag_contents, frag_success := os.read_entire_file_from_filename(frag_path, context.temp_allocator)
@@ -37,7 +38,9 @@ asset_loader_material :: proc(
   shader := shader_compileprogram(
     frag_cstring,
     vert_cstring,
-    shader_type
+    shader_type,
+    vert_path,
+    frag_path
   )
   return Material{
     is_valid = true,

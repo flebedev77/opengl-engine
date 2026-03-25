@@ -38,6 +38,7 @@ player_init :: proc(player: ^Player) {
   player_material := Material{
     is_valid = true,
     albedo_texture = texture_load("assets/models/mig/mig.ppm"),
+    roughness_texture = texture_load("assets/models/mig/textures/metallic.png"),
     shader = shader
   }
   player.mesh = asset_loader_obj_mesh("assets/models/mig/mig.obj", player_material)
@@ -109,7 +110,7 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
   player.position = {0, 2, 0}
 
 
-  scene.camera.position = player.position
+  scene.camera.position = player.position + look_direction * player.zoom
   scene.camera.view_matrix = player.viewmatrix
 }
 

@@ -1,6 +1,7 @@
 package main
 import "core:os"
 import "core:fmt"
+import "core:math/linalg"
 import stbi "vendor:stb/image"
 import gl "vendor:OpenGL"
 
@@ -19,6 +20,7 @@ ShaderFlags :: enum {
 
 ShaderParameters :: struct {
   screen_texture_location,
+  ssao_texture_location,
   depth_texture_location,
   normal_texture_location,
   albedo_texture_location,
@@ -73,9 +75,14 @@ Renderer :: struct {
   bound_framebuffer: Framebuffer,
   default_framebuffer: Framebuffer,
   back_framebuffer: Framebuffer,
+  ssao_framebuffer: Framebuffer,
+  ssaoblur_framebuffer: Framebuffer,
   shadowmap_framebuffer: Framebuffer,
   shadowmap_material: Material,
-  post_process_quad: Mesh
+  post_process_quad: Mesh,
+  ssao_pass_shader: Shader,
+  ssaoblur_pass_shader: Shader,
+  final_pass_shader: Shader
 }
 
 renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
@@ -86,22 +93,46 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   gl.CullFace(gl.BACK)
   gl.FrontFace(gl.CCW)
 
-  gl.PolygonMode(gl.FRONT_AND_BACK, gl.LINE)// : GL_FILL); 
+  // gl.PolygonMode(gl.FRONT_AND_BACK, gl.LINE)// : GL_FILL); 
 
   renderer.scene = scene
   scene.renderer = renderer
 
   // TODO: Make this resizable
   framebuffer_init(&renderer.back_framebuffer, {1920, 1080}, .COLOR_DEPTH_AND_NORMAL)
+  framebuffer_init(&renderer.shadowmap_framebuffer, {4096, 4096}, .DEPTH)
 
+  framebuffer_init(&renderer.ssao_framebuffer,     {1920, 1080}, .RED)
+  framebuffer_init(&renderer.ssaoblur_framebuffer, {1920, 1080}, .RED)
 
-  renderer.post_process_quad = mesh_make_quad(
-    asset_loader_material(0, 0, "post_process", .TWO_DIMENTIONAL)
+  renderer.ssao_pass_shader = asset_loader_material(0, 0, "ssao", .TWO_DIMENTIONAL).shader
+  renderer.ssaoblur_pass_shader = asset_loader_material(0, 0, "ssaoblur", .TWO_DIMENTIONAL).shader
+  renderer.final_pass_shader = asset_loader_material(0, 0, "post_process", .TWO_DIMENTIONAL).shader
+
+  renderer.post_process_quad = mesh_make_quad(Material{
+    is_valid = true,
+    shader = renderer.final_pass_shader
+  })
+
+  light_viewmatrix := linalg.matrix4_look_at_f32(
+    linalg.normalize(Vec3{10, 50, 10}) * 5, 
+    {0, 0, 0},
+    {0, 1, 0}
   )
+  lightmap_proj_size := f32(3)
+  light_projmatrix := orthographic_projection_matrix(
+    -lightmap_proj_size,
+    lightmap_proj_size,
+    lightmap_proj_size,
+    -lightmap_proj_size,
+    0.1, 26)
+  shadowmap_matrix := light_projmatrix * light_viewmatrix
+
+  renderer.shadowmap_material = asset_loader_material(0, 0, "shadowmap", .SHADOWMAP)
+  renderer.shadowmap_material.shader.parameters.shadowmap_matrix = shadowmap_matrix
 }
 
 renderer_delete :: proc(renderer: ^Renderer) {
-
 }
 
 renderer_draw_meshes :: proc(renderer: ^Renderer, material_override: Material = {}) {
@@ -113,25 +144,47 @@ renderer_draw_meshes :: proc(renderer: ^Renderer, material_override: Material = 
 }
 
 renderer_render :: proc(renderer: ^Renderer) {
+  // gl.PolygonMode(gl.FRONT_AND_BACK, gl.LINE)// : GL_FILL); 
   renderer.bound_framebuffer = renderer.shadowmap_framebuffer
-  renderer.bound_framebuffer.size = {4096, 4096}
   renderer_draw_meshes(renderer, renderer.shadowmap_material)
+  gl.ActiveTexture(gl.TEXTURE1)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.shadowmap_framebuffer.depth_texture) 
 
   renderer.bound_framebuffer = renderer.back_framebuffer
   // scene.renderer.bound_framebuffer = scene.default_framebuffer
   // scene.renderer.bound_framebuffer.size = {FrameBuffer.w, FrameBuffer.h}
   renderer_draw_meshes(renderer)
 
-  renderer.bound_framebuffer = renderer.default_framebuffer
-  renderer.bound_framebuffer.size = {FrameBuffer.w, FrameBuffer.h}
-  render_bind_and_clear_framebuffer(renderer)
+  // Post processing passes
+  gl.PolygonMode(gl.FRONT_AND_BACK, gl.FILL); 
   gl.ActiveTexture(gl.TEXTURE2)
   gl.BindTexture(gl.TEXTURE_2D, renderer.back_framebuffer.color_texture)
   gl.ActiveTexture(gl.TEXTURE3)
   gl.BindTexture(gl.TEXTURE_2D, renderer.back_framebuffer.depth_texture)
   gl.ActiveTexture(gl.TEXTURE4)
   gl.BindTexture(gl.TEXTURE_2D, renderer.back_framebuffer.normal_texture)
-  gl.PolygonMode(gl.FRONT_AND_BACK, gl.FILL); 
+  gl.ActiveTexture(gl.TEXTURE5)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.ssao_framebuffer.red_texture)
+
+  // SSAO
+  renderer.bound_framebuffer = renderer.ssao_framebuffer
+  render_bind_and_clear_framebuffer(renderer)
+  renderer.post_process_quad.material.shader = renderer.ssao_pass_shader
+  render_mesh(renderer, &renderer.post_process_quad)
+
+  // SSAO blur pass
+  renderer.bound_framebuffer = renderer.ssaoblur_framebuffer
+  render_bind_and_clear_framebuffer(renderer)
+  renderer.post_process_quad.material.shader = renderer.ssaoblur_pass_shader
+  render_mesh(renderer, &renderer.post_process_quad)
+  gl.ActiveTexture(gl.TEXTURE5)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.ssaoblur_framebuffer.red_texture)
+
+  // Final combination pass
+  renderer.bound_framebuffer = renderer.default_framebuffer
+  renderer.bound_framebuffer.size = {FrameBuffer.w, FrameBuffer.h}
+  render_bind_and_clear_framebuffer(renderer)
+  renderer.post_process_quad.material.shader = renderer.final_pass_shader
   render_mesh(renderer, &renderer.post_process_quad) 
 }
 
@@ -245,6 +298,7 @@ mesh_draw :: proc(mesh: Mesh, material_override: Material = {}) {
     gl.Uniform1i(shader.parameters.screen_texture_location, 2)
     gl.Uniform1i(shader.parameters.depth_texture_location, 3)
     gl.Uniform1i(shader.parameters.normal_texture_location, 4)
+    gl.Uniform1i(shader.parameters.ssao_texture_location, 5)
     gl.DrawElements(gl.TRIANGLE_STRIP, 4, gl.UNSIGNED_INT, cast(rawptr)(cast(uintptr)0))
   } else {
     light_pos := Vec3{10, 50, 10} // TODO move this
@@ -284,7 +338,7 @@ mesh_delete :: proc(mesh: Mesh) {
 }
 
 
-shader_compilemodule :: proc(source: cstring, type: u32) -> GpuID {
+shader_compilemodule :: proc(source: cstring, type: u32, filename := "unknown") -> GpuID {
   source := source
   shader := gl.CreateShader(type)
   gl.ShaderSource(shader, 1, &source, nil)
@@ -296,16 +350,20 @@ shader_compilemodule :: proc(source: cstring, type: u32) -> GpuID {
     shader_error_log: [512]u8
     len: i32
     gl.GetShaderInfoLog(shader, 512, &len, &shader_error_log[0])
-    panic(fmt.tprintfln("Shader compilation error: %s", shader_error_log[:len]))
+    panic(fmt.tprintfln("Shader %s compilation error in %s: %s",
+        (type == gl.FRAGMENT_SHADER) ? "fragment" : "vertment",
+        filename,
+        shader_error_log[:len]
+    ))
   }
 
   return shader
 }
 
-shader_compileprogram :: proc(fragmentSource: cstring, vertexSource: cstring, type: ShaderType) -> Shader {
+shader_compileprogram :: proc(fragmentSource: cstring, vertexSource: cstring, type: ShaderType, vertex_filename := "unknown", fragment_filename := "unknown") -> Shader {
   shader_program := gl.CreateProgram()
-  fragment_shader := shader_compilemodule(fragmentSource, gl.FRAGMENT_SHADER)
-  vertex_shader := shader_compilemodule(vertexSource, gl.VERTEX_SHADER)
+  fragment_shader := shader_compilemodule(fragmentSource, gl.FRAGMENT_SHADER, fragment_filename)
+  vertex_shader := shader_compilemodule(vertexSource, gl.VERTEX_SHADER, vertex_filename)
 
   gl.AttachShader(shader_program, fragment_shader)
   gl.AttachShader(shader_program, vertex_shader)
@@ -337,6 +395,7 @@ shader_init :: proc(shader: ^Shader) {
       shader.parameters.roughness_texture_location = gl.GetUniformLocation(shader.program, "roughness_texture")
     case .TWO_DIMENTIONAL:
       shader.parameters.screen_texture_location = gl.GetUniformLocation(shader.program, "screen_texture")
+      shader.parameters.ssao_texture_location = gl.GetUniformLocation(shader.program, "ssao_texture")
       shader.parameters.depth_texture_location = gl.GetUniformLocation(shader.program, "depth_texture")
       shader.parameters.normal_texture_location = gl.GetUniformLocation(shader.program, "normal_texture")
     case .SHADOWMAP:
@@ -394,8 +453,13 @@ texture_load :: proc(filepath: string) -> u32 {
   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT)
   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-  gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGB, img_w, img_h,
-    0, (img_channels == 3) ? gl.RGB : gl.RGBA, gl.UNSIGNED_BYTE, &img_data[0])
+  if img_channels == 1 {
+    gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RED, img_w, img_h,
+      0, gl.RED, gl.UNSIGNED_BYTE, &img_data[0])
+  } else {
+    gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGB, img_w, img_h,
+      0, (img_channels == 3) ? gl.RGB : gl.RGBA, gl.UNSIGNED_BYTE, &img_data[0])
+  }
   gl.GenerateMipmap(gl.TEXTURE_2D)
 
 
@@ -406,6 +470,7 @@ Framebuffer :: struct {
   color_texture,
   depth_texture,
   normal_texture,
+  red_texture,
   framebuffer: GpuID,
   size: IVec2,
   type: FramebufferType
@@ -415,6 +480,7 @@ FramebufferType :: enum {
   COLOR_DEPTH_AND_NORMAL,
   COLOR_AND_DEPTH,
   DEPTH,
+  RED,
   NONE
 }
 
@@ -427,30 +493,48 @@ framebuffer_init :: proc(
   framebuffer.size = size
   framebuffer.type = type
 
-  gl.GenTextures(1, &framebuffer.depth_texture)
-  gl.BindTexture(gl.TEXTURE_2D, framebuffer.depth_texture)
-  
-  gl.TexImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT, size.x, size.y, 0, gl.DEPTH_COMPONENT, gl.FLOAT, nil)
-
-  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-
-  // Setting a white border helps with shadows outside the shadowmap
-  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_BORDER)
-  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_BORDER)
-  border_col: []f32 = {1, 1, 1}
-  gl.TexParameterfv(gl.TEXTURE_2D, gl.TEXTURE_BORDER_COLOR, &border_col[0])
-
   gl.GenFramebuffers(1, &framebuffer.framebuffer)
   gl.BindFramebuffer(gl.FRAMEBUFFER, framebuffer.framebuffer)
 
-  gl.FramebufferTexture2D(
-    gl.FRAMEBUFFER,
-    gl.DEPTH_ATTACHMENT,
-    gl.TEXTURE_2D,
-    framebuffer.depth_texture,
-    0
-  )
+  if type == .RED {
+    gl.GenTextures(1, &framebuffer.red_texture)
+    gl.BindTexture(gl.TEXTURE_2D, framebuffer.red_texture)
+
+    gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RED, size.x, size.y, 0, gl.RED, gl.FLOAT, nil)
+
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+
+    gl.FramebufferTexture2D(
+      gl.FRAMEBUFFER,
+      gl.COLOR_ATTACHMENT0,
+      gl.TEXTURE_2D,
+      framebuffer.red_texture,
+      0
+    )
+  } else {
+    gl.GenTextures(1, &framebuffer.depth_texture)
+    gl.BindTexture(gl.TEXTURE_2D, framebuffer.depth_texture)
+
+    gl.TexImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT, size.x, size.y, 0, gl.DEPTH_COMPONENT, gl.FLOAT, nil)
+
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+
+    // Setting a white border helps with shadows outside the shadowmap
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_BORDER)
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_BORDER)
+    border_col: []f32 = {1, 1, 1}
+    gl.TexParameterfv(gl.TEXTURE_2D, gl.TEXTURE_BORDER_COLOR, &border_col[0])
+
+    gl.FramebufferTexture2D(
+      gl.FRAMEBUFFER,
+      gl.DEPTH_ATTACHMENT,
+      gl.TEXTURE_2D,
+      framebuffer.depth_texture,
+      0
+    )
+  }
 
   if type == .COLOR_AND_DEPTH || type == .COLOR_DEPTH_AND_NORMAL{
     gl.GenTextures(1, &framebuffer.color_texture)

@@ -1,9 +1,4 @@
 #version 330 core
-layout (location = 2) in vec2 vert_uv;
-
-uniform sampler2D screen_texture;
-uniform sampler2D depth_texture;
-
 out vec2 frag_uv;
 
 void main() {
