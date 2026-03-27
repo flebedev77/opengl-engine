@@ -88,7 +88,7 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
   player.zoom -= scene.mouse.scroll * 0.1
 
   moveinput: Vec3
-  rotation_speed := f32(0.1)
+  rotation_speed := f32(0.01)
   delta_pitch, delta_yaw, delta_roll: f32
   // TODO move this to glfw layer
   if glfw.GetKey(GlfwWindow, glfw.KEY_W) > 0 {
@@ -125,14 +125,27 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
   scene.camera.position = player.position + look_direction * player.zoom
   scene.camera.view_matrix = player.viewmatrix
 
-  forward := Vec3{
-    player.basis_matrix[0][2],
-    player.basis_matrix[1][2],
-    player.basis_matrix[3][2]
+  local_forward := Vec3{
+    player.basis_matrix[2][0],
+    player.basis_matrix[2][1],
+    player.basis_matrix[2][2]
   }
-  player.position += forward * 0.01
+  local_up := Vec3{
+    player.basis_matrix[1][0],
+    player.basis_matrix[1][1],
+    player.basis_matrix[1][2]
+  }
+  local_right := Vec3{
+    player.basis_matrix[0][0],
+    player.basis_matrix[0][1],
+    player.basis_matrix[0][2]
+  }
+  basis_draw_scale := f32(1)
+  player.position += local_forward * 0.01
 
-  debugrenderer_linebatch(&scene.renderer.debug_renderer, {0, 0, 0}, {20, 20, 20}, {1, 0, 0})
+  debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position, player.position + local_forward * basis_draw_scale, {0, 0, 1})
+  debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position, player.position + local_up * basis_draw_scale, {0, 1, 0})
+  debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position, player.position + local_right * basis_draw_scale, {1, 0, 0})
 }
 
 player_debug_update :: proc(scene: ^Scene, player: ^Player) {

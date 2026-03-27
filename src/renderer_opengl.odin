@@ -162,6 +162,9 @@ renderer_render :: proc(renderer: ^Renderer) {
   // scene.renderer.bound_framebuffer = scene.default_framebuffer
   // scene.renderer.bound_framebuffer.size = {FrameBuffer.w, FrameBuffer.h}
   renderer_draw_meshes(renderer)
+  renderer.debug_renderer.shader.parameters.view_matrix = renderer.scene.camera.view_matrix
+  renderer.debug_renderer.shader.parameters.projection_matrix = renderer.scene.camera.projection_matrix
+  debugrenderer_draw(&renderer.debug_renderer)
 
   gl.Disable(gl.DEPTH_TEST)
   // Post processing passes
@@ -193,9 +196,9 @@ renderer_render :: proc(renderer: ^Renderer) {
   render_bind_and_clear_framebuffer(renderer)
   render_mesh(renderer, &renderer.post_process_quad) 
 
-  renderer.debug_renderer.shader.parameters.view_matrix = renderer.scene.camera.view_matrix
-  renderer.debug_renderer.shader.parameters.projection_matrix = renderer.scene.camera.projection_matrix
-  debugrenderer_draw(&renderer.debug_renderer)
+  // renderer.debug_renderer.shader.parameters.view_matrix = renderer.scene.camera.view_matrix
+  // renderer.debug_renderer.shader.parameters.projection_matrix = renderer.scene.camera.projection_matrix
+  // debugrenderer_draw(&renderer.debug_renderer)
 }
 
 render_bind_and_clear_framebuffer :: proc(renderer: ^Renderer) {
