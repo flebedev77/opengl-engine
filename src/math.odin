@@ -1,5 +1,6 @@
 package main
 import "core:math"
+import "core:math/linalg"
 
 Vec4 :: [3]f32
 Vec3 :: [3]f32
@@ -21,6 +22,12 @@ GLOBAL_UP :: Vec3{0, 1, 0}
 
 @(require_results) is_whole :: proc(v: f32) -> bool {
   return v == math.round(v)
+}
+
+@(require_results) vector3_rotate_around_axis :: proc(vector, axis: Vec3, angle: f32) -> Vec3 {
+  rotation_axis := linalg.normalize(axis)
+  rotation := linalg.quaternion_angle_axis_f32(angle, rotation_axis)
+  return linalg.mul(rotation, vector)
 }
 
 @(require_results) rotation_matrix_x :: proc(angle: f32) -> matrix[4,4]f32 {

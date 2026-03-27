@@ -19,7 +19,7 @@ uniform mat4 view_matrix;
 const float PI = 3.141592653589793;
 const float shadow_pcf_border_exponent = 6; // Helps make the transition between nonshadow and shadow more natural and non linear
 const float shadow_pcf_noisiness = 0.1;
-const int shadow_pcf_samples = 2;
+const int shadow_pcf_samples = 8;
 
 const vec2 poisson_offsets[64] = vec2[](
 vec2(0.24772918, 0.42333201), 
@@ -110,22 +110,22 @@ float calculate_shadow(vec4 light_space_pos, vec3 light_dir) {
 
   if (closest_depth < pixel_depth - bias) {
     vec2 texel_size = 1.0 / textureSize(shadowmap_texture, 0);
-    texel_size *= 2;
+    // texel_size *= 2;
     float shadow = 0.0;
 
     // Box sampling
-    // for (int x = -shadow_pcf_samples; x <= shadow_pcf_samples; x++) {
-    //   for (int y = -shadow_pcf_samples; y <= shadow_pcf_samples; y++) {
-    //     vec2 noise_offset = vec2( // NOTE: This could be stored into a texture to avoid redundant calculations
-    //       rand(vec2(x, y)) * 2.0 - 1.0,
-    //       rand(frag_pos.xy) * 2.0 - 1.0
-    //     ) * shadow_pcf_noisiness;
-    //     vec2 sample_pos = (noise_offset + vec2(x, y)) * texel_size;
-    //     float depth = texture(shadowmap_texture, proj_coords.xy + sample_pos).r;
-    //     shadow += (pixel_depth - bias > depth) ? 1.0 : 0.0;
-    //   }
-    // }
-    // shadow /= pow(shadow_pcf_samples * 2.0 + 1.0, 2.0);
+    for (int x = -shadow_pcf_samples; x <= shadow_pcf_samples; x++) {
+      for (int y = -shadow_pcf_samples; y <= shadow_pcf_samples; y++) {
+        vec2 noise_offset = vec2( // NOTE: This could be stored into a texture to avoid redundant calculations
+          rand(vec2(x, y)) * 2.0 - 1.0,
+          rand(frag_pos.xy) * 2.0 - 1.0
+        ) * shadow_pcf_noisiness;
+        vec2 sample_pos = (noise_offset + vec2(x, y)) * texel_size;
+        float depth = texture(shadowmap_texture, proj_coords.xy + sample_pos).r;
+        shadow += (pixel_depth - bias > depth) ? 1.0 : 0.0;
+      }
+    }
+    shadow /= (shadow_pcf_samples * 2) * (shadow_pcf_samples * 2);
 
     // Nvidia hardware accelerated sampling https://developer.nvidia.com/gpugems/gpugems/part-ii-lighting-and-shadows/chapter-11-shadow-map-antialiasing
     // for (float x = -1.5; x <= 1.5; x++) {
@@ -157,16 +157,16 @@ float calculate_shadow(vec4 light_space_pos, vec3 light_dir) {
     // shadow /= samples;
 
     // Poisson sampling
-    for (int i = 0; i < 64; i++) {
-        vec2 noise_offset = vec2(
-            rand(poisson_offsets[i]) * 2.0 - 1.0,
-            rand(poisson_offsets[i] + vec2(1, 1)) * 2.0 - 1.0
-        ) * shadow_pcf_noisiness;
-        vec2 sample_pos = (poisson_offsets[i] + noise_offset) * texel_size;
-        float depth = texture(shadowmap_texture, proj_coords.xy + sample_pos).r;
-        shadow += (pixel_depth - bias > depth) ? 1.0 : 0.0;
-    }
-    shadow /= 64;
+    // for (int i = 0; i < 64; i++) {
+    //     vec2 noise_offset = vec2(
+    //         rand(poisson_offsets[i]) * 2.0 - 1.0,
+    //         rand(poisson_offsets[i] + vec2(1, 1)) * 2.0 - 1.0
+    //     ) * shadow_pcf_noisiness;
+    //     vec2 sample_pos = (poisson_offsets[i] + noise_offset) * texel_size;
+    //     float depth = texture(shadowmap_texture, proj_coords.xy + sample_pos).r;
+    //     shadow += (pixel_depth - bias > depth) ? 1.0 : 0.0;
+    // }
+    // shadow /= 64;
 
     // shadow = 1;
 
@@ -189,7 +189,7 @@ void main() {
   float specular = clamp(
       pow(
         dot(light_view_midway, frag_normal),
-        20 - specularity * 30
+        40 - specularity * 25
       ),
       0,
       1

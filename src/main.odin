@@ -135,7 +135,7 @@ main :: proc() {
 
   albedo_texture := texture_load("assets/textures/box_placeholder.ppm")
   airplane_texture := texture_load("assets/textures/su_body.ppm")
-  angel_texture := texture_load("assets/models/pavlov/albedo.ppm")
+  // angel_texture := texture_load("assets/models/pavlov/albedo.ppm")
 
   default_material := Material{
     is_valid = true,
@@ -149,12 +149,12 @@ main :: proc() {
     albedo_tint = {0,0,0},
     shader = shader
   }
-  angel_material := Material{
-    is_valid = true,
-    albedo_texture = angel_texture,
-    roughness_texture = texture_load("assets/models/pavlov/roughness.ppm"),
-    shader = shader
-  }
+  // angel_material := Material{
+  //   is_valid = true,
+  //   albedo_texture = angel_texture,
+  //   roughness_texture = texture_load("assets/models/pavlov/roughness.ppm"),
+  //   shader = shader
+  // }
   sky_material := Material{
     is_valid = true,
     shader = sky_shader
@@ -174,10 +174,10 @@ main :: proc() {
   cube_mesh.model_matrix = translation_matrix({1, 0, 1})
   cube_mesh.model_matrix *= scale_matrix({1, 0.8, 1})
 
-  obj_mesh := asset_loader_obj_mesh("assets/models/pavlov.obj", angel_material, true)
   scl := f32(0.02)
-  obj_mesh.model_matrix *= translation_matrix({0, 0, 0})
-  obj_mesh.model_matrix *= scale_matrix({scl, scl, scl})
+  // obj_mesh := asset_loader_obj_mesh("assets/models/pavlov.obj", angel_material, true)
+  // obj_mesh.model_matrix *= translation_matrix({0, 0, 0})
+  // obj_mesh.model_matrix *= scale_matrix({scl, scl, scl})
 
   
   sky_mesh := asset_loader_obj_mesh("assets/models/skydome.obj", sky_material)
@@ -190,9 +190,11 @@ main :: proc() {
   
   append(&scene.meshes, cube_mesh)
   append(&scene.meshes, sky_mesh)
-  append(&scene.meshes, obj_mesh)
+  // append(&scene.meshes, obj_mesh)
   append(&scene.meshes, light_mesh)
   append(&scene.meshes, ground_mesh)
+
+  // fmt.printfln("size_of(Vec3) = %d", size_of(Vec3))
 
 
   for glfw.WindowShouldClose(GlfwWindow) == false {

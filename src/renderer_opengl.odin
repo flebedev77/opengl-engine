@@ -71,6 +71,7 @@ Mesh :: struct {
 }
 
 Renderer :: struct {
+  debug_renderer: DebugRenderer,
   scene: ^Scene,
   bound_framebuffer: Framebuffer,
   default_framebuffer: Framebuffer,
@@ -86,12 +87,15 @@ Renderer :: struct {
 }
 
 renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
+  gl.LineWidth(2.0)
   gl.Enable(gl.DEPTH_TEST)
   gl.Enable(gl.FRAMEBUFFER_SRGB)
   gl.Enable(gl.MULTISAMPLE)
   gl.Enable(gl.CULL_FACE)
   gl.CullFace(gl.BACK)
   gl.FrontFace(gl.CCW)
+
+  debugrenderer_init(&renderer.debug_renderer)
 
   // gl.PolygonMode(gl.FRONT_AND_BACK, gl.LINE)// : GL_FILL); 
 
@@ -146,8 +150,11 @@ renderer_draw_meshes :: proc(renderer: ^Renderer, material_override: Material = 
 
 renderer_render :: proc(renderer: ^Renderer) {
   // gl.PolygonMode(gl.FRONT_AND_BACK, gl.LINE)// : GL_FILL); 
+  gl.Enable(gl.DEPTH_TEST)
   renderer.bound_framebuffer = renderer.shadowmap_framebuffer
+  // gl.CullFace(gl.FRONT) // REVISIT
   renderer_draw_meshes(renderer, renderer.shadowmap_material)
+  // gl.CullFace(gl.BACK)
   gl.ActiveTexture(gl.TEXTURE1)
   gl.BindTexture(gl.TEXTURE_2D, renderer.shadowmap_framebuffer.depth_texture) 
 
@@ -156,6 +163,7 @@ renderer_render :: proc(renderer: ^Renderer) {
   // scene.renderer.bound_framebuffer.size = {FrameBuffer.w, FrameBuffer.h}
   renderer_draw_meshes(renderer)
 
+  gl.Disable(gl.DEPTH_TEST)
   // Post processing passes
   gl.PolygonMode(gl.FRONT_AND_BACK, gl.FILL); 
   gl.ActiveTexture(gl.TEXTURE2)
@@ -184,6 +192,10 @@ renderer_render :: proc(renderer: ^Renderer) {
   renderer.bound_framebuffer.size = {FrameBuffer.w, FrameBuffer.h}
   render_bind_and_clear_framebuffer(renderer)
   render_mesh(renderer, &renderer.post_process_quad) 
+
+  renderer.debug_renderer.shader.parameters.view_matrix = renderer.scene.camera.view_matrix
+  renderer.debug_renderer.shader.parameters.projection_matrix = renderer.scene.camera.projection_matrix
+  debugrenderer_draw(&renderer.debug_renderer)
 }
 
 render_bind_and_clear_framebuffer :: proc(renderer: ^Renderer) {
@@ -317,7 +329,7 @@ mesh_draw :: proc(mesh: Mesh, material_override: Material = {}) {
     gl.Uniform1i(shader.parameters.roughness_texture_location, 2)
 
     gl.UniformMatrix4fv(shader.parameters.model_matrix_location, 1, gl.FALSE, &mesh.model_matrix[0,0])
-    gl.UniformMatrix4fv(shader.parameters.projection_matrix_location, 1, gl.FALSE, &shader.parameters.projection_matrix[0,0])
+    // gl.UniformMatrix4fv(shader.parameters.projection_matrix_location, 1, gl.FALSE, &shader.parameters.projection_matrix[0,0])
     gl.UniformMatrix4fv(shader.parameters.view_matrix_location, 1, gl.FALSE, &shader.parameters.view_matrix[0,0])
     gl.UniformMatrix4fv(shader.parameters.shadowmap_matrix_location, 1, gl.FALSE, &shader.parameters.shadowmap_matrix[0,0])
 
@@ -590,4 +602,52 @@ framebuffer_delete :: proc(framebuffer: Framebuffer) {
   gl.DeleteTextures(1, &framebuffer.color_texture)
   gl.DeleteTextures(1, &framebuffer.depth_texture)
   gl.DeleteFramebuffers(1, &framebuffer.framebuffer)
+}
+
+DebugVertex :: struct {
+  position, color: Vec3
+}
+
+DebugRenderer :: struct {
+  shader: Shader,
+  line_vertices: [dynamic]DebugVertex,
+  vao,
+  vbo: GpuID
+}
+
+debugrenderer_init :: proc(debug_renderer: ^DebugRenderer) {
+  #assert(size_of(Vec3) == 12)
+  gl.GenVertexArrays(1, &debug_renderer.vao)
+  gl.BindVertexArray(debug_renderer.vao)
+
+  gl.GenBuffers(1, &debug_renderer.vbo)
+  gl.BindBuffer(gl.ARRAY_BUFFER, debug_renderer.vbo)
+  gl.BufferData(gl.ARRAY_BUFFER, 0, nil, gl.DYNAMIC_DRAW)
+
+  gl.EnableVertexAttribArray(0)
+  gl.VertexAttribPointer(0, 3, gl.FLOAT, gl.FALSE, size_of(DebugVertex), offset_of(DebugVertex, position))
+  gl.EnableVertexAttribArray(1)
+  gl.VertexAttribPointer(1, 3, gl.FLOAT, gl.FALSE, size_of(DebugVertex), offset_of(DebugVertex, color))
+
+  debug_renderer.shader = asset_loader_material(0, 0, "debug", .THREE_DIMENSIONAL).shader
+}
+
+debugrenderer_draw :: proc(debug_renderer: ^DebugRenderer) {
+  if len(debug_renderer.line_vertices) == 0 do return
+
+  gl.BindVertexArray(debug_renderer.vao)
+  gl.BindBuffer(gl.ARRAY_BUFFER, debug_renderer.vbo)
+  gl.BufferData(gl.ARRAY_BUFFER, len(debug_renderer.line_vertices) * size_of(DebugVertex), &debug_renderer.line_vertices[0], gl.DYNAMIC_DRAW)
+
+  gl.UseProgram(debug_renderer.shader.program)
+  gl.UniformMatrix4fv(debug_renderer.shader.parameters.view_matrix_location, 1, gl.FALSE, &debug_renderer.shader.parameters.view_matrix[0,0])
+  gl.UniformMatrix4fv(debug_renderer.shader.parameters.projection_matrix_location, 1, gl.FALSE, &debug_renderer.shader.parameters.projection_matrix[0,0])
+  gl.DrawArrays(gl.LINES, 0, i32(len(debug_renderer.line_vertices)))
+
+  clear(&debug_renderer.line_vertices)
+}
+
+debugrenderer_linebatch :: proc(debug_renderer: ^DebugRenderer, start, end, color: Vec3) {
+  append(&debug_renderer.line_vertices, DebugVertex{start, color})
+  append(&debug_renderer.line_vertices, DebugVertex{end, color})
 }

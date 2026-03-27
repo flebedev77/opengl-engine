@@ -17,11 +17,13 @@ Player :: struct {
   is_flying: bool,
   debug_movement: bool,
   mesh: Mesh,
-  basis: Basis
+  basis: Basis,
+  basis_matrix: Mat4
 }
 
 player_init :: proc(player: ^Player) {
-  player.position = {0, 0.3, 0}
+  // player.position = {0, 0.3, 0}
+  player.position = {0, 2, 0}
   player.walk_speed = PLAYER_WALK_SPEED
   player.look_sensitivity = PLAYER_LOOK_SENSITIVITY
   player.is_flying = false
@@ -32,8 +34,9 @@ player_init :: proc(player: ^Player) {
   player.basis = {
     up = GLOBAL_UP,
     right = {1, 0, 0},
-    forward = {0, 0, -1}
+    forward = {0, 0, 1}
   }
+  player.basis_matrix = identity_matrix()
 
   player_material := Material{
     is_valid = true,
@@ -84,34 +87,52 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
   )
   player.zoom -= scene.mouse.scroll * 0.1
 
-  forward := linalg.normalize(Vec3{look_direction.x, 0, look_direction.z}) 
-
-
-  right := linalg.cross(forward, GLOBAL_UP)
-
   moveinput: Vec3
   rotation_speed := f32(0.1)
+  delta_pitch, delta_yaw, delta_roll: f32
   // TODO move this to glfw layer
   if glfw.GetKey(GlfwWindow, glfw.KEY_W) > 0 {
     player.pitch += rotation_speed
+    delta_pitch = rotation_speed
   }
   if glfw.GetKey(GlfwWindow, glfw.KEY_S) > 0 {
     player.pitch -= rotation_speed
+    delta_pitch = -rotation_speed
   }
   if glfw.GetKey(GlfwWindow, glfw.KEY_A) > 0 {
     player.yaw -= rotation_speed
+    delta_yaw = rotation_speed
   }
   if glfw.GetKey(GlfwWindow, glfw.KEY_D) > 0 {
     player.yaw += rotation_speed
+    delta_yaw = -rotation_speed
+  }
+  if glfw.GetKey(GlfwWindow, glfw.KEY_Q) > 0 {
+    player.roll -= rotation_speed
+    delta_roll = -rotation_speed
+  }
+  if glfw.GetKey(GlfwWindow, glfw.KEY_E) > 0 {
+    player.roll += rotation_speed
+    delta_roll = rotation_speed
   }
   if glfw.GetKey(GlfwWindow, glfw.KEY_SPACE) > 0 {
   }
 
-  player.position = {0, 2, 0}
-
+  player.basis_matrix *= linalg.matrix4_rotate_f32(delta_pitch, {1, 0, 0})
+  player.basis_matrix *= linalg.matrix4_rotate_f32(delta_yaw, {0, 1, 0})
+  player.basis_matrix *= linalg.matrix4_rotate_f32(delta_roll, {0, 0, 1})
 
   scene.camera.position = player.position + look_direction * player.zoom
   scene.camera.view_matrix = player.viewmatrix
+
+  forward := Vec3{
+    player.basis_matrix[0][2],
+    player.basis_matrix[1][2],
+    player.basis_matrix[3][2]
+  }
+  player.position += forward * 0.01
+
+  debugrenderer_linebatch(&scene.renderer.debug_renderer, {0, 0, 0}, {20, 20, 20}, {1, 0, 0})
 }
 
 player_debug_update :: proc(scene: ^Scene, player: ^Player) {
@@ -211,7 +232,9 @@ player_render :: proc(scene: ^Scene, player: ^Player, material_override: Materia
   scale := f32(0.01)
   player.mesh.model_matrix = identity_matrix() 
   player.mesh.model_matrix *= translation_matrix(player.position)
-  player.mesh.model_matrix *= linalg.matrix4_look_at_f32({0,0,0}, forward_rotation, {0, 1, 0})
   player.mesh.model_matrix *= scale_matrix({scale, scale, scale})
+  player.mesh.model_matrix *= player.basis_matrix
+  player.mesh.model_matrix *= linalg.matrix4_from_euler_angle_y_f32(math.PI/2)
+  // player.mesh.model_matrix *= linalg.matrix4_look_at_f32({0,0,0}, player.basis.forward, player.basis.up)
   render_mesh(scene.renderer, &player.mesh, material_override)
 }
