@@ -17,11 +17,11 @@ Player :: struct {
   is_flying: bool,
   debug_movement: bool,
   mesh: Mesh,
-  basis: Basis,
-  basis_matrix: Mat4
+  basis_matrix: Mat4,
+  scene: ^Scene
 }
 
-player_init :: proc(player: ^Player) {
+player_init :: proc(scene: ^Scene, player: ^Player) {
   // player.position = {0, 0.3, 0}
   player.position = {0, 2, 0}
   player.walk_speed = PLAYER_WALK_SPEED
@@ -31,18 +31,13 @@ player_init :: proc(player: ^Player) {
   player.camera_pitch = math.PI * 3/2
   player.zoom = 1.2
 
-  player.basis = {
-    up = GLOBAL_UP,
-    right = {1, 0, 0},
-    forward = {0, 0, 1}
-  }
   player.basis_matrix = identity_matrix()
 
   player_material := Material{
     is_valid = true,
-    albedo_texture = texture_load("assets/models/mig/mig.ppm"),
+    albedo_texture = texture_load("assets/models/mig/textures/BaseColor.png"),
     roughness_texture = texture_load("assets/models/mig/textures/metallic.png"),
-    shader = shader
+    shader = scene.renderer.default_shader
   }
   player.mesh = asset_loader_obj_mesh("assets/models/mig/mig.obj", player_material)
 }
@@ -88,7 +83,8 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
   player.zoom -= scene.mouse.scroll * 0.1
 
   moveinput: Vec3
-  rotation_speed := f32(0.01)
+  // rotation_speed := f32(0.01)
+  rotation_speed := f32(0.1)
   delta_pitch, delta_yaw, delta_roll: f32
   // TODO move this to glfw layer
   if glfw.GetKey(GlfwWindow, glfw.KEY_W) > 0 {
@@ -141,7 +137,7 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
     player.basis_matrix[0][2]
   }
   basis_draw_scale := f32(1)
-  player.position += local_forward * 0.01
+  player.position += local_forward * 0.05
 
   debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position, player.position + local_forward * basis_draw_scale, {0, 0, 1})
   debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position, player.position + local_up * basis_draw_scale, {0, 1, 0})
@@ -248,6 +244,5 @@ player_render :: proc(scene: ^Scene, player: ^Player, material_override: Materia
   player.mesh.model_matrix *= scale_matrix({scale, scale, scale})
   player.mesh.model_matrix *= player.basis_matrix
   player.mesh.model_matrix *= linalg.matrix4_from_euler_angle_y_f32(math.PI/2)
-  // player.mesh.model_matrix *= linalg.matrix4_look_at_f32({0,0,0}, player.basis.forward, player.basis.up)
   render_mesh(scene.renderer, &player.mesh, material_override)
 }

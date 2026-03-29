@@ -14,10 +14,10 @@ Scene :: struct {
 
 scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
   platform_init(scene)
-  player_init(&scene.player)
+  renderer_init(renderer, scene)
+  player_init(scene, &scene.player)
   scene.delta_time = 16.666;
 
-  renderer_init(renderer, scene)
   // scene.post_process_quad = mesh_make_quad()
 }
 

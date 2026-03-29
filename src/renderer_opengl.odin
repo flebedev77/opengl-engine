@@ -39,6 +39,7 @@ ShaderParameters :: struct {
   view_matrix,
   inv_projection_matrix,
   projection_matrix: Mat4,
+  sun_position,
   camera_position: Vec3
 }
 
@@ -84,9 +85,14 @@ Renderer :: struct {
   ssaoblur_pass_material: Material,
   final_pass_material: Material,
   post_process_quad: Mesh,
+  shadowmap_matrix: Mat4,
+  default_shader: Shader,
+  sun_position: Vec3,
 }
 
 renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
+  renderer.sun_position = {10, 50, 10}
+
   gl.LineWidth(2.0)
   gl.Enable(gl.DEPTH_TEST)
   gl.Enable(gl.FRAMEBUFFER_SRGB)
@@ -119,29 +125,20 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
 
   renderer.post_process_quad = mesh_make_quad(renderer.final_pass_material)
 
-  light_viewmatrix := linalg.matrix4_look_at_f32(
-    linalg.normalize(Vec3{10, 50, 10}) * 5, 
-    {0, 0, 0},
-    {0, 1, 0}
-  )
-  lightmap_proj_size := f32(3)
-  light_projmatrix := orthographic_projection_matrix(
-    -lightmap_proj_size,
-    lightmap_proj_size,
-    lightmap_proj_size,
-    -lightmap_proj_size,
-    0.1, 26)
-  shadowmap_matrix := light_projmatrix * light_viewmatrix
-
   renderer.shadowmap_material = asset_loader_material(0, 0, "shadowmap", .SHADOWMAP)
-  renderer.shadowmap_material.shader.parameters.shadowmap_matrix = shadowmap_matrix
+
+  renderer.default_shader = shader_compileprogram(
+    cstring(#load("../assets/shaders/frag.glsl")),
+    cstring(#load("../assets/shaders/vert.glsl")),
+    .THREE_DIMENSIONAL
+  )
 }
 
 renderer_delete :: proc(renderer: ^Renderer) {
+  gl.DeleteProgram(renderer.default_shader.program)
 }
 
 renderer_draw_meshes :: proc(renderer: ^Renderer, material_override: Material = {}) {
-  render_bind_and_clear_framebuffer(renderer)
   player_render(renderer.scene, &renderer.scene.player, material_override)
   for &mesh in renderer.scene.meshes {
     render_mesh(renderer, &mesh, material_override)
@@ -150,18 +147,32 @@ renderer_draw_meshes :: proc(renderer: ^Renderer, material_override: Material = 
 
 renderer_render :: proc(renderer: ^Renderer) {
   // gl.PolygonMode(gl.FRONT_AND_BACK, gl.LINE)// : GL_FILL); 
+  light_viewmatrix := linalg.matrix4_look_at_f32(
+    renderer.scene.camera.position + linalg.normalize(Vec3{10, 50, 10}) * 5, 
+    renderer.scene.camera.position,
+    {0, 1, 0}
+  )
+  lightmap_proj_size := f32(5)
+  light_projmatrix := orthographic_projection_matrix(
+    -lightmap_proj_size,
+    lightmap_proj_size,
+    lightmap_proj_size,
+    -lightmap_proj_size,
+    0.1, 10)
+  renderer.shadowmap_matrix = light_projmatrix * light_viewmatrix
+
   gl.Enable(gl.DEPTH_TEST)
-  renderer.bound_framebuffer = renderer.shadowmap_framebuffer
+  renderer_bind_and_clear_framebuffer(renderer, renderer.shadowmap_framebuffer)
   // gl.CullFace(gl.FRONT) // REVISIT
   renderer_draw_meshes(renderer, renderer.shadowmap_material)
   // gl.CullFace(gl.BACK)
   gl.ActiveTexture(gl.TEXTURE1)
   gl.BindTexture(gl.TEXTURE_2D, renderer.shadowmap_framebuffer.depth_texture) 
 
-  renderer.bound_framebuffer = renderer.back_framebuffer
-  // scene.renderer.bound_framebuffer = scene.default_framebuffer
-  // scene.renderer.bound_framebuffer.size = {FrameBuffer.w, FrameBuffer.h}
+  // scene.renderer.back_framebuffer.size = {FrameBuffer.w, FrameBuffer.h}
+  renderer_bind_and_clear_framebuffer(renderer, renderer.back_framebuffer)
   renderer_draw_meshes(renderer)
+
   renderer.debug_renderer.shader.parameters.view_matrix = renderer.scene.camera.view_matrix
   renderer.debug_renderer.shader.parameters.projection_matrix = renderer.scene.camera.projection_matrix
   debugrenderer_draw(&renderer.debug_renderer)
@@ -179,21 +190,18 @@ renderer_render :: proc(renderer: ^Renderer) {
   gl.BindTexture(gl.TEXTURE_2D, renderer.ssao_framebuffer.red_texture)
 
   // SSAO
-  renderer.bound_framebuffer = renderer.ssao_framebuffer
-  render_bind_and_clear_framebuffer(renderer)
+  renderer_bind_and_clear_framebuffer(renderer, renderer.ssao_framebuffer)
   render_mesh(renderer, &renderer.post_process_quad, renderer.ssao_pass_material)
 
   // SSAO blur pass
-  renderer.bound_framebuffer = renderer.ssaoblur_framebuffer
-  render_bind_and_clear_framebuffer(renderer)
+  renderer_bind_and_clear_framebuffer(renderer, renderer.ssaoblur_framebuffer)
   render_mesh(renderer, &renderer.post_process_quad, renderer.ssaoblur_pass_material)
   gl.ActiveTexture(gl.TEXTURE5)
   gl.BindTexture(gl.TEXTURE_2D, renderer.ssaoblur_framebuffer.red_texture)
 
   // Final combination pass
-  renderer.bound_framebuffer = renderer.default_framebuffer
-  renderer.bound_framebuffer.size = {FrameBuffer.w, FrameBuffer.h}
-  render_bind_and_clear_framebuffer(renderer)
+  renderer.default_framebuffer.size = {FrameBuffer.w, FrameBuffer.h}
+  renderer_bind_and_clear_framebuffer(renderer, renderer.default_framebuffer)
   render_mesh(renderer, &renderer.post_process_quad) 
 
   // renderer.debug_renderer.shader.parameters.view_matrix = renderer.scene.camera.view_matrix
@@ -201,11 +209,12 @@ renderer_render :: proc(renderer: ^Renderer) {
   // debugrenderer_draw(&renderer.debug_renderer)
 }
 
-render_bind_and_clear_framebuffer :: proc(renderer: ^Renderer) {
-  gl.BindFramebuffer(gl.FRAMEBUFFER, renderer.bound_framebuffer.framebuffer)
+renderer_bind_and_clear_framebuffer :: proc(renderer: ^Renderer, framebuffer: Framebuffer) {
+  renderer.bound_framebuffer = framebuffer
+  gl.BindFramebuffer(gl.FRAMEBUFFER, framebuffer.framebuffer)
   gl.Viewport(0, 0,
-    renderer.bound_framebuffer.size.x,
-    renderer.bound_framebuffer.size.y
+    framebuffer.size.x,
+    framebuffer.size.y
   )
   gl.Clear(gl.DEPTH_BUFFER_BIT | gl.COLOR_BUFFER_BIT)
 }
@@ -218,10 +227,12 @@ render_mesh :: proc(renderer: ^Renderer, mesh: ^Mesh, material_override: Materia
     shader_parameters = &material_override.shader.parameters
   }
 
+  shader_parameters.shadowmap_matrix = renderer.shadowmap_matrix
   shader_parameters.view_matrix = renderer.scene.camera.view_matrix
   shader_parameters.projection_matrix = renderer.scene.camera.projection_matrix
   shader_parameters.inv_projection_matrix = renderer.scene.camera.inv_projection_matrix
   shader_parameters.camera_position = renderer.scene.camera.position
+  shader_parameters.sun_position = renderer.sun_position
   mesh_draw(mesh^, material_override)
 }
 
@@ -313,8 +324,7 @@ mesh_draw :: proc(mesh: Mesh, material_override: Material = {}) {
     gl.Uniform1i(shader.parameters.ssao_texture_location, 5)
     gl.DrawElements(gl.TRIANGLE_STRIP, 4, gl.UNSIGNED_INT, cast(rawptr)(cast(uintptr)0))
   } else {
-    light_pos := Vec3{10, 50, 10} // TODO move this
-    gl.Uniform3fv(shader.parameters.light_position_location, 1, &light_pos[0])
+    gl.Uniform3fv(shader.parameters.light_position_location, 1, &shader.parameters.sun_position[0])
     gl.Uniform3fv(shader.parameters.camera_position_location, 1, &shader.parameters.camera_position[0])
 
     if material.albedo_tint == {0, 0, 0} {

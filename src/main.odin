@@ -68,6 +68,11 @@ main :: proc() {
   renderer_info()
   update_framebuffer()
 
+  scene: Scene
+  renderer: Renderer
+  scene_init(&scene, &renderer)
+  defer scene_delete(&scene)
+
   shader = shader_compileprogram(
     cstring(#load("../assets/shaders/frag.glsl")),
     cstring(#load("../assets/shaders/vert.glsl")),
@@ -97,46 +102,17 @@ main :: proc() {
   )
   defer gl.DeleteProgram(sky_shader.program)
 
-  scene: Scene
-  renderer: Renderer
-  scene_init(&scene, &renderer)
-  defer scene_delete(&scene)
-
-  // shadowmap_width, shadowmap_height: i32 = 4096, 4096
-  // shadowmap_material: Material
-  // shadowmap_framebuffer, shadowmap_texture: u32
-  // gl.GenTextures(1, &shadowmap_texture)
-  // gl.BindTexture(gl.TEXTURE_2D, shadowmap_texture)
-  // gl.TexImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT, shadowmap_width, shadowmap_height, 0, gl.DEPTH_COMPONENT, gl.FLOAT, nil)
-  // gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-  // gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-  //
-  // gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_BORDER)
-  // gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_BORDER)
-  // border_col: []f32 = {1, 1, 1}
-  // gl.TexParameterfv(gl.TEXTURE_2D, gl.TEXTURE_BORDER_COLOR, &border_col[0])
-  //
-  // gl.GenFramebuffers(1, &shadowmap_framebuffer)
-  // gl.BindFramebuffer(gl.FRAMEBUFFER, shadowmap_framebuffer)
-  // gl.DrawBuffer(gl.NONE)
-  // gl.ReadBuffer(gl.NONE)
-  // gl.FramebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, shadowmap_texture, 0)
-  // if gl.CheckFramebufferStatus(gl.FRAMEBUFFER) != gl.FRAMEBUFFER_COMPLETE {
-  //   fmt.printfln("Shadow framebuffer not complete!")
-  //   fmt.printfln("%d", gl.CheckFramebufferStatus(gl.FRAMEBUFFER))
-  // }
-  // gl.BindFramebuffer(gl.FRAMEBUFFER, 0)
-  //
-  // renderer.shadowmap_framebuffer = {
-  //   framebuffer = shadowmap_framebuffer,
-  //   size = {shadowmap_width, shadowmap_height}
-  // }
-
 
   albedo_texture := texture_load("assets/textures/box_placeholder.ppm")
   airplane_texture := texture_load("assets/textures/su_body.ppm")
   // angel_texture := texture_load("assets/models/pavlov/albedo.ppm")
 
+  // angel_material := Material{
+  //   is_valid = true,
+  //   albedo_texture = angel_texture,
+  //   roughness_texture = texture_load("assets/models/pavlov/roughness.ppm"),
+  //   shader = shader
+  // }
   default_material := Material{
     is_valid = true,
     albedo_texture = albedo_texture,
@@ -149,23 +125,10 @@ main :: proc() {
     albedo_tint = {0,0,0},
     shader = shader
   }
-  // angel_material := Material{
-  //   is_valid = true,
-  //   albedo_texture = angel_texture,
-  //   roughness_texture = texture_load("assets/models/pavlov/roughness.ppm"),
-  //   shader = shader
-  // }
   sky_material := Material{
     is_valid = true,
     shader = sky_shader
   }
-
-  // shadowmap_material = Material{
-  //   is_valid = true,
-  //   shader = shadowmap_shader
-  // }
-  // renderer.shadowmap_material = shadowmap_material
-
   glfw.SetWindowRefreshCallback(GlfwWindow, window_refresh)
 
   light_mesh := mesh_make_cube(default_material, {10, 10, 10})  
@@ -178,7 +141,6 @@ main :: proc() {
   // obj_mesh := asset_loader_obj_mesh("assets/models/pavlov.obj", angel_material, true)
   // obj_mesh.model_matrix *= translation_matrix({0, 0, 0})
   // obj_mesh.model_matrix *= scale_matrix({scl, scl, scl})
-
   
   sky_mesh := asset_loader_obj_mesh("assets/models/skydome.obj", sky_material)
   sky_mesh.model_matrix *= scale_matrix({500, 500, 500})
