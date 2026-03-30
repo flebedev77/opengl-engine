@@ -147,6 +147,7 @@ main :: proc() {
   
   sky_mesh := asset_loader_obj_mesh("assets/models/skydome.obj", sky_material)
   sky_mesh.model_matrix *= scale_matrix({500, 500, 500})
+  scene.sky_mesh = sky_mesh
 
   ground_mesh := asset_loader_obj_mesh("assets/models/ground_colors.obj", default_material)
   scl = 0.2
@@ -154,7 +155,6 @@ main :: proc() {
   ground_mesh.model_matrix *= translation_matrix({0, 0, 0})
   
   append(&scene.meshes, cube_mesh)
-  append(&scene.meshes, sky_mesh)
   // append(&scene.meshes, obj_mesh)
   append(&scene.meshes, light_mesh)
   append(&scene.meshes, ground_mesh)

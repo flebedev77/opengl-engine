@@ -112,6 +112,7 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
     delta_roll = rotation_speed
   }
   if glfw.GetKey(GlfwWindow, glfw.KEY_SPACE) > 0 {
+    player.is_flying = !player.is_flying
   }
 
   player.basis_matrix *= linalg.matrix4_rotate_f32(delta_pitch, {1, 0, 0})
@@ -137,7 +138,8 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
     player.basis_matrix[0][2]
   }
   basis_draw_scale := f32(1)
-  player.position += local_forward * 0.05
+
+  if player.is_flying do player.position += local_forward * 0.05
 
   debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position, player.position + local_forward * basis_draw_scale, {0, 0, 1})
   debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position, player.position + local_up * basis_draw_scale, {0, 1, 0})

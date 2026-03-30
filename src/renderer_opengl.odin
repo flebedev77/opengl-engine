@@ -98,7 +98,7 @@ Renderer :: struct {
 renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   renderer.sun_position = {10, 50, 10}
 
-  gl.LineWidth(2.0)
+  gl.LineWidth(5.0)
   gl.Enable(gl.DEPTH_TEST)
   gl.Enable(gl.FRAMEBUFFER_SRGB)
   gl.Enable(gl.MULTISAMPLE)
@@ -108,14 +108,12 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
 
   debugrenderer_init(&renderer.debug_renderer)
 
-  // gl.PolygonMode(gl.FRONT_AND_BACK, gl.LINE)// : GL_FILL); 
-
   renderer.scene = scene
   scene.renderer = renderer
 
-  // TODO: Make this resizable
+  // TODO: Make the resize on window change
   framebuffer_init(&renderer.prepass_framebuffer, {WINDOW_WIDTH, WINDOW_HEIGHT}, {.NORMAL, .DEPTH})
-  framebuffer_init(&renderer.back_framebuffer, {WINDOW_WIDTH, WINDOW_HEIGHT}, {.COLOR, .DEPTH}, true)
+  framebuffer_init(&renderer.back_framebuffer, {WINDOW_WIDTH, WINDOW_HEIGHT}, {.COLOR, .DEPTH}, true, 8)
   framebuffer_init(&renderer.msaa_blitted_framebuffer, {WINDOW_WIDTH, WINDOW_HEIGHT}, {.COLOR})
   framebuffer_init(&renderer.shadowmap_framebuffer, {4096, 4096}, {.DEPTH})
 
@@ -155,6 +153,8 @@ renderer_draw_meshes :: proc(renderer: ^Renderer, material_override: Material = 
 
 renderer_render :: proc(renderer: ^Renderer) {
   // gl.PolygonMode(gl.FRONT_AND_BACK, gl.LINE)// : GL_FILL); 
+
+  // Shadowmap pass
   light_viewmatrix := linalg.matrix4_look_at_f32(
     renderer.scene.camera.position + linalg.normalize(Vec3{10, 50, 10}) * 5, 
     renderer.scene.camera.position,
@@ -177,12 +177,15 @@ renderer_render :: proc(renderer: ^Renderer) {
   gl.ActiveTexture(gl.TEXTURE1)
   gl.BindTexture(gl.TEXTURE_2D, renderer.shadowmap_framebuffer.depth_texture) 
 
+  // Prepass
   renderer_bind_and_clear_framebuffer(renderer, renderer.prepass_framebuffer)
   renderer_draw_meshes(renderer, renderer.prepass_material)
 
 
+  // MSAA forward pass
   // scene.renderer.back_framebuffer.size = {FrameBuffer.w, FrameBuffer.h}
   renderer_bind_and_clear_framebuffer(renderer, renderer.back_framebuffer)
+  render_mesh(renderer, &renderer.scene.sky_mesh)
   renderer_draw_meshes(renderer)
 
   renderer.debug_renderer.shader.parameters.view_matrix = renderer.scene.camera.view_matrix

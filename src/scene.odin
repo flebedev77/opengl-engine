@@ -6,6 +6,7 @@ import gl "vendor:OpenGL"
 Scene :: struct {
   camera: Camera,
   player: Player,
+  sky_mesh: Mesh,
   mouse: Mouse,
   meshes: [dynamic]Mesh,
   renderer: ^Renderer,
@@ -48,5 +49,6 @@ scene_delete :: proc(scene: ^Scene, verbose := false) {
     shader_delete(mesh.material.shader)
     mesh_delete(mesh)
   }
+  shader_delete(scene.sky_mesh.material.shader)
   delete(scene.meshes)
 }
