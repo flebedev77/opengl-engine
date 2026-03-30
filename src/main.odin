@@ -9,8 +9,8 @@ import "core:math/linalg"
 import "core:math"
 
 // TODO: Move all constants to a .ini file
-WINDOW_WIDTH :: 800
-WINDOW_HEIGHT :: 600
+WINDOW_WIDTH :: 1920
+WINDOW_HEIGHT :: 1080
 
 MIN_WINDOW_WIDTH :: 600
 MIN_WINDOW_HEIGHT :: 480
@@ -55,7 +55,10 @@ main :: proc() {
   glfw.WindowHint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
   glfw.WindowHint(glfw.SAMPLES, 4)
 
-  GlfwWindow = glfw.CreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Hello world", nil, nil)
+  monitor := glfw.GetPrimaryMonitor()
+  monitor_mode := glfw.GetVideoMode(monitor)
+
+  GlfwWindow = glfw.CreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Hello world", monitor, nil)
   defer glfw.DestroyWindow(GlfwWindow)
   assert(GlfwWindow != nil)
 

@@ -74,16 +74,21 @@ Mesh :: struct {
 Renderer :: struct {
   debug_renderer: DebugRenderer,
   scene: ^Scene,
+
   bound_framebuffer: Framebuffer,
   default_framebuffer: Framebuffer,
+  prepass_framebuffer: Framebuffer,
   back_framebuffer: Framebuffer,
+  msaa_blitted_framebuffer: Framebuffer,
   ssao_framebuffer: Framebuffer,
   ssaoblur_framebuffer: Framebuffer,
   shadowmap_framebuffer: Framebuffer,
+
   shadowmap_material: Material,
   ssao_pass_material: Material,
   ssaoblur_pass_material: Material,
   final_pass_material: Material,
+  prepass_material: Material,
   post_process_quad: Mesh,
   shadowmap_matrix: Mat4,
   default_shader: Shader,
@@ -109,15 +114,17 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   scene.renderer = renderer
 
   // TODO: Make this resizable
-  framebuffer_init(&renderer.back_framebuffer, {1920, 1080}, .COLOR_DEPTH_AND_NORMAL)
-  framebuffer_init(&renderer.shadowmap_framebuffer, {4096, 4096}, .DEPTH)
+  framebuffer_init(&renderer.prepass_framebuffer, {WINDOW_WIDTH, WINDOW_HEIGHT}, {.NORMAL, .DEPTH})
+  framebuffer_init(&renderer.back_framebuffer, {WINDOW_WIDTH, WINDOW_HEIGHT}, {.COLOR, .DEPTH}, true)
+  framebuffer_init(&renderer.msaa_blitted_framebuffer, {WINDOW_WIDTH, WINDOW_HEIGHT}, {.COLOR})
+  framebuffer_init(&renderer.shadowmap_framebuffer, {4096, 4096}, {.DEPTH})
 
   ssao_resolution_factor := f32(0.3)
   ssao_resolution := Vec2{1920, 1080} * ssao_resolution_factor
   ssao_resolution_int := IVec2{i32(ssao_resolution.x), i32(ssao_resolution.y)}
   fmt.printfln("SSAO resolution %d", ssao_resolution_int)
-  framebuffer_init(&renderer.ssao_framebuffer,     ssao_resolution_int, .RED)
-  framebuffer_init(&renderer.ssaoblur_framebuffer, ssao_resolution_int, .RED)
+  framebuffer_init(&renderer.ssao_framebuffer,     ssao_resolution_int, {.RED})
+  framebuffer_init(&renderer.ssaoblur_framebuffer, ssao_resolution_int, {.RED})
 
   renderer.ssao_pass_material = asset_loader_material(0, 0, "ssao", .TWO_DIMENTIONAL)
   renderer.ssaoblur_pass_material = asset_loader_material(0, 0, "ssaoblur", .TWO_DIMENTIONAL)
@@ -126,6 +133,7 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   renderer.post_process_quad = mesh_make_quad(renderer.final_pass_material)
 
   renderer.shadowmap_material = asset_loader_material(0, 0, "shadowmap", .SHADOWMAP)
+  renderer.prepass_material = asset_loader_material(0, 0, "prepass", .THREE_DIMENSIONAL)
 
   renderer.default_shader = shader_compileprogram(
     cstring(#load("../assets/shaders/frag.glsl")),
@@ -169,6 +177,10 @@ renderer_render :: proc(renderer: ^Renderer) {
   gl.ActiveTexture(gl.TEXTURE1)
   gl.BindTexture(gl.TEXTURE_2D, renderer.shadowmap_framebuffer.depth_texture) 
 
+  renderer_bind_and_clear_framebuffer(renderer, renderer.prepass_framebuffer)
+  renderer_draw_meshes(renderer, renderer.prepass_material)
+
+
   // scene.renderer.back_framebuffer.size = {FrameBuffer.w, FrameBuffer.h}
   renderer_bind_and_clear_framebuffer(renderer, renderer.back_framebuffer)
   renderer_draw_meshes(renderer)
@@ -177,15 +189,23 @@ renderer_render :: proc(renderer: ^Renderer) {
   renderer.debug_renderer.shader.parameters.projection_matrix = renderer.scene.camera.projection_matrix
   debugrenderer_draw(&renderer.debug_renderer)
 
+  gl.BindFramebuffer(gl.READ_FRAMEBUFFER, renderer.back_framebuffer.framebuffer)
+  gl.BindFramebuffer(gl.DRAW_FRAMEBUFFER, renderer.msaa_blitted_framebuffer.framebuffer)
+  gl.BlitFramebuffer(0, 0, renderer.back_framebuffer.size.x,
+    renderer.back_framebuffer.size.y,
+    0, 0, renderer.msaa_blitted_framebuffer.size.x,
+    renderer.msaa_blitted_framebuffer.size.y, gl.COLOR_BUFFER_BIT, gl.LINEAR)
+
+
   gl.Disable(gl.DEPTH_TEST)
   // Post processing passes
   gl.PolygonMode(gl.FRONT_AND_BACK, gl.FILL); 
   gl.ActiveTexture(gl.TEXTURE2)
-  gl.BindTexture(gl.TEXTURE_2D, renderer.back_framebuffer.color_texture)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.msaa_blitted_framebuffer.color_texture)
   gl.ActiveTexture(gl.TEXTURE3)
-  gl.BindTexture(gl.TEXTURE_2D, renderer.back_framebuffer.depth_texture)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.prepass_framebuffer.depth_texture)
   gl.ActiveTexture(gl.TEXTURE4)
-  gl.BindTexture(gl.TEXTURE_2D, renderer.back_framebuffer.normal_texture)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.prepass_framebuffer.normal_texture)
   gl.ActiveTexture(gl.TEXTURE5)
   gl.BindTexture(gl.TEXTURE_2D, renderer.ssao_framebuffer.red_texture)
 
@@ -495,30 +515,31 @@ Framebuffer :: struct {
   red_texture,
   framebuffer: GpuID,
   size: IVec2,
-  type: FramebufferType
+  type: bit_set[FramebufferType]
 }
 
 FramebufferType :: enum {
-  COLOR_DEPTH_AND_NORMAL,
-  COLOR_AND_DEPTH,
+  COLOR,
+  NORMAL,
   DEPTH,
   RED,
-  NONE
 }
 
 framebuffer_init :: proc(
   framebuffer: ^Framebuffer,
   size: IVec2,
-  type: FramebufferType
+  type: bit_set[FramebufferType],
+  msaa: bool = false,
+  msaa_samples: i32 = 8
 ) {
-  assert(type != .NONE)
+  texture_attachment: u32 = (msaa) ? gl.TEXTURE_2D_MULTISAMPLE : gl.TEXTURE_2D
   framebuffer.size = size
   framebuffer.type = type
 
   gl.GenFramebuffers(1, &framebuffer.framebuffer)
   gl.BindFramebuffer(gl.FRAMEBUFFER, framebuffer.framebuffer)
 
-  if type == .RED {
+  if type == {.RED} {
     gl.GenTextures(1, &framebuffer.red_texture)
     gl.BindTexture(gl.TEXTURE_2D, framebuffer.red_texture)
 
@@ -537,60 +558,82 @@ framebuffer_init :: proc(
       framebuffer.red_texture,
       0
     )
-  } else {
+  } else if .DEPTH in type {
     gl.GenTextures(1, &framebuffer.depth_texture)
-    gl.BindTexture(gl.TEXTURE_2D, framebuffer.depth_texture)
+    gl.BindTexture(texture_attachment, framebuffer.depth_texture)
 
-    gl.TexImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT, size.x, size.y, 0, gl.DEPTH_COMPONENT, gl.FLOAT, nil)
+    if msaa {
+      gl.TexImage2DMultisample(gl.TEXTURE_2D_MULTISAMPLE, msaa_samples, gl.DEPTH_COMPONENT, size.x, size.y, gl.TRUE)
+    } else {
+      gl.TexImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT, size.x, size.y, 0, gl.DEPTH_COMPONENT, gl.FLOAT, nil)
 
-    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+      gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+      gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
 
-    // Setting a white border helps with shadows outside the shadowmap
-    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_BORDER)
-    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_BORDER)
-    border_col: []f32 = {1, 1, 1}
-    gl.TexParameterfv(gl.TEXTURE_2D, gl.TEXTURE_BORDER_COLOR, &border_col[0])
+      // Setting a white border helps with shadows outside the shadowmap
+      gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_BORDER)
+      gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_BORDER)
+      border_col: []f32 = {1, 1, 1}
+      gl.TexParameterfv(gl.TEXTURE_2D, gl.TEXTURE_BORDER_COLOR, &border_col[0])
+    }
 
     gl.FramebufferTexture2D(
       gl.FRAMEBUFFER,
       gl.DEPTH_ATTACHMENT,
-      gl.TEXTURE_2D,
+      texture_attachment,
       framebuffer.depth_texture,
       0
     )
   }
 
-  if type == .COLOR_AND_DEPTH || type == .COLOR_DEPTH_AND_NORMAL{
+  if .COLOR in type {
     gl.GenTextures(1, &framebuffer.color_texture)
-    gl.BindTexture(gl.TEXTURE_2D, framebuffer.color_texture)
+    gl.BindTexture(texture_attachment, framebuffer.color_texture)
 
-    gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGB, size.x, size.y, 0, gl.RGB, gl.FLOAT, nil)
+    if msaa {
+      gl.TexImage2DMultisample(
+        gl.TEXTURE_2D_MULTISAMPLE,
+        msaa_samples,
+        gl.RGB,
+        size.x,
+        size.y,
+        gl.TRUE
+      )
 
-    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+    } else {
+      gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGB, size.x, size.y, 0, gl.RGB, gl.FLOAT, nil)
+
+      gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+      gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+    }
 
     gl.FramebufferTexture2D(
       gl.FRAMEBUFFER,
       gl.COLOR_ATTACHMENT0,
-      gl.TEXTURE_2D,
+      texture_attachment,
       framebuffer.color_texture,
       0
     )
+
   }
 
-  if type == .COLOR_DEPTH_AND_NORMAL {
+  if .NORMAL in type {
     gl.GenTextures(1, &framebuffer.normal_texture)
-    gl.BindTexture(gl.TEXTURE_2D, framebuffer.normal_texture)
+    gl.BindTexture(texture_attachment, framebuffer.normal_texture)
 
-    gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, size.x, size.y, 0, gl.RGBA, gl.FLOAT, nil)
+    if msaa {
+      gl.TexImage2DMultisample(gl.TEXTURE_2D_MULTISAMPLE, msaa_samples, gl.RGBA16F, size.x, size.y, gl.TRUE)
+    } else {
+      gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, size.x, size.y, 0, gl.RGBA, gl.FLOAT, nil)
 
-    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
-    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+      gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
+      gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+    }
+
     gl.FramebufferTexture2D(
       gl.FRAMEBUFFER,
       gl.COLOR_ATTACHMENT1,
-      gl.TEXTURE_2D,
+      texture_attachment,
       framebuffer.normal_texture,
       0
     )
@@ -605,7 +648,16 @@ framebuffer_init :: proc(
   if gl.CheckFramebufferStatus(gl.FRAMEBUFFER) != gl.FRAMEBUFFER_COMPLETE {
     fmt.printfln("Failed to init framebuffer")
     fmt.printfln("%d", gl.CheckFramebufferStatus(gl.FRAMEBUFFER))
+    fmt.panicf("Something happ\n")
   }
+}
+
+framebuffer_attach_depth_texture :: proc(framebuffer: ^Framebuffer, texture: GpuID) {
+  framebuffer.depth_texture = texture
+  gl.BindTexture(gl.TEXTURE_2D, texture)
+  gl.BindFramebuffer(gl.FRAMEBUFFER, framebuffer.framebuffer)
+  gl.FramebufferTexture2D(gl.FRAMEBUFFER,
+    gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, texture, 0)
 }
 
 // TODO: add framebuffer_resize

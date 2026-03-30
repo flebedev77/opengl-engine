@@ -19,7 +19,7 @@ uniform mat4 view_matrix;
 const float PI = 3.141592653589793;
 const float shadow_pcf_border_exponent = 6; // Helps make the transition between nonshadow and shadow more natural and non linear
 const float shadow_pcf_noisiness = 0.1;
-const int shadow_pcf_samples = 8;
+const int shadow_pcf_samples = 10;
 
 const vec2 poisson_offsets[64] = vec2[](
 vec2(0.24772918, 0.42333201), 
@@ -102,15 +102,14 @@ float calculate_shadow(vec4 light_space_pos, vec3 light_dir) {
   float min_bias = 0.0001;
   // float max_bias = 0.05;
   // float min_bias = 0.01;
-  float bias = 0.00001;//max(max_bias * (1.0 - dot(frag_normal, light_dir)), min_bias);  
-
+  float bias = 0.00001;//0.00001;//max(max_bias * (1.0 - dot(frag_normal, light_dir)), min_bias);  
 
   float closest_depth = texture(shadowmap_texture, proj_coords.xy).r;
   float pixel_depth = proj_coords.z;
 
   if (closest_depth < pixel_depth - bias) {
     vec2 texel_size = 1.0 / textureSize(shadowmap_texture, 0);
-    // texel_size *= 2;
+    texel_size *= 0.2;
     float shadow = 0.0;
 
     // Box sampling
@@ -189,11 +188,11 @@ void main() {
   float specular = clamp(
       pow(
         dot(light_view_midway, frag_normal),
-        40 - specularity * 25
+        specularity * 30
       ),
       0,
       1
-  );
+  ) * specularity * 2;
   // specular *= clamp(specularity, 0, 1.0);
 
   float diffuse = clamp(dot(light_dir, -frag_normal), 0, 1) * 0.5;

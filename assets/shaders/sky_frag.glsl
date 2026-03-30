@@ -2,7 +2,8 @@
 in vec3 frag_pos;
 in vec3 frag_normal;
 
-out vec4 frag_color;
+layout (location = 0) out vec4 out_frag_color;
+layout (location = 1) out vec4 out_frag_normal;
 
 uniform vec3 light_pos;
 uniform vec3 camera_pos;
@@ -108,5 +109,6 @@ void main() {
   float sun_factor = clamp((pow(max(dot(view_dir, light_dir) - 0.002, 0), 100)) * 2.0, 0, 1);
   out_color = mix(out_color, vec3(1, 1, 0.8), sun_factor);
 
-  frag_color = vec4(out_color, 1.0);
+  out_frag_color = vec4(out_color, 1.0);
+  out_frag_normal = vec4(0);
 }

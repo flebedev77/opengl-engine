@@ -78,7 +78,7 @@ float ssao() {
 
     vec3 occuluder_pos = reconstruct_position(uv_sample_pos.xy, texture(depth_texture, uv_sample_pos.xy).r);
 
-    if (occuluder_pos.z > sample_pos.z + 0.001) {
+    if (occuluder_pos.z > sample_pos.z) {
       occlusion += smoothstep(0, 1, ssao_radius / abs(occuluder_pos.z - sample_pos.z));
     }
   }
