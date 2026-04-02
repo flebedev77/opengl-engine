@@ -3,7 +3,7 @@
 in vec2 frag_uv;
 in vec3 frag_pos;
 
-out float frag_color;
+out vec4 frag_color;
 
 uniform sampler2D screen_texture;
 uniform sampler2D normal_texture;
@@ -26,6 +26,6 @@ void main() {
       result += texture(ssao_texture, frag_uv + sample_pos).r;
     }
   }
-  frag_color = result / ((blur_size * 2) * (blur_size * 2));
+  frag_color = vec4(result / ((blur_size * 2) * (blur_size * 2)));
   // frag_color = texture(ssao_texture, frag_uv).r;
 }
