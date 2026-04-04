@@ -7,5 +7,5 @@ void main() {
       (gl_VertexID >> 1) & 1
   );
   frag_uv = pos;
-  gl_Position = vec4(pos.xy * 2 - 1, 0, 1);
+  gl_Position = vec4(pos.xy * 2 - 1, -1, 1);
 }

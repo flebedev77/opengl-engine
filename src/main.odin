@@ -109,7 +109,7 @@ main :: proc() {
   albedo_texture := texture_load("assets/textures/box_placeholder.ppm")
   airplane_texture := texture_load("assets/textures/su_body.ppm")
   // angel_texture := texture_load("assets/models/pavlov/albedo.ppm")
-
+  //
   // angel_material := Material{
   //   is_valid = true,
   //   albedo_texture = angel_texture,
@@ -152,7 +152,7 @@ main :: proc() {
   ground_mesh := asset_loader_obj_mesh("assets/models/ground_colors.obj", default_material)
   scl = 10.2
   ground_mesh.model_matrix *= scale_matrix({scl, scl, scl})
-  ground_mesh.model_matrix *= translation_matrix({0, 0, 0})
+  ground_mesh.model_matrix *= translation_matrix({0, -1, 0})
   
   append(&scene.meshes, cube_mesh)
   // append(&scene.meshes, obj_mesh)

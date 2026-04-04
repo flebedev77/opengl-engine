@@ -41,50 +41,9 @@ float linearize_depth(float depth) {
 
 void main() {
   frag_color = texture(screen_texture, frag_uv);
+  vec4 volumetrics = texture(volumetrics_texture, frag_uv);
+  // frag_color *= volumetrics.a;
+  frag_color += vec4(volumetrics.rgb, 0);
   frag_color *= 1-texture(ssao_texture, frag_uv).r;
-  frag_color = texture(volumetrics_texture, frag_uv);
-  // frag_color = vec4(ACES_ToneMap(frag_color.xyz * 1), 1);
-  // frag_color = vec4(1-texture(ssao_texture, frag_uv).r);
-  // frag_color = vec4(linearize_depth(texture(depth_texture, frag_uv).r));
-  // return;
-
-// vec4 screen_space_sun_pos = projection_matrix * view_matrix * vec4(light_pos, 1.0);
-//
-// // // 1. Prevent reverse god-rays when the sun is behind the camera
-// // if (screen_space_sun_pos.w <= 0.0) {
-// //     // Sun is behind us, no rays should be visible
-// //     return; // Or just ensure sun_ray remains 0 depending on your shader structure
-// // }
-//
-// // 2. Perspective divide and NDC to UV space [0, 1]
-// vec2 sun_uv = screen_space_sun_pos.xy / screen_space_sun_pos.w;
-// sun_uv = sun_uv * 0.5 + 0.5;
-//
-// // Density controls how far the rays stretch across the screen. 
-// // Without it, the rays always stretch exactly to the sun coordinate.
-// float density = 1.0; 
-// vec2 delta_texcoord = (frag_uv - sun_uv) * (density / float(num_samples));
-//
-// vec2 current_coord = frag_uv;
-// float illumination_decay = 1.0;
-//
-// // 0.1 is extremely aggressive and will kill the ray instantly. 0.95 gives a smooth fade.
-// float decay_rate = 0.7; 
-// float sun_ray = 0.0;
-//
-// for (int i = 0; i < num_samples; i++) {
-//     current_coord -= delta_texcoord;
-//
-//     float samp = linearize_depth(texture(depth_texture, current_coord).r);
-//
-//     if (samp < 100) {
-//       break;
-//     }
-//     sun_ray += (1.0 / float(num_samples)) * illumination_decay;
-//
-//     // illumination_decay *= decay_rate / f;
-// }
-//
-// // Add the scattered light to your fragment color
-// frag_color -= (1 - vec4(sun_ray, sun_ray, sun_ray, 0.0)) * 0.1;
+  frag_color = vec4(ACES_ToneMap(frag_color.xyz * 1), 1);
 }

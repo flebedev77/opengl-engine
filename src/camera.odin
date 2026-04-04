@@ -4,6 +4,7 @@ import "core:math"
 
 Camera :: struct {
   view_matrix,
+  inv_view_matrix,
   inv_projection_matrix,
   projection_matrix: Mat4,
   position: Vec3
@@ -18,5 +19,6 @@ camera_update :: proc(camera: ^Camera) {
       1000
     )
     camera.inv_projection_matrix = linalg.inverse(camera.projection_matrix)
+    camera.inv_view_matrix = linalg.inverse(camera.view_matrix)
     // camera.projection_matrix = orthographic_projection_matrix(-1, 1, 1, -1, 0.1, 1000)
 }

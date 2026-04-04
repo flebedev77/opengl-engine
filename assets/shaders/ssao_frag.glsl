@@ -48,7 +48,7 @@ float linearize_depth(float depth) {
 vec3 reconstruct_position(vec2 uv, float depth) {
   vec2 ndc = uv * 2 - 1;
   // float depth = texture(depth_texture, frag_uv).r;
-  vec4 clip = vec4(ndc.x, ndc.y, depth, 1);
+  vec4 clip = vec4(ndc.x, ndc.y, depth * 2 - 1, 1);
   vec4 view = inv_projection_matrix * clip;
   return view.xyz / view.w;
 }
