@@ -21,13 +21,24 @@ uniform int blur_size;
 void main() {
   // Transforms from [0 to 1920, 0 to 1080] to [0 to 1, 0 to 1]
   vec2 res_to_unit = 1 / vec2(textureSize(blur_texture, 0));
-  float result = 0;
+  vec4 result = vec4(0);
+  vec4 base_sample = texture(blur_texture, frag_uv);
+  int samples = 0;
   for (int x = -blur_size; x < blur_size; x++) {
     for (int y = -blur_size; y < blur_size; y++) {
       vec2 sample_pos = vec2(float(x), float(y)) * res_to_unit;
-      result += texture(blur_texture, frag_uv + sample_pos).r;
+      vec4 jittered_sample = texture(blur_texture, frag_uv + sample_pos);
+      // if (abs(jittered_sample.a - base_sample.a) < 0.001) {
+        result += vec4(jittered_sample.rgb, 0);
+        samples++;
+      // }
     }
   }
-  frag_color = vec4(result / ((blur_size * 2) * (blur_size * 2)));
+  // frag_color = vec4(result / ((blur_size * 2) * (blur_size * 2)));
   // frag_color = texture(blur_texture, frag_uv).r;
+  if (samples > 0) {
+    frag_color = vec4((result / float(samples)).rgb, base_sample.a);
+    return;
+  }
+  frag_color = base_sample;
 }

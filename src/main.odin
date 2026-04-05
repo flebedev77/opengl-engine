@@ -149,7 +149,7 @@ main :: proc() {
   sky_mesh.model_matrix *= scale_matrix({500, 500, 500})
   scene.sky_mesh = sky_mesh
 
-  ground_mesh := asset_loader_obj_mesh("assets/models/ground_colors.obj", default_material)
+  ground_mesh := asset_loader_obj_mesh("assets/models/terrain.obj", default_material)
   scl = 10.2
   ground_mesh.model_matrix *= scale_matrix({scl, scl, scl})
   ground_mesh.model_matrix *= translation_matrix({0, -1, 0})

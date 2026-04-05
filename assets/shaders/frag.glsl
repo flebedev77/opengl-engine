@@ -112,6 +112,7 @@ float calculate_shadow(vec4 light_space_pos, vec3 light_dir) {
     texel_size *= 0.2;
     float shadow = 0.0;
 
+    // int shadow_pcf_samples = dot(camera_pos - );
     // Box sampling
     for (int x = -shadow_pcf_samples; x <= shadow_pcf_samples; x++) {
       for (int y = -shadow_pcf_samples; y <= shadow_pcf_samples; y++) {

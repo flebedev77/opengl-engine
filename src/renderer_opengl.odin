@@ -101,7 +101,7 @@ Renderer :: struct {
 }
 
 renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
-  renderer.sun_position = {10, 50, 10}
+  renderer.sun_position = {10, 10, 10}
 
   gl.LineWidth(5.0)
   gl.Enable(gl.DEPTH_TEST)
@@ -156,8 +156,9 @@ renderer_render :: proc(renderer: ^Renderer) {
   // gl.PolygonMode(gl.FRONT_AND_BACK, gl.LINE)// : GL_FILL); 
 
   // Shadowmap pass
+
   light_viewmatrix := linalg.matrix4_look_at_f32(
-    renderer.scene.camera.position + linalg.normalize(Vec3{10, 5, 10}) * 30, 
+    renderer.scene.camera.position + linalg.normalize(renderer.sun_position) * 70, 
     renderer.scene.camera.position,
     {0, 1, 0}
   )
@@ -167,7 +168,7 @@ renderer_render :: proc(renderer: ^Renderer) {
     lightmap_proj_size,
     lightmap_proj_size,
     -lightmap_proj_size,
-    3, 50)
+    3, 3*70)
   renderer.shadowmap_matrix = light_projmatrix * light_viewmatrix
 
   gl.Enable(gl.DEPTH_TEST)
@@ -638,7 +639,7 @@ framebuffer_init :: proc(
       )
 
     } else {
-      gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, size.x, size.y, 0, gl.RGBA, gl.FLOAT, nil)
+      gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, size.x, size.y, 0, gl.RGBA, gl.FLOAT, nil)
 
       gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
       gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
