@@ -19,7 +19,7 @@ uniform mat4 view_matrix;
 const float PI = 3.141592653589793;
 const float shadow_pcf_border_exponent = 6; // Helps make the transition between nonshadow and shadow more natural and non linear
 const float shadow_pcf_noisiness = 0.1;
-const int shadow_pcf_samples = 10;
+const int shadow_pcf_samples = 5;
 
 const vec2 poisson_offsets[64] = vec2[](
 vec2(0.24772918, 0.42333201), 

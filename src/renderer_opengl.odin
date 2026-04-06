@@ -30,6 +30,8 @@ ShaderParameters :: struct {
   roughness_texture_location,
   shadowmap_texture_location,
   shadowmap_matrix_location,
+  macroshadowmap_texture_location,
+  macroshadowmap_matrix_location,
   tint_location,
   light_position_location,
   camera_position_location,
@@ -40,6 +42,7 @@ ShaderParameters :: struct {
   model_matrix_location: UniformLocation,
 
   shadowmap_matrix,
+  macroshadowmap_matrix,
   view_matrix,
   inv_view_matrix,
   inv_projection_matrix,
@@ -92,10 +95,12 @@ Renderer :: struct {
   volumetrics_framebuffer: Framebuffer,
   blur_framebuffer: Framebuffer,
   shadowmap_framebuffer: Framebuffer,
+  macroshadowmap_framebuffer: Framebuffer,
 
   final_pass_material: Material,
   post_process_quad: Mesh,
   shadowmap_matrix: Mat4,
+  macroshadowmap_matrix: Mat4,
   default_shader: Shader,
   sun_position: Vec3,
 }
@@ -121,6 +126,7 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   framebuffer_init(&renderer.msaa_back_framebuffer, {WINDOW_WIDTH, WINDOW_HEIGHT}, {.COLOR, .DEPTH}, "", .THREE_DIMENSIONAL, true, 8)
   framebuffer_init(&renderer.back_framebuffer, {WINDOW_WIDTH, WINDOW_HEIGHT}, {.COLOR})
   framebuffer_init(&renderer.shadowmap_framebuffer, {4096, 4096}, {.DEPTH}, "shadowmap", .SHADOWMAP)
+  framebuffer_init(&renderer.macroshadowmap_framebuffer, {4096, 4096}, {.DEPTH}, "shadowmap", .SHADOWMAP)
 
   effects_resolution_factor: f32 = 1.0/2.0
   effects_resolution := Vec2{WINDOW_WIDTH, WINDOW_HEIGHT} * effects_resolution_factor
@@ -162,13 +168,22 @@ renderer_render :: proc(renderer: ^Renderer) {
     renderer.scene.camera.position,
     {0, 1, 0}
   )
-  lightmap_proj_size := f32(5)
+  lightmap_proj_size := f32(6)
   light_projmatrix := orthographic_projection_matrix(
     -lightmap_proj_size,
     lightmap_proj_size,
     lightmap_proj_size,
     -lightmap_proj_size,
-    3, 3*70)
+    3, 2*70)
+  macromap_proj_size := f32(50)
+  light_macromap_projmatrix := orthographic_projection_matrix(
+    -macromap_proj_size,
+    macromap_proj_size,
+    macromap_proj_size,
+    -macromap_proj_size,
+    3, 2*70
+  )
+  renderer.macroshadowmap_matrix = light_macromap_projmatrix * light_viewmatrix
   renderer.shadowmap_matrix = light_projmatrix * light_viewmatrix
 
   gl.Enable(gl.DEPTH_TEST)
@@ -178,6 +193,15 @@ renderer_render :: proc(renderer: ^Renderer) {
   // gl.CullFace(gl.BACK)
   gl.ActiveTexture(gl.TEXTURE1)
   gl.BindTexture(gl.TEXTURE_2D, renderer.shadowmap_framebuffer.depth_texture) 
+
+  renderer.shadowmap_matrix = renderer.macroshadowmap_matrix
+  renderer_bind_and_clear_framebuffer(renderer, renderer.macroshadowmap_framebuffer)
+  renderer_draw_meshes(renderer, renderer.shadowmap_framebuffer.material)
+
+  renderer.shadowmap_matrix = light_projmatrix * light_viewmatrix
+
+  gl.ActiveTexture(gl.TEXTURE7)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.macroshadowmap_framebuffer.depth_texture)
 
   // Prepass
   renderer_bind_and_clear_framebuffer(renderer, renderer.prepass_framebuffer)
@@ -266,6 +290,7 @@ render_mesh :: proc(renderer: ^Renderer, mesh: ^Mesh, material_override: Materia
     shader_parameters = &material_override.shader.parameters
   }
 
+  shader_parameters.macroshadowmap_matrix = renderer.macroshadowmap_matrix
   shader_parameters.shadowmap_matrix = renderer.shadowmap_matrix
   shader_parameters.view_matrix = renderer.scene.camera.view_matrix
   shader_parameters.projection_matrix = renderer.scene.camera.projection_matrix
@@ -359,10 +384,12 @@ mesh_draw :: proc(mesh: Mesh, material_override: Material = {}) {
   gl.UniformMatrix4fv(shader.parameters.view_matrix_location, 1, gl.FALSE, &shader.parameters.view_matrix[0,0])
   gl.UniformMatrix4fv(shader.parameters.inv_view_matrix_location, 1, gl.FALSE, &shader.parameters.inv_view_matrix[0,0])
   gl.UniformMatrix4fv(shader.parameters.shadowmap_matrix_location, 1, gl.FALSE, &shader.parameters.shadowmap_matrix[0,0])
+  gl.UniformMatrix4fv(shader.parameters.macroshadowmap_matrix_location, 1, gl.FALSE, &shader.parameters.macroshadowmap_matrix[0,0])
   gl.Uniform3fv(shader.parameters.light_position_location, 1, &shader.parameters.sun_position[0])
   if material.shader.type == .TWO_DIMENTIONAL {
     gl.BindVertexArray(mesh.vao)
     gl.Uniform1i(shader.parameters.shadowmap_texture_location, 1)
+    gl.Uniform1i(shader.parameters.macroshadowmap_texture_location, 7)
     gl.Uniform1i(shader.parameters.screen_texture_location, 2)
     gl.Uniform1i(shader.parameters.depth_texture_location, 3)
     gl.Uniform1i(shader.parameters.normal_texture_location, 4)
@@ -471,6 +498,9 @@ shader_init :: proc(shader: ^Shader) {
       shader.parameters.normal_texture_location = gl.GetUniformLocation(shader.program, "normal_texture")
       shader.parameters.blur_texture_location = gl.GetUniformLocation(shader.program, "blur_texture");
       shader.parameters.blur_amount_location = gl.GetUniformLocation(shader.program, "blur_size")
+      shader.parameters.macroshadowmap_texture_location = gl.GetUniformLocation(shader.program, "macroshadowmap_texture")
+      shader.parameters.macroshadowmap_matrix_location = gl.GetUniformLocation(shader.program, "macroshadowmap_matrix")
+      fmt.printfln("tex %d matrix %d", shader.parameters.macroshadowmap_texture_location, shader.parameters.shadowmap_matrix_location)
     // case .SHADOWMAP:
       shader.parameters.model_matrix_location = gl.GetUniformLocation(shader.program, "model_matrix")
       shader.parameters.view_matrix_location = gl.GetUniformLocation(shader.program, "view_matrix")
