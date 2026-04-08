@@ -11,14 +11,17 @@ in vec3 frag_vert_color;
 uniform sampler2D albedo_texture;
 uniform sampler2D roughness_texture;
 uniform sampler2D shadowmap_texture;
+uniform sampler2D macroshadowmap_texture;
+
 uniform vec3 tint;
 uniform vec3 camera_pos;
 uniform vec3 light_pos;
 uniform mat4 view_matrix;
+uniform mat4 macroshadowmap_matrix;
 
 const float PI = 3.141592653589793;
-const float shadow_pcf_border_exponent = 6; // Helps make the transition between nonshadow and shadow more natural and non linear
-const float shadow_pcf_noisiness = 0.1;
+const float shadow_pcf_border_exponent = 10; // Helps make the transition between nonshadow and shadow more natural and non linear
+const float shadow_pcf_noisiness = 1.0;
 const int shadow_pcf_samples = 5;
 
 const vec2 poisson_offsets[64] = vec2[](
@@ -88,44 +91,64 @@ vec2(0.43956539, -0.09492128),
 vec2(-0.22184938, 0.03012371)
 );
 
-float rand(vec2 co){
+float rand(vec2 co) {
     return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
 }
 
-float calculate_shadow(vec4 light_space_pos, vec3 light_dir) {
-  vec3 proj_coords = light_space_pos.xyz / light_space_pos.w;
-  proj_coords = proj_coords * 0.5 + 0.5;
+vec2 randtwo(vec2 co) {
+  return vec2(rand(co), rand(co + frag_uv)) * 2 - 1;
+}
 
+float calculate_shadow(vec3 proj_coords, vec3 light_dir, sampler2D shadowmap) {
   if (proj_coords.z >= 1.0) return 0.0;
 
   float max_bias = 0.0002;
   float min_bias = 0.0001;
   // float max_bias = 0.05;
   // float min_bias = 0.01;
-  float bias = 0.00001;//0.00001;//max(max_bias * (1.0 - dot(frag_normal, light_dir)), min_bias);  
+  float bias = 0.0000001;//max(max_bias * (1.0 - dot(frag_normal, light_dir)), min_bias);  
 
-  float closest_depth = texture(shadowmap_texture, proj_coords.xy).r;
+  float closest_depth = texture(shadowmap, proj_coords.xy).r;
   float pixel_depth = proj_coords.z;
 
   if (closest_depth < pixel_depth - bias) {
-    vec2 texel_size = 1.0 / textureSize(shadowmap_texture, 0);
-    texel_size *= 0.2;
+    vec2 texel_size = 1.0 / vec2(4096, 4096);//textureSize(shadowmap, 0);
+    texel_size *= 1;
     float shadow = 0.0;
 
-    // int shadow_pcf_samples = dot(camera_pos - );
+    // float test_sample = 0;
+    // float test_sample_amount = 10;
+    // float test_sample_radius = 1.1;
+    // for (int i = 0; i < test_sample_amount; i++) {
+    //   vec2 jitter = poisson_offsets[i];
+    //
+    //   float sample_depth = texture(shadowmap, proj_coords.xy + jitter * texel_size * test_sample_radius).r;
+    //   test_sample += (pixel_depth - bias > sample_depth) ? 1.0 : 0.0;
+    // }
+    // test_sample /= test_sample_amount;
+    //
+    // if (test_sample == 0 || test_sample == 1) {
+    //   return test_sample;
+    // }
+
     // Box sampling
     for (int x = -shadow_pcf_samples; x <= shadow_pcf_samples; x++) {
       for (int y = -shadow_pcf_samples; y <= shadow_pcf_samples; y++) {
         vec2 noise_offset = vec2( // NOTE: This could be stored into a texture to avoid redundant calculations
           rand(vec2(x, y)) * 2.0 - 1.0,
-          rand(frag_pos.xy) * 2.0 - 1.0
+          rand(gl_FragCoord.xy) * 2.0 - 1.0
         ) * shadow_pcf_noisiness;
         vec2 sample_pos = (noise_offset + vec2(x, y)) * texel_size;
-        float depth = texture(shadowmap_texture, proj_coords.xy + sample_pos).r;
+        sample_pos += proj_coords.xy;
+        float depth = closest_depth;
+        // if (sample_pos.x <= 1 && sample_pos.y <= 1 &&
+        //     sample_pos.x >= 0 && sample_pos.y >= 0) {
+          depth = texture(shadowmap, sample_pos).r;
+        // }
         shadow += (pixel_depth - bias > depth) ? 1.0 : 0.0;
       }
     }
-    shadow /= (shadow_pcf_samples * 2) * (shadow_pcf_samples * 2);
+    shadow /= (shadow_pcf_samples * 2 + 1) * (shadow_pcf_samples * 2 + 1);
 
     // Nvidia hardware accelerated sampling https://developer.nvidia.com/gpugems/gpugems/part-ii-lighting-and-shadows/chapter-11-shadow-map-antialiasing
     // for (float x = -1.5; x <= 1.5; x++) {
@@ -140,7 +163,7 @@ float calculate_shadow(vec4 light_space_pos, vec3 light_dir) {
     // Circular sampling
     // float circle_sample_step = 0.4;
     // float samples = 0;
-    // for (int radius = 0; radius < 10; radius++) {
+    // for (int radius = 0; radius < 2; radius++) {
     //   for (float theta = 0; theta < 2 * PI; theta += circle_sample_step) {
     //     samples++;
     //     vec2 noise_offset = vec2(
@@ -148,7 +171,10 @@ float calculate_shadow(vec4 light_space_pos, vec3 light_dir) {
     //         rand(frag_pos.xy) * 2.0 - 1.0
     //     ) * shadow_pcf_noisiness;
     //
-    //     vec2 sample_pos = vec2(cos(theta + noise_offset.x), sin(theta + noise_offset.y)) * (noise_offset.x + radius) * texel_size;
+    //     vec2 sample_pos = vec2(
+    //         cos(theta + noise_offset.x),
+    //         sin(theta + noise_offset.y)
+    //       ) * (noise_offset.x + radius) * texel_size;
     //     float depth = texture(shadowmap_texture, proj_coords.xy + sample_pos).r;
     //     shadow += (pixel_depth - bias > depth) ? 1.0 : 0.0;
     //   }
@@ -157,16 +183,22 @@ float calculate_shadow(vec4 light_space_pos, vec3 light_dir) {
     // shadow /= samples;
 
     // Poisson sampling
-    // for (int i = 0; i < 64; i++) {
-    //     vec2 noise_offset = vec2(
-    //         rand(poisson_offsets[i]) * 2.0 - 1.0,
-    //         rand(poisson_offsets[i] + vec2(1, 1)) * 2.0 - 1.0
-    //     ) * shadow_pcf_noisiness;
-    //     vec2 sample_pos = (poisson_offsets[i] + noise_offset) * texel_size;
+    // for (int j = 0; j < 2; j++) {
+    //   for (int i = 0; i < 64; i++) {
+    //     vec2 noise_offset = vec2(0);
+    //     //     rand(poisson_offsets[i]) * 2.0 - 1.0,
+    //     //     rand(poisson_offsets[i] + i) * 2.0 - 1.0
+    //     // ) * shadow_pcf_noisiness;
+    //     vec2 sample_pos = vec2(
+    //         cos(poisson_offsets[i].x + j) * poisson_offsets[i].y,
+    //         sin(poisson_offsets[i].x + j) * poisson_offsets[i].y
+    //       );
+    //     sample_pos = (sample_pos + noise_offset) * texel_size;
     //     float depth = texture(shadowmap_texture, proj_coords.xy + sample_pos).r;
     //     shadow += (pixel_depth - bias > depth) ? 1.0 : 0.0;
+    //   }
     // }
-    // shadow /= 64;
+    // shadow /= 64.0;
 
     // shadow = 1;
 
@@ -202,8 +234,25 @@ void main() {
   float shadow_darkness = 0.9;
   out_frag_color += 0.1;
   
-  float shadow = calculate_shadow(frag_pos_lightspace, light_dir);
-  shadow = clamp(pow(shadow, shadow_pcf_border_exponent), 0, 1);
+  float shadow = 1.0;
+  
+  if (diffuse != 0) {
+    vec3 proj_coords = frag_pos_lightspace.xyz / frag_pos_lightspace.w;
+    proj_coords = proj_coords * 0.5 + 0.5;
+
+    float p = 0.01;
+    if (proj_coords.x <= 1-p && proj_coords.y <= 1-p && proj_coords.x >= p && proj_coords.y >= p) {
+      shadow = calculate_shadow(proj_coords, light_dir, shadowmap_texture);
+    } else {
+      vec4 macromap_space = macroshadowmap_matrix * vec4(frag_pos, 1);
+      proj_coords = macromap_space.xyz / macromap_space.w;
+      proj_coords = proj_coords * 0.5 + 0.5;
+      shadow = calculate_shadow(proj_coords, light_dir, macroshadowmap_texture);
+    }
+
+    shadow = clamp(pow(shadow, shadow_pcf_border_exponent), 0, 1);
+  }
+
   float inv_shadow = 1 - shadow;
   // out_frag_color = mix(out_frag_color, out_frag_color * shadow_ambient, clamp(pow(shadow, shadow_pcf_border_exponent), 0.0, 1.0));
   out_frag_color *= (diffuse * inv_shadow + ambient + specular * inv_shadow) * ((1 + shadow_darkness) - shadow);

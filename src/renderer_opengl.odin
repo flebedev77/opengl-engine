@@ -188,20 +188,18 @@ renderer_render :: proc(renderer: ^Renderer) {
 
   gl.Enable(gl.DEPTH_TEST)
   renderer_bind_and_clear_framebuffer(renderer, renderer.shadowmap_framebuffer)
-  // gl.CullFace(gl.FRONT) // REVISIT
   renderer_draw_meshes(renderer, renderer.shadowmap_framebuffer.material)
-  // gl.CullFace(gl.BACK)
   gl.ActiveTexture(gl.TEXTURE1)
-  gl.BindTexture(gl.TEXTURE_2D, renderer.shadowmap_framebuffer.depth_texture) 
+  gl.BindTexture(gl.TEXTURE_2D, renderer.shadowmap_framebuffer.depth_texture)
 
   renderer.shadowmap_matrix = renderer.macroshadowmap_matrix
   renderer_bind_and_clear_framebuffer(renderer, renderer.macroshadowmap_framebuffer)
   renderer_draw_meshes(renderer, renderer.shadowmap_framebuffer.material)
+  gl.ActiveTexture(gl.TEXTURE7)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.macroshadowmap_framebuffer.depth_texture)
 
   renderer.shadowmap_matrix = light_projmatrix * light_viewmatrix
 
-  gl.ActiveTexture(gl.TEXTURE7)
-  gl.BindTexture(gl.TEXTURE_2D, renderer.macroshadowmap_framebuffer.depth_texture)
 
   // Prepass
   renderer_bind_and_clear_framebuffer(renderer, renderer.prepass_framebuffer)
@@ -235,16 +233,6 @@ renderer_render :: proc(renderer: ^Renderer) {
   gl.ActiveTexture(gl.TEXTURE6)
   gl.BindTexture(gl.TEXTURE_2D, renderer.volumetrics_framebuffer.color_texture)
 
-  // SSAO
-  renderer_bind_and_clear_framebuffer(renderer, renderer.ssao_framebuffer)
-  render_mesh(renderer, &renderer.post_process_quad, renderer.ssao_framebuffer.material)
-
-  // SSAO blur pass
-  renderer.blur_framebuffer.material.shader.parameters.blur_amount = 4
-  renderer_bind_and_clear_framebuffer(renderer, renderer.blur_framebuffer)
-  render_mesh(renderer, &renderer.post_process_quad, renderer.blur_framebuffer.material)
-  framebuffer_blit(renderer.blur_framebuffer, renderer.ssao_framebuffer)
-
   // Volumetrics pass
   renderer_bind_and_clear_framebuffer(renderer, renderer.volumetrics_framebuffer)
   render_mesh(renderer, &renderer.post_process_quad, renderer.volumetrics_framebuffer.material)
@@ -257,9 +245,18 @@ renderer_render :: proc(renderer: ^Renderer) {
   render_mesh(renderer, &renderer.post_process_quad, renderer.blur_framebuffer.material)
   framebuffer_blit(renderer.blur_framebuffer, renderer.volumetrics_framebuffer)
 
+  // SSAO
+  renderer_bind_and_clear_framebuffer(renderer, renderer.ssao_framebuffer)
+  render_mesh(renderer, &renderer.post_process_quad, renderer.ssao_framebuffer.material)
 
   gl.ActiveTexture(gl.TEXTURE5)
   gl.BindTexture(gl.TEXTURE_2D, renderer.ssao_framebuffer.red_texture)
+  // SSAO blur pass
+  renderer.blur_framebuffer.material.shader.parameters.blur_amount = 4
+  renderer_bind_and_clear_framebuffer(renderer, renderer.blur_framebuffer)
+  render_mesh(renderer, &renderer.post_process_quad, renderer.blur_framebuffer.material)
+  framebuffer_blit(renderer.blur_framebuffer, renderer.ssao_framebuffer)
+
   
 
   // Final combination pass
@@ -385,11 +382,14 @@ mesh_draw :: proc(mesh: Mesh, material_override: Material = {}) {
   gl.UniformMatrix4fv(shader.parameters.inv_view_matrix_location, 1, gl.FALSE, &shader.parameters.inv_view_matrix[0,0])
   gl.UniformMatrix4fv(shader.parameters.shadowmap_matrix_location, 1, gl.FALSE, &shader.parameters.shadowmap_matrix[0,0])
   gl.UniformMatrix4fv(shader.parameters.macroshadowmap_matrix_location, 1, gl.FALSE, &shader.parameters.macroshadowmap_matrix[0,0])
+
   gl.Uniform3fv(shader.parameters.light_position_location, 1, &shader.parameters.sun_position[0])
+
+  gl.Uniform1i(shader.parameters.shadowmap_texture_location, 1)
+  gl.Uniform1i(shader.parameters.macroshadowmap_texture_location, 7)
+
   if material.shader.type == .TWO_DIMENTIONAL {
     gl.BindVertexArray(mesh.vao)
-    gl.Uniform1i(shader.parameters.shadowmap_texture_location, 1)
-    gl.Uniform1i(shader.parameters.macroshadowmap_texture_location, 7)
     gl.Uniform1i(shader.parameters.screen_texture_location, 2)
     gl.Uniform1i(shader.parameters.depth_texture_location, 3)
     gl.Uniform1i(shader.parameters.normal_texture_location, 4)
@@ -412,7 +412,6 @@ mesh_draw :: proc(mesh: Mesh, material_override: Material = {}) {
     gl.BindTexture(gl.TEXTURE_2D, material.roughness_texture)
 
     gl.Uniform1i(shader.parameters.albedo_texture_location, 0)
-    gl.Uniform1i(shader.parameters.shadowmap_texture_location, 1)
     gl.Uniform1i(shader.parameters.roughness_texture_location, 2)
 
     gl.UniformMatrix4fv(shader.parameters.model_matrix_location, 1, gl.FALSE, &mesh.model_matrix[0,0])
@@ -478,6 +477,8 @@ shader_compileprogram :: proc(fragmentSource: cstring, vertexSource: cstring, ty
 shader_init :: proc(shader: ^Shader) {
   shader.parameters.tint_location = gl.GetUniformLocation(shader.program, "tint")
   shader.parameters.shadowmap_matrix_location = gl.GetUniformLocation(shader.program, "shadowmap_matrix")
+  shader.parameters.macroshadowmap_texture_location = gl.GetUniformLocation(shader.program, "macroshadowmap_texture")
+  shader.parameters.macroshadowmap_matrix_location = gl.GetUniformLocation(shader.program, "macroshadowmap_matrix")
   shader.parameters.inv_view_matrix_location = gl.GetUniformLocation(shader.program, "inv_view_matrix")
   shader.parameters.inv_projection_matrix_location = gl.GetUniformLocation(shader.program, "inv_projection_matrix")
   shader.parameters.projection_matrix_location = gl.GetUniformLocation(shader.program, "projection_matrix")
@@ -498,9 +499,6 @@ shader_init :: proc(shader: ^Shader) {
       shader.parameters.normal_texture_location = gl.GetUniformLocation(shader.program, "normal_texture")
       shader.parameters.blur_texture_location = gl.GetUniformLocation(shader.program, "blur_texture");
       shader.parameters.blur_amount_location = gl.GetUniformLocation(shader.program, "blur_size")
-      shader.parameters.macroshadowmap_texture_location = gl.GetUniformLocation(shader.program, "macroshadowmap_texture")
-      shader.parameters.macroshadowmap_matrix_location = gl.GetUniformLocation(shader.program, "macroshadowmap_matrix")
-      fmt.printfln("tex %d matrix %d", shader.parameters.macroshadowmap_texture_location, shader.parameters.shadowmap_matrix_location)
     // case .SHADOWMAP:
       shader.parameters.model_matrix_location = gl.GetUniformLocation(shader.program, "model_matrix")
       shader.parameters.view_matrix_location = gl.GetUniformLocation(shader.program, "view_matrix")
@@ -736,11 +734,11 @@ framebuffer_delete :: proc(framebuffer: Framebuffer) {
   gl.DeleteFramebuffers(1, &framebuffer.framebuffer)
 }
 
-framebuffer_blit :: proc(framebuffer_from: Framebuffer, framebuffer_to: Framebuffer) {
+framebuffer_blit :: proc(framebuffer_from: Framebuffer, framebuffer_to: Framebuffer, depth: bool = false) {
   gl.BindFramebuffer(gl.READ_FRAMEBUFFER, framebuffer_from.framebuffer)
   gl.BindFramebuffer(gl.DRAW_FRAMEBUFFER, framebuffer_to.framebuffer)
   gl.BlitFramebuffer(0, 0, framebuffer_from.size.x, framebuffer_from.size.y,
-    0, 0, framebuffer_to.size.x, framebuffer_to.size.y, gl.COLOR_BUFFER_BIT, gl.LINEAR)
+    0, 0, framebuffer_to.size.x, framebuffer_to.size.y, (depth) ? gl.DEPTH_BUFFER_BIT : gl.COLOR_BUFFER_BIT, gl.LINEAR)
 }
 
 DebugVertex :: struct {

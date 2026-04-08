@@ -18,6 +18,7 @@ uniform mat4 projection_matrix;
 
 const int ssao_samples = 16;
 const float ssao_radius = 0.09;
+const float ssao_intensity = 0.4;
 const vec3 ssao_kernel[16] = vec3[](
 vec3(-0.04233161, -0.05540308, 0.02089313), 
 vec3(-0.12190412, -0.03275195, 0.06935520), 
@@ -85,7 +86,7 @@ float ssao() {
 
   occlusion /= ssao_samples;
   
-  return occlusion * 1.1;
+  return occlusion * ssao_intensity;
 }
 
 void main() {
