@@ -45,7 +45,8 @@ void main() {
   vec4 volumetrics = texture(volumetrics_texture, frag_uv);
   // frag_color *= 1-volumetrics.a;
   // frag_color += vec4(volumetrics.rgb, 0);
-  frag_color += vec4(volumetrics.rgb, 0) * volumetrics.a;
   frag_color *= 1-texture(ssao_texture, frag_uv).r;
+  frag_color = mix(frag_color, vec4(volumetrics.rgb, 0), volumetrics.a);
+  // frag_color += volumetrics;
   frag_color = vec4(ACES_ToneMap(frag_color.xyz * 1), 1);
 }

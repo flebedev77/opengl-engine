@@ -8,15 +8,95 @@ uniform sampler2D depth_texture;
 uniform sampler2D shadowmap_texture;
 uniform sampler2D macroshadowmap_texture;
 
+uniform mat4 projection_matrix;
+uniform mat4 view_matrix;
 uniform mat4 inv_projection_matrix;
 uniform mat4 inv_view_matrix;
 uniform mat4 shadowmap_matrix;
 uniform mat4 macroshadowmap_matrix;
 
-
 uniform vec3 light_pos;
 
-#define STEPS 32
+const float cloud_height_base = 10;
+const float cloud_height_apex = 42;
+
+#define STEPS_LIGHT 16
+#define STEPS_CLOUDS 64
+
+//	Simplex 3D Noise 
+//	by Ian McEwan, Stefan Gustavson (https://github.com/stegu/webgl-noise)
+//
+vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
+vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
+
+float snoise(vec3 v){ 
+  const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
+  const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
+
+// First corner
+  vec3 i  = floor(v + dot(v, C.yyy) );
+  vec3 x0 =   v - i + dot(i, C.xxx) ;
+
+// Other corners
+  vec3 g = step(x0.yzx, x0.xyz);
+  vec3 l = 1.0 - g;
+  vec3 i1 = min( g.xyz, l.zxy );
+  vec3 i2 = max( g.xyz, l.zxy );
+
+  //  x0 = x0 - 0. + 0.0 * C 
+  vec3 x1 = x0 - i1 + 1.0 * C.xxx;
+  vec3 x2 = x0 - i2 + 2.0 * C.xxx;
+  vec3 x3 = x0 - 1. + 3.0 * C.xxx;
+
+// Permutations
+  i = mod(i, 289.0 ); 
+  vec4 p = permute( permute( permute( 
+             i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
+           + i.y + vec4(0.0, i1.y, i2.y, 1.0 )) 
+           + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
+
+// Gradients
+// ( N*N points uniformly over a square, mapped onto an octahedron.)
+  float n_ = 1.0/7.0; // N=7
+  vec3  ns = n_ * D.wyz - D.xzx;
+
+  vec4 j = p - 49.0 * floor(p * ns.z *ns.z);  //  mod(p,N*N)
+
+  vec4 x_ = floor(j * ns.z);
+  vec4 y_ = floor(j - 7.0 * x_ );    // mod(j,N)
+
+  vec4 x = x_ *ns.x + ns.yyyy;
+  vec4 y = y_ *ns.x + ns.yyyy;
+  vec4 h = 1.0 - abs(x) - abs(y);
+
+  vec4 b0 = vec4( x.xy, y.xy );
+  vec4 b1 = vec4( x.zw, y.zw );
+
+  vec4 s0 = floor(b0)*2.0 + 1.0;
+  vec4 s1 = floor(b1)*2.0 + 1.0;
+  vec4 sh = -step(h, vec4(0.0));
+
+  vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
+  vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
+
+  vec3 p0 = vec3(a0.xy,h.x);
+  vec3 p1 = vec3(a0.zw,h.y);
+  vec3 p2 = vec3(a1.xy,h.z);
+  vec3 p3 = vec3(a1.zw,h.w);
+
+//Normalise gradients
+  vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+  p0 *= norm.x;
+  p1 *= norm.y;
+  p2 *= norm.z;
+  p3 *= norm.w;
+
+// Mix final noise value
+  vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+  m = m * m;
+  return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), 
+                                dot(p2,x2), dot(p3,x3) ) );
+}
 
 float rand(vec2 co){
     return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
@@ -39,10 +119,10 @@ vec4 crepuscular_rays() {
     float max_distance = 140.0; 
     ray_length = min(ray_length, max_distance);
 
-    float step_length = ray_length / float(STEPS);
+    float step_length = ray_length / float(STEPS_LIGHT);
     vec3 step_vector = ray_dir * step_length;
 
-    float jitter = rand(frag_uv);
+    float jitter = rand(frag_uv) * 0.8;
     vec3 current_pos = camera_world_pos + (step_vector * jitter);
 
     float volumetric_light = 0.0;
@@ -55,7 +135,7 @@ vec4 crepuscular_rays() {
     // Henyey-Greenstein Phase Function
     float phase = 1;//(1.0 / (4.0 * 3.14159)) * ((1.0 - g * g) / pow(1.0 + g * g - 2.0 * g * cos_theta, 1.5));
 
-    for (int i = 0; i < STEPS; i++) {
+    for (int i = 0; i < STEPS_LIGHT; i++) {
         vec4 light_space_pos;
         vec3 proj_coords;
         float shadow_depth;
@@ -79,21 +159,63 @@ vec4 crepuscular_rays() {
 
           shadow_depth = texture(shadowmap_texture, proj_coords.xy).r;
         }
+
         if (proj_coords.z < shadow_depth) {
           volumetric_light += scattering_intensity * phase;
         }
-        density += 0.1;
 
         current_pos += step_vector;
     }
 
-    float transmittance = exp(-density * 0.5);
+    float cloud_transmittance = 1.0;
+    float cloud = 0.0;
+    if (ray_dir.y != 0) {
+      float t_base = (cloud_height_base - camera_world_pos.y) / ray_dir.y;
+      float t_apex = (cloud_height_apex - camera_world_pos.y) / ray_dir.y;
+
+      float t_in = min(t_base, t_apex);
+      float t_out = max(t_base, t_apex);
+
+      if (t_out > 0.0) {
+        t_in = max(t_in, 0.0);
+
+        float distance_to_geometry = length(world_space_pixel - camera_world_pos);
+        t_out = min(t_out, distance_to_geometry);
+
+        if (t_in < t_out) {
+
+          float cloud_march_length = t_out - t_in;
+
+          step_length = cloud_march_length / float(STEPS_CLOUDS);
+          step_vector = ray_dir * step_length;
+
+          current_pos = camera_world_pos + (ray_dir * t_in) + (step_vector * jitter);
+
+          for (int i = 0; i < STEPS_CLOUDS; i++) {
+            if (1-exp(-cloud * 0.1) > 1) break;
+
+            float current_density = clamp(
+                snoise(current_pos * 0.01) - snoise(current_pos * 0.02) * 0.9
+                - snoise(current_pos * 0.6) * 0.3,
+                0.0, 1.0
+            );
+
+            // volumetric_light += cloud_transmittance;
+            // density += current_density;
+            cloud += current_density;
+
+            current_pos += step_vector;
+
+          }
+        }
+      }
+    }
 
 
     return vec4(
-        vec3(volumetric_light / float(STEPS)),
-        transmittance
-        );
+        vec3(1.0),
+        clamp(1-exp(-cloud * 0.1), 0, 1)
+    );
 }
 
 void main() {

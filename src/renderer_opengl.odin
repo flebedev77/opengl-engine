@@ -122,9 +122,10 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   scene.renderer = renderer
 
   // TODO: Make the resize on window change
-  framebuffer_init(&renderer.prepass_framebuffer, {WINDOW_WIDTH, WINDOW_HEIGHT}, {.NORMAL, .DEPTH}, "prepass", .THREE_DIMENSIONAL)
-  framebuffer_init(&renderer.msaa_back_framebuffer, {WINDOW_WIDTH, WINDOW_HEIGHT}, {.COLOR, .DEPTH}, "", .THREE_DIMENSIONAL, true, 8)
-  framebuffer_init(&renderer.back_framebuffer, {WINDOW_WIDTH, WINDOW_HEIGHT}, {.COLOR})
+  window_resolution := IVec2{WINDOW_WIDTH, WINDOW_HEIGHT}
+  framebuffer_init(&renderer.prepass_framebuffer, window_resolution, {.NORMAL, .DEPTH}, "prepass", .THREE_DIMENSIONAL)
+  framebuffer_init(&renderer.msaa_back_framebuffer, window_resolution, {.COLOR, .DEPTH}, "", .THREE_DIMENSIONAL, true, 8)
+  framebuffer_init(&renderer.back_framebuffer, window_resolution, {.COLOR})
   framebuffer_init(&renderer.shadowmap_framebuffer, {4096, 4096}, {.DEPTH}, "shadowmap", .SHADOWMAP)
   framebuffer_init(&renderer.macroshadowmap_framebuffer, {4096, 4096}, {.DEPTH}, "shadowmap", .SHADOWMAP)
 
