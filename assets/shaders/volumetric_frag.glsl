@@ -21,7 +21,9 @@ const float cloud_height_base = 10;
 const float cloud_height_apex = 42;
 
 #define STEPS_LIGHT 16
-#define STEPS_CLOUDS 64
+#define STEPS_CLOUDS 32
+#define STEPS_CLOUDS_LIGHTING 5
+#define CLOUD_DENSITY 0.1
 
 //	Simplex 3D Noise 
 //	by Ian McEwan, Stefan Gustavson (https://github.com/stegu/webgl-noise)
@@ -102,7 +104,14 @@ float rand(vec2 co){
     return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
 }
 
-vec4 crepuscular_rays() {
+float sample_cloud_density(vec3 p) {
+  float density = snoise(p * 0.01);
+  density -= snoise(p * 0.02) * 0.9;
+  density -= snoise(p * 0.1) * 0.3;
+  return clamp(density, 0, 1);
+}
+
+vec4 calculate_volumetrics() {
     float depth = texture(depth_texture, frag_uv).r;
 
     vec4 clip_space = vec4(frag_uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
@@ -135,40 +144,43 @@ vec4 crepuscular_rays() {
     // Henyey-Greenstein Phase Function
     float phase = 1;//(1.0 / (4.0 * 3.14159)) * ((1.0 - g * g) / pow(1.0 + g * g - 2.0 * g * cos_theta, 1.5));
 
-    for (int i = 0; i < STEPS_LIGHT; i++) {
-        vec4 light_space_pos;
-        vec3 proj_coords;
-        float shadow_depth;
-
-        if (far_away) {
-          light_space_pos = macroshadowmap_matrix * vec4(current_pos, 1);
-
-          proj_coords = light_space_pos.xyz / light_space_pos.w;
-          proj_coords = proj_coords * 0.5 + 0.5;
-
-          shadow_depth = texture(macroshadowmap_texture, proj_coords.xy).r;
-        } else {
-          light_space_pos = shadowmap_matrix * vec4(current_pos, 1);
-
-          proj_coords = light_space_pos.xyz / light_space_pos.w;
-          proj_coords = proj_coords * 0.5 + 0.5;
-
-          if (proj_coords.x > 1 || proj_coords.x < 0 || proj_coords.y > 1 || proj_coords.y < 0) {
-            far_away = true;
-          }
-
-          shadow_depth = texture(shadowmap_texture, proj_coords.xy).r;
-        }
-
-        if (proj_coords.z < shadow_depth) {
-          volumetric_light += scattering_intensity * phase;
-        }
-
-        current_pos += step_vector;
-    }
+    // for (int i = 0; i < STEPS_LIGHT; i++) {
+    //     vec4 light_space_pos;
+    //     vec3 proj_coords;
+    //     float shadow_depth;
+    //
+    //     if (far_away) {
+    //       light_space_pos = macroshadowmap_matrix * vec4(current_pos, 1);
+    //
+    //       proj_coords = light_space_pos.xyz / light_space_pos.w;
+    //       proj_coords = proj_coords * 0.5 + 0.5;
+    //
+    //       shadow_depth = texture(macroshadowmap_texture, proj_coords.xy).r;
+    //     } else {
+    //       light_space_pos = shadowmap_matrix * vec4(current_pos, 1);
+    //
+    //       proj_coords = light_space_pos.xyz / light_space_pos.w;
+    //       proj_coords = proj_coords * 0.5 + 0.5;
+    //
+    //       if (proj_coords.x > 1 || proj_coords.x < 0 || proj_coords.y > 1 || proj_coords.y < 0) {
+    //         far_away = true;
+    //       }
+    //
+    //       shadow_depth = texture(shadowmap_texture, proj_coords.xy).r;
+    //     }
+    //
+    //     if (proj_coords.z < shadow_depth) {
+    //       volumetric_light += scattering_intensity * phase;
+    //     }
+    //
+    //     current_pos += step_vector;
+    // }
+    // volumetric_light /= STEPS_LIGHT;
 
     float cloud_transmittance = 1.0;
+    float cloud_light = 0.0;
     float cloud = 0.0;
+
     if (ray_dir.y != 0) {
       float t_base = (cloud_height_base - camera_world_pos.y) / ray_dir.y;
       float t_apex = (cloud_height_apex - camera_world_pos.y) / ray_dir.y;
@@ -192,18 +204,29 @@ vec4 crepuscular_rays() {
           current_pos = camera_world_pos + (ray_dir * t_in) + (step_vector * jitter);
 
           for (int i = 0; i < STEPS_CLOUDS; i++) {
-            if (1-exp(-cloud * 0.1) > 1) break;
+            if (cloud > 1) break;
 
-            float current_density = clamp(
-                snoise(current_pos * 0.01) - snoise(current_pos * 0.02) * 0.9
-                - snoise(current_pos * 0.6) * 0.3,
-                0.0, 1.0
-            );
+            float current_density = sample_cloud_density(current_pos);
+            cloud_transmittance *= exp(-current_density * CLOUD_DENSITY);
 
-            // volumetric_light += cloud_transmittance;
-            // density += current_density;
-            cloud += current_density;
+            
+            if (current_density > 0) {
+              vec3 light_step_vector = normalize(-light_pos) * (cloud_march_length / float(STEPS_CLOUDS_LIGHTING));
+              vec3 light_current_pos = current_pos;
+              float t = 1.0;
 
+              for (int j = 0; j < STEPS_CLOUDS_LIGHTING; j++) {
+                float light_current_density = sample_cloud_density(light_current_pos);
+                t *= exp(-light_current_density * CLOUD_DENSITY);
+                cloud_light += light_current_density * t;
+
+                light_current_pos += light_step_vector;
+              }
+
+              cloud_light *= cloud_transmittance;
+            }
+
+            cloud += current_density * cloud_transmittance;
             current_pos += step_vector;
 
           }
@@ -211,13 +234,15 @@ vec4 crepuscular_rays() {
       }
     }
 
+    // cloud_light = exp(-cloud_light * CLOUD_DENSITY);
+
 
     return vec4(
-        vec3(1.0),
-        clamp(1-exp(-cloud * 0.1), 0, 1)
+        vec3(cloud_light),
+        clamp(cloud, 0, 1)
     );
 }
 
 void main() {
-    frag_color = crepuscular_rays();
+    frag_color = calculate_volumetrics();
 }

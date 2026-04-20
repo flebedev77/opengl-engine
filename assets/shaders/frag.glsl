@@ -118,7 +118,7 @@ float calculate_shadow(vec3 proj_coords, vec3 light_dir, sampler2D shadowmap) {
 
     // float test_sample = 0;
     // float test_sample_amount = 10;
-    // float test_sample_radius = 1.1;
+    // float test_sample_radius = 0.02;
     // for (int i = 0; i < test_sample_amount; i++) {
     //   vec2 jitter = poisson_offsets[i];
     //

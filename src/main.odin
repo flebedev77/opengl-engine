@@ -107,6 +107,7 @@ main :: proc() {
 
 
   albedo_texture := texture_load("assets/textures/box_placeholder.ppm")
+  white_texture := texture_load("assets/textures/white.png")
   airplane_texture := texture_load("assets/textures/su_body.ppm")
   // angel_texture := texture_load("assets/models/pavlov/albedo.ppm")
   //
@@ -120,6 +121,7 @@ main :: proc() {
     is_valid = true,
     albedo_texture = albedo_texture,
     albedo_tint = {0.8,0.8,0.98},
+    roughness_texture = white_texture,
     shader = shader
   }
   airplane_material := Material{
