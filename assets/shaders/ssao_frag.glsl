@@ -19,8 +19,8 @@ uniform mat4 view_matrix;
 
 const int ssao_samples = 16;
 const float ssao_radius = 0.09;
-const float ssao_intensity = 1.4;
-const float ssao_max_range = 5;
+const float ssao_intensity = 0.7;
+const float ssao_max_range = 15;
 
 const vec3 ssao_kernel[16] = vec3[](
 vec3(-0.04233161, -0.05540308, 0.02089313), 

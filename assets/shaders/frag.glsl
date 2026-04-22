@@ -26,7 +26,7 @@ const float PI = 3.141592653589793;
 const float shadow_pcf_border_exponent = 10; // Helps make the transition between nonshadow and shadow more natural and non linear
 const float shadow_pcf_noisiness = 1.0;
 const int shadow_pcf_samples = 5;
-const float ambient_light_intensity = 0.4;
+const float ambient_light_intensity = 0.5;
 
 const vec2 poisson_offsets[64] = vec2[](
 vec2(0.24772918, 0.42333201), 
