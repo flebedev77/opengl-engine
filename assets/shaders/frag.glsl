@@ -19,10 +19,14 @@ uniform vec3 light_pos;
 uniform mat4 view_matrix;
 uniform mat4 macroshadowmap_matrix;
 
+uniform vec4 uv;
+
 const float PI = 3.141592653589793;
+
 const float shadow_pcf_border_exponent = 10; // Helps make the transition between nonshadow and shadow more natural and non linear
 const float shadow_pcf_noisiness = 1.0;
 const int shadow_pcf_samples = 5;
+const float ambient_light_intensity = 0.3;
 
 const vec2 poisson_offsets[64] = vec2[](
 vec2(0.24772918, 0.42333201), 
@@ -208,9 +212,9 @@ float calculate_shadow(vec3 proj_coords, vec3 light_dir, sampler2D shadowmap) {
 }
 
 void main() {
-  out_frag_normal = vec4(normalize((view_matrix * vec4(frag_normal, 0)).xyz), 0);
+  out_frag_normal = vec4(frag_normal, 0);
 
-  vec4 textureSample = texture(albedo_texture, frag_uv);
+  vec4 textureSample = texture(albedo_texture, (frag_uv + uv.xy) * uv.zw);
   out_frag_color = textureSample * vec4(tint, 1) * vec4(frag_vert_color, 1);
 
   vec3 light_dir = normalize(-light_pos); // TODO change this to point from an actual light
@@ -230,7 +234,7 @@ void main() {
 
   float diffuse = clamp(dot(light_dir, -frag_normal), 0, 1) * 0.5;
 
-  vec4 ambient = vec4(0.2 * vec3(0.094, 0.345, 0.729), 1.0); // NOTE multiplying by the color of the sky, make sure it always corresponds
+  vec4 ambient = vec4(ambient_light_intensity * vec3(0.094, 0.345, 0.729), 1.0); // NOTE multiplying by the color of the sky, make sure it always corresponds
   float shadow_darkness = 0.9;
   out_frag_color += 0.1;
   
@@ -241,6 +245,7 @@ void main() {
     proj_coords = proj_coords * 0.5 + 0.5;
 
     float p = 0.01;
+    // TODO: OPTIMISATION: Move this comparison to the vertex shader and pass the properly selected shadowmap sampler from there
     if (proj_coords.x <= 1-p && proj_coords.y <= 1-p && proj_coords.x >= p && proj_coords.y >= p) {
       shadow = calculate_shadow(proj_coords, light_dir, shadowmap_texture);
     } else {
@@ -255,8 +260,7 @@ void main() {
 
   float inv_shadow = 1 - shadow;
   // out_frag_color = mix(out_frag_color, out_frag_color * shadow_ambient, clamp(pow(shadow, shadow_pcf_border_exponent), 0.0, 1.0));
-  out_frag_color *= (diffuse * inv_shadow + ambient + specular * inv_shadow) * ((1 + shadow_darkness) - shadow);
-
+  out_frag_color *= (diffuse * inv_shadow + specular * inv_shadow + ambient);// * ((1 + shadow_darkness) - shadow);
 
   // out_frag_color = vec4(frag_uv, 1, 1);
   // out_frag_color = vec4(1, 1, 1, 1);

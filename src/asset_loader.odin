@@ -23,9 +23,10 @@ asset_loader_material :: proc(
   shader_type: ShaderType
 ) -> Material {
   frag_path, vert_path :=
-  fmt.tprintf("./assets/shaders/%s_frag.glsl", shader_name),
+  fmt.aprintf("./assets/shaders/%s_frag.glsl", shader_name),
   (shader_type == .TWO_DIMENTIONAL) ? "./assets/shaders/quad_vert.glsl" :
-  fmt.tprintf("./assets/shaders/%s_vert.glsl", shader_name)
+  fmt.aprintf("./assets/shaders/%s_vert.glsl", shader_name)
+
 
   frag_contents, frag_success := os.read_entire_file_from_filename(frag_path, context.temp_allocator)
   assert(frag_success, fmt.tprintf("Failed to load fragment shader from %s", frag_path))
@@ -39,8 +40,8 @@ asset_loader_material :: proc(
     frag_cstring,
     vert_cstring,
     shader_type,
-    vert_path,
-    frag_path
+    frag_path,
+    vert_path
   )
   return Material{
     is_valid = true,

@@ -2,6 +2,7 @@ package main
 import "core:os"
 import "core:fmt"
 import "core:math/linalg"
+import "core:strings"
 import stbi "vendor:stb/image"
 import gl "vendor:OpenGL"
 
@@ -32,6 +33,7 @@ ShaderParameters :: struct {
   shadowmap_matrix_location,
   macroshadowmap_texture_location,
   macroshadowmap_matrix_location,
+  uv_location,
   tint_location,
   light_position_location,
   camera_position_location,
@@ -56,7 +58,9 @@ Shader :: struct {
   program: GpuID,
   parameters: ShaderParameters,
   type: ShaderType,
-  flags: bit_set[ShaderFlags]
+  flags: bit_set[ShaderFlags],
+  vertex_source_path,
+  fragment_source_path: string
 }
 
 Material :: struct {
@@ -64,6 +68,7 @@ Material :: struct {
   roughness_texture,
   albedo_texture: GpuID,
   albedo_tint: Vec3,
+  uv: Vec4,
   shader: Shader,
 }
 
@@ -103,6 +108,8 @@ Renderer :: struct {
   macroshadowmap_matrix: Mat4,
   default_shader: Shader,
   sun_position: Vec3,
+
+  reload_shaders: bool,
 }
 
 renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
@@ -144,7 +151,9 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   renderer.default_shader = shader_compileprogram(
     cstring(#load("../assets/shaders/frag.glsl")),
     cstring(#load("../assets/shaders/vert.glsl")),
-    .THREE_DIMENSIONAL
+    .THREE_DIMENSIONAL,
+    "./assets/shaders/frag.glsl",
+    "./assets/shaders/vert.glsl"
   )
 }
 
@@ -152,7 +161,7 @@ renderer_delete :: proc(renderer: ^Renderer) {
   gl.DeleteProgram(renderer.default_shader.program)
 }
 
-renderer_draw_meshes :: proc(renderer: ^Renderer, material_override: Material = {}) {
+renderer_draw_meshes :: proc(renderer: ^Renderer, material_override: ^Material = {}) {
   player_render(renderer.scene, &renderer.scene.player, material_override)
   for &mesh in renderer.scene.meshes {
     render_mesh(renderer, &mesh, material_override)
@@ -189,13 +198,13 @@ renderer_render :: proc(renderer: ^Renderer) {
 
   gl.Enable(gl.DEPTH_TEST)
   renderer_bind_and_clear_framebuffer(renderer, renderer.shadowmap_framebuffer)
-  renderer_draw_meshes(renderer, renderer.shadowmap_framebuffer.material)
+  renderer_draw_meshes(renderer, &renderer.shadowmap_framebuffer.material)
   gl.ActiveTexture(gl.TEXTURE1)
   gl.BindTexture(gl.TEXTURE_2D, renderer.shadowmap_framebuffer.depth_texture)
 
   renderer.shadowmap_matrix = renderer.macroshadowmap_matrix
   renderer_bind_and_clear_framebuffer(renderer, renderer.macroshadowmap_framebuffer)
-  renderer_draw_meshes(renderer, renderer.shadowmap_framebuffer.material)
+  renderer_draw_meshes(renderer, &renderer.shadowmap_framebuffer.material)
   gl.ActiveTexture(gl.TEXTURE7)
   gl.BindTexture(gl.TEXTURE_2D, renderer.macroshadowmap_framebuffer.depth_texture)
 
@@ -204,7 +213,7 @@ renderer_render :: proc(renderer: ^Renderer) {
 
   // Prepass
   renderer_bind_and_clear_framebuffer(renderer, renderer.prepass_framebuffer)
-  renderer_draw_meshes(renderer, renderer.prepass_framebuffer.material)
+  renderer_draw_meshes(renderer, &renderer.prepass_framebuffer.material)
 
 
   // MSAA forward pass
@@ -236,26 +245,26 @@ renderer_render :: proc(renderer: ^Renderer) {
 
   // Volumetrics pass
   renderer_bind_and_clear_framebuffer(renderer, renderer.volumetrics_framebuffer)
-  render_mesh(renderer, &renderer.post_process_quad, renderer.volumetrics_framebuffer.material)
+  render_mesh(renderer, &renderer.post_process_quad, &renderer.volumetrics_framebuffer.material)
 
   gl.ActiveTexture(gl.TEXTURE5)
   gl.BindTexture(gl.TEXTURE_2D, renderer.volumetrics_framebuffer.color_texture)
   // Volumetrics blur pass
-  renderer.blur_framebuffer.material.shader.parameters.blur_amount = 1
+  renderer.blur_framebuffer.material.shader.parameters.blur_amount = 7
   renderer_bind_and_clear_framebuffer(renderer, renderer.blur_framebuffer)
-  render_mesh(renderer, &renderer.post_process_quad, renderer.blur_framebuffer.material)
+  render_mesh(renderer, &renderer.post_process_quad, &renderer.blur_framebuffer.material)
   framebuffer_blit(renderer.blur_framebuffer, renderer.volumetrics_framebuffer)
 
   // SSAO
   renderer_bind_and_clear_framebuffer(renderer, renderer.ssao_framebuffer)
-  render_mesh(renderer, &renderer.post_process_quad, renderer.ssao_framebuffer.material)
+  render_mesh(renderer, &renderer.post_process_quad, &renderer.ssao_framebuffer.material)
 
   gl.ActiveTexture(gl.TEXTURE5)
   gl.BindTexture(gl.TEXTURE_2D, renderer.ssao_framebuffer.red_texture)
   // SSAO blur pass
   renderer.blur_framebuffer.material.shader.parameters.blur_amount = 4
   renderer_bind_and_clear_framebuffer(renderer, renderer.blur_framebuffer)
-  render_mesh(renderer, &renderer.post_process_quad, renderer.blur_framebuffer.material)
+  render_mesh(renderer, &renderer.post_process_quad, &renderer.blur_framebuffer.material)
   framebuffer_blit(renderer.blur_framebuffer, renderer.ssao_framebuffer)
 
   
@@ -268,6 +277,8 @@ renderer_render :: proc(renderer: ^Renderer) {
   // renderer.debug_renderer.shader.parameters.view_matrix = renderer.scene.camera.view_matrix
   // renderer.debug_renderer.shader.parameters.projection_matrix = renderer.scene.camera.projection_matrix
   // debugrenderer_draw(&renderer.debug_renderer)
+  renderer.reload_shaders = false
+  free_all(context.temp_allocator)
 }
 
 renderer_bind_and_clear_framebuffer :: proc(renderer: ^Renderer, framebuffer: Framebuffer) {
@@ -280,14 +291,39 @@ renderer_bind_and_clear_framebuffer :: proc(renderer: ^Renderer, framebuffer: Fr
   gl.Clear(gl.DEPTH_BUFFER_BIT | gl.COLOR_BUFFER_BIT)
 }
 
-render_mesh :: proc(renderer: ^Renderer, mesh: ^Mesh, material_override: Material = {}) {
+render_mesh :: proc(renderer: ^Renderer, mesh: ^Mesh, material_override: ^Material = {}) {
   material_override := material_override
 
-  shader_parameters := &mesh.material.shader.parameters
-  if material_override.is_valid {
-    shader_parameters = &material_override.shader.parameters
+  mesh_material := &mesh.material
+  if material_override != nil && material_override.is_valid {
+    mesh_material = material_override
   }
 
+  // Has the benefit of loading only the shaders required,
+  // but may reload the same shader MULTIPLE times fix later
+  if renderer.reload_shaders {
+    fragment_filename := mesh_material.shader.fragment_source_path
+    vertex_filename := mesh_material.shader.vertex_source_path
+    new_fragment_source, fragment_load_success := 
+    os.read_entire_file_from_filename(fragment_filename, context.temp_allocator)
+    if fragment_load_success {
+      new_vertex_source, vertex_load_success := 
+      os.read_entire_file_from_filename(vertex_filename, context.temp_allocator)
+      if vertex_load_success {
+        frag_contents_cstring := strings.clone_to_cstring(string(new_fragment_source), context.temp_allocator)
+        vert_contents_cstring := strings.clone_to_cstring(string(new_vertex_source), context.temp_allocator)
+        mesh_material.shader.program = shader_compileprogram(
+          frag_contents_cstring, 
+          vert_contents_cstring,
+          mesh_material.shader.type,
+          vertex_filename,
+          fragment_filename
+        ).program
+      }
+    }
+  }
+
+  shader_parameters := &mesh_material.shader.parameters
   shader_parameters.macroshadowmap_matrix = renderer.macroshadowmap_matrix
   shader_parameters.shadowmap_matrix = renderer.shadowmap_matrix
   shader_parameters.view_matrix = renderer.scene.camera.view_matrix
@@ -365,15 +401,15 @@ mesh_init :: proc(
   // fmt.printfln("VAO  %d\nVBO  %d\nEBO  %d\nTRIS %d", mesh.vao, mesh.position_bufferobject, mesh.indice_bufferobject, len(indices))
 }
 
-mesh_draw :: proc(mesh: Mesh, material_override: Material = {}) {
+mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}) {
   mesh := mesh
   material := mesh.material
 
-  if material.is_valid && !material_override.is_valid {
+  if material.is_valid && (material_override == nil || !material_override.is_valid) {
     gl.UseProgram(material.shader.program)
   } else if material_override.is_valid {
     gl.UseProgram(material_override.shader.program)
-    material = material_override
+    material = material_override^
   }
   shader := material.shader
 
@@ -406,6 +442,11 @@ mesh_draw :: proc(mesh: Mesh, material_override: Material = {}) {
       material.albedo_tint = {1, 1, 1}
     }
     gl.Uniform3fv(shader.parameters.tint_location, 1, &material.albedo_tint[0])
+
+    if material.uv == {0, 0, 0, 0} {
+      material.uv = {0, 0, 1, 1}
+    }
+    gl.Uniform4fv(shader.parameters.uv_location, 1, &material.uv[0]);
 
     gl.ActiveTexture(gl.TEXTURE0)
     gl.BindTexture(gl.TEXTURE_2D, material.albedo_texture)
@@ -446,17 +487,28 @@ shader_compilemodule :: proc(source: cstring, type: u32, filename := "unknown") 
     shader_error_log: [512]u8
     len: i32
     gl.GetShaderInfoLog(shader, 512, &len, &shader_error_log[0])
-    panic(fmt.tprintfln("Shader %s compilation error in %s: %s",
-        (type == gl.FRAGMENT_SHADER) ? "fragment" : "vertment",
+    fmt.eprintfln("Shader %s compilation error in %s: %s",
+        (type == gl.FRAGMENT_SHADER) ? "fragment" : "vertex",
         filename,
         shader_error_log[:len]
-    ))
+    )
+  } else {
+    fmt.printfln("Shader %s %s successfully loaded", 
+        (type == gl.FRAGMENT_SHADER) ? "fragment" : "vertex  ",
+        filename
+    )
   }
 
   return shader
 }
 
-shader_compileprogram :: proc(fragmentSource: cstring, vertexSource: cstring, type: ShaderType, vertex_filename := "unknown", fragment_filename := "unknown") -> Shader {
+shader_compileprogram :: proc(
+  fragmentSource: cstring,
+  vertexSource: cstring,
+  type: ShaderType,
+  fragment_filename := "unknown",
+  vertex_filename := "unknown"
+) -> Shader {
   shader_program := gl.CreateProgram()
   fragment_shader := shader_compilemodule(fragmentSource, gl.FRAGMENT_SHADER, fragment_filename)
   vertex_shader := shader_compilemodule(vertexSource, gl.VERTEX_SHADER, vertex_filename)
@@ -470,13 +522,14 @@ shader_compileprogram :: proc(fragmentSource: cstring, vertexSource: cstring, ty
   shader: Shader
   shader.program = shader_program
   shader.type = type
+  shader.vertex_source_path = vertex_filename
+  shader.fragment_source_path = fragment_filename
   shader_init(&shader)
   
   return shader
 }
 
 shader_init :: proc(shader: ^Shader) {
-  shader.parameters.tint_location = gl.GetUniformLocation(shader.program, "tint")
   shader.parameters.shadowmap_matrix_location = gl.GetUniformLocation(shader.program, "shadowmap_matrix")
   shader.parameters.macroshadowmap_texture_location = gl.GetUniformLocation(shader.program, "macroshadowmap_texture")
   shader.parameters.macroshadowmap_matrix_location = gl.GetUniformLocation(shader.program, "macroshadowmap_matrix")
@@ -485,6 +538,8 @@ shader_init :: proc(shader: ^Shader) {
   shader.parameters.projection_matrix_location = gl.GetUniformLocation(shader.program, "projection_matrix")
   // switch shader.type {
   //   case .THREE_DIMENSIONAL:
+      shader.parameters.uv_location = gl.GetUniformLocation(shader.program, "uv");
+      shader.parameters.tint_location = gl.GetUniformLocation(shader.program, "tint")
       shader.parameters.albedo_texture_location = gl.GetUniformLocation(shader.program, "albedo_texture")
       shader.parameters.shadowmap_texture_location = gl.GetUniformLocation(shader.program, "shadowmap_texture")
       shader.parameters.light_position_location = gl.GetUniformLocation(shader.program, "light_pos")
@@ -553,7 +608,7 @@ texture_load :: proc(filepath: string) -> u32 {
   gl.BindTexture(gl.TEXTURE_2D, texture)
   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT)
   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT)
-  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)
   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
   if img_channels == 1 {
     gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RED, img_w, img_h,

@@ -21,9 +21,9 @@ const float cloud_height_base = 10;
 const float cloud_height_apex = 42;
 
 #define STEPS_LIGHT 16
-#define STEPS_CLOUDS 32
-#define STEPS_CLOUDS_LIGHTING 5
-#define CLOUD_DENSITY 0.1
+#define STEPS_CLOUDS 100
+#define STEPS_CLOUDS_LIGHTING 0
+#define CLOUD_DENSITY 0.01
 
 //	Simplex 3D Noise 
 //	by Ian McEwan, Stefan Gustavson (https://github.com/stegu/webgl-noise)
@@ -106,9 +106,9 @@ float rand(vec2 co){
 
 float sample_cloud_density(vec3 p) {
   float density = snoise(p * 0.01);
-  density -= snoise(p * 0.02) * 0.9;
+  density -= max(0, snoise(p * 0.02) * 1.9);
   density -= snoise(p * 0.1) * 0.3;
-  return clamp(density, 0, 1);
+  return clamp(pow(density, 1), 0, 1);
 }
 
 vec4 calculate_volumetrics() {
@@ -198,47 +198,54 @@ vec4 calculate_volumetrics() {
 
           float cloud_march_length = t_out - t_in;
 
-          step_length = cloud_march_length / float(STEPS_CLOUDS);
+          step_length = jitter + 5;//min(10, cloud_march_length / float(STEPS_CLOUDS));
           step_vector = ray_dir * step_length;
 
-          current_pos = camera_world_pos + (ray_dir * t_in) + (step_vector * jitter);
+          vec3 start_pos = camera_world_pos + ray_dir * t_in;
+          float distance_travelled = 0;
 
           for (int i = 0; i < STEPS_CLOUDS; i++) {
-            if (cloud > 1) break;
+            if (cloud_transmittance < 0.001) break;
+            if (distance_travelled > cloud_march_length) break;
 
+
+            current_pos = start_pos + ray_dir * distance_travelled + step_vector;
+            distance_travelled += step_length;
             float current_density = sample_cloud_density(current_pos);
-            cloud_transmittance *= exp(-current_density * CLOUD_DENSITY);
 
-            
             if (current_density > 0) {
-              vec3 light_step_vector = normalize(-light_pos) * (cloud_march_length / float(STEPS_CLOUDS_LIGHTING));
-              vec3 light_current_pos = current_pos;
-              float t = 1.0;
-
-              for (int j = 0; j < STEPS_CLOUDS_LIGHTING; j++) {
-                float light_current_density = sample_cloud_density(light_current_pos);
-                t *= exp(-light_current_density * CLOUD_DENSITY);
-                cloud_light += light_current_density * t;
-
-                light_current_pos += light_step_vector;
-              }
-
-              cloud_light *= cloud_transmittance;
+              // vec3 light_dir = normalize(light_pos);
+              // // float light_ray_distance = ;
+              // float light_step_length = cloud_march_length / float(STEPS_CLOUDS_LIGHTING);
+              // vec3 light_step_vector = light_dir * light_step_length;
+              // vec3 light_current_pos = current_pos;
+              //
+              // float light_transmittance = 1;
+              // for (int j = 0; j < STEPS_CLOUDS_LIGHTING; j++) {
+              //   if (light_transmittance < 0.001) break;
+              //
+              //   float light_current_density = sample_cloud_density(light_current_pos);
+              //
+              //   light_transmittance *= exp(-light_current_density * CLOUD_DENSITY);
+              //
+              //   light_current_pos += light_step_vector;
+              // }
+              //
+              // cloud_light += cloud_transmittance * light_transmittance;
+            } else {
+              // distance_travelled += step_length;
             }
+            cloud_transmittance *= exp(-current_density * CLOUD_DENSITY * step_length);
 
             cloud += current_density * cloud_transmittance;
-            current_pos += step_vector;
-
           }
         }
       }
     }
 
-    // cloud_light = exp(-cloud_light * CLOUD_DENSITY);
-
-
     return vec4(
-        vec3(cloud_light),
+        //vec3(cloud_light),
+        vec3(1.0),
         clamp(cloud, 0, 1)
     );
 }

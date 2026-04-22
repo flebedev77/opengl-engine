@@ -14,7 +14,7 @@ grid_init :: proc(grid: ^Grid, width, height: int, offset: Vec3, material: Mater
   grid.mesh = mesh_make_cube(material)
 }
 
-grid_draw :: proc(grid: ^Grid, camera: Camera, material_override: Material = {}) {
+grid_draw :: proc(grid: ^Grid, camera: Camera, material_override: ^Material = {}) {
   for y in 0..<grid.height {
     for x in 0..<grid.width {
       i := y * grid.width + x

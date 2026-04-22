@@ -51,6 +51,10 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
     player.is_flying = false
     player.debug_movement = false
   }
+  
+  if glfw.GetKey(GlfwWindow, glfw.KEY_F7) > 0 {
+    scene.renderer.reload_shaders = true
+  }
 
   if player.debug_movement {
     player_debug_update(scene, player)
@@ -139,7 +143,7 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
   }
   basis_draw_scale := f32(1)
 
-  if player.is_flying do player.position += local_forward * 0.05
+  if player.is_flying do player.position += local_forward * 0.05 * 10
 
   debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position, player.position + local_forward * basis_draw_scale, {0, 0, 1})
   debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position, player.position + local_up * basis_draw_scale, {0, 1, 0})
@@ -228,7 +232,7 @@ player_debug_update :: proc(scene: ^Scene, player: ^Player) {
     scene.camera.view_matrix = player.viewmatrix
 }
 
-player_render :: proc(scene: ^Scene, player: ^Player, material_override: Material = {}) {
+player_render :: proc(scene: ^Scene, player: ^Player, material_override: ^Material = {}) {
   if player.debug_movement {
     return
   }

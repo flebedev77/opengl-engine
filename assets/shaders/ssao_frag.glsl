@@ -11,14 +11,17 @@ uniform sampler2D depth_texture;
 
 uniform mat4 inv_projection_matrix;
 uniform mat4 projection_matrix;
+uniform mat4 view_matrix;
 
-#define near 0.001
-#define far  1000
-#define fov 80
+// #define near 0.001
+// #define far  1000
+// #define fov 80
 
 const int ssao_samples = 16;
 const float ssao_radius = 0.09;
-const float ssao_intensity = 0.4;
+const float ssao_intensity = 1.4;
+const float ssao_max_range = 5;
+
 const vec3 ssao_kernel[16] = vec3[](
 vec3(-0.04233161, -0.05540308, 0.02089313), 
 vec3(-0.12190412, -0.03275195, 0.06935520), 
@@ -42,23 +45,24 @@ float rand(vec2 co){
     return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
 }
 
-float linearize_depth(float depth) {
-  return (near * far) / (far - depth * (far - near));
-}
+// float linearize_depth(float depth) {
+//   return (near * far) / (far - depth * (far - near));
+// }
 
-vec3 reconstruct_position(vec2 uv, float depth) {
+vec3 reconstruct_position(vec2 uv, float non_linear_depth) {
   vec2 ndc = uv * 2 - 1;
-  // float depth = texture(depth_texture, frag_uv).r;
-  vec4 clip = vec4(ndc.x, ndc.y, depth * 2 - 1, 1);
+  vec4 clip = vec4(ndc.x, ndc.y, non_linear_depth * 2 - 1, 1);
   vec4 view = inv_projection_matrix * clip;
   return view.xyz / view.w;
 }
 
 float ssao() {
-  float occlusion = 0.0;
+  float occlusion = 0;
 
-  vec3 normal = normalize(texture(normal_texture, frag_uv).xyz);
+  vec3 normal = normalize((texture(normal_texture, frag_uv)).xyz); // Are the normals in view space?
   vec3 position = reconstruct_position(frag_uv, texture(depth_texture, frag_uv).r);
+
+  if (position.z < -ssao_max_range) return 0.0;
 
   vec3 random_vec = vec3(
     rand(frag_uv + position.xy + normal.yx) * 2 - 1,

@@ -76,13 +76,6 @@ main :: proc() {
   scene_init(&scene, &renderer)
   defer scene_delete(&scene)
 
-  shader = shader_compileprogram(
-    cstring(#load("../assets/shaders/frag.glsl")),
-    cstring(#load("../assets/shaders/vert.glsl")),
-    .THREE_DIMENSIONAL
-  )
-  defer gl.DeleteProgram(shader.program)
-
   light_viewmatrix := linalg.matrix4_look_at_f32(
     linalg.normalize(Vec3{10, 50, 10}) * 5, 
     {0, 0, 0},
@@ -107,33 +100,28 @@ main :: proc() {
 
 
   albedo_texture := texture_load("assets/textures/box_placeholder.ppm")
+  grass_texture := texture_load("assets/textures/whispy-grass-meadow-bl/wispy-grass-meadow_albedo.png")
   white_texture := texture_load("assets/textures/white.png")
-  airplane_texture := texture_load("assets/textures/su_body.ppm")
-  // angel_texture := texture_load("assets/models/pavlov/albedo.ppm")
-  //
-  // angel_material := Material{
-  //   is_valid = true,
-  //   albedo_texture = angel_texture,
-  //   roughness_texture = texture_load("assets/models/pavlov/roughness.ppm"),
-  //   shader = shader
-  // }
+
   default_material := Material{
     is_valid = true,
     albedo_texture = albedo_texture,
     albedo_tint = {0.8,0.8,0.98},
     roughness_texture = white_texture,
-    shader = shader
-  }
-  airplane_material := Material{
-    is_valid = true,
-    albedo_texture = airplane_texture,
-    albedo_tint = {0,0,0},
-    shader = shader
+    shader = renderer.default_shader
   }
   sky_material := Material{
     is_valid = true,
     shader = sky_shader
   }
+  ground_material := Material{
+    is_valid = true,
+    albedo_texture = grass_texture,
+    roughness_texture = white_texture,
+    uv = {0, 0, 40, 40},
+    shader = renderer.default_shader,
+  }
+
   glfw.SetWindowRefreshCallback(GlfwWindow, window_refresh)
 
   light_mesh := mesh_make_cube(default_material, {10, 10, 10})  
@@ -142,27 +130,19 @@ main :: proc() {
   cube_mesh.model_matrix = translation_matrix({1, 0, 1})
   cube_mesh.model_matrix *= scale_matrix({1, 0.8, 1})
 
-  scl := f32(0.02)
-  // obj_mesh := asset_loader_obj_mesh("assets/models/pavlov.obj", angel_material, true)
-  // obj_mesh.model_matrix *= translation_matrix({0, 0, 0})
-  // obj_mesh.model_matrix *= scale_matrix({scl, scl, scl})
-  
   sky_mesh := asset_loader_obj_mesh("assets/models/skydome.obj", sky_material)
   sky_mesh.model_matrix *= scale_matrix({500, 500, 500})
   scene.sky_mesh = sky_mesh
 
-  ground_mesh := asset_loader_obj_mesh("assets/models/terrain.obj", default_material)
-  scl = 5.2
+  ground_mesh := asset_loader_obj_mesh("assets/models/terrain.obj", ground_material)
+  scl := f32(5.2)
   ground_mesh.material.albedo_tint = {0.3, 0.7, 0.3}
   ground_mesh.model_matrix *= scale_matrix({scl, scl, scl})
   ground_mesh.model_matrix *= translation_matrix({0, -3, 0})
   
   append(&scene.meshes, cube_mesh)
-  // append(&scene.meshes, obj_mesh)
   append(&scene.meshes, light_mesh)
   append(&scene.meshes, ground_mesh)
-
-  // fmt.printfln("size_of(Vec3) = %d", size_of(Vec3))
 
 
   for glfw.WindowShouldClose(GlfwWindow) == false {
