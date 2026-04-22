@@ -1,0 +1,7 @@
+build.zip filter=lfs diff=lfs merge=lfs -text
+*.ppm filter=lfs diff=lfs merge=lfs -text
+screenshot000.png filter=lfs diff=lfs merge=lfs -text
+*.obj filter=lfs diff=lfs merge=lfs -text
+assets/cubemaps/** filter=lfs diff=lfs merge=lfs -text
+assets/models/** filter=lfs diff=lfs merge=lfs -text
+assets/textures/** filter=lfs diff=lfs merge=lfs -text
