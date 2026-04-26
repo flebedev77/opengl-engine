@@ -250,7 +250,7 @@ renderer_render :: proc(renderer: ^Renderer) {
   gl.ActiveTexture(gl.TEXTURE5)
   gl.BindTexture(gl.TEXTURE_2D, renderer.volumetrics_framebuffer.color_texture)
   // Volumetrics blur pass
-  renderer.blur_framebuffer.material.shader.parameters.blur_amount = 7
+  renderer.blur_framebuffer.material.shader.parameters.blur_amount = 1
   renderer_bind_and_clear_framebuffer(renderer, renderer.blur_framebuffer)
   render_mesh(renderer, &renderer.post_process_quad, &renderer.blur_framebuffer.material)
   framebuffer_blit(renderer.blur_framebuffer, renderer.volumetrics_framebuffer)

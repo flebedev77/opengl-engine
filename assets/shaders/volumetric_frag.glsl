@@ -21,11 +21,11 @@ const float cloud_height_base = 10;
 const float cloud_height_apex = 62;
 
 #define STEPS_LIGHT 16
-#define STEPS_CLOUDS 100
+#define STEPS_CLOUDS 500
 #define STEPS_CLOUDS_LIGHTING 6
-#define CLOUD_DENSITY 2.3
+#define CLOUD_DENSITY 0.3//2.3
 #define CLOUD_LIGHT_DENSITY 0.831
-#define CLOUD_STEP_LENGTH 0.7
+#define CLOUD_STEP_LENGTH 1
 #define CLOUD_LIGHT_STEP_LENGTH 1.8
 
 //	Simplex 3D Noise 
@@ -108,18 +108,22 @@ float rand(vec2 co){
 }
 
 float sample_cloud_density(vec3 p) {
-  return clamp(
-      10 - length(
-        p - vec3(0, (cloud_height_base + cloud_height_apex)/2, 0)
-      ) - snoise(p * 0.9) * 0.3,
-  0, 1);
+  // return clamp(
+  //     10 - length(
+  //       p - vec3(0, (cloud_height_base + cloud_height_apex)/2, 0)
+  //     ) - snoise(p * 0.9) * 0.3,
+  // 0, 1) + clamp(
+  //   10 - length(
+  //       p - vec3(10, (cloud_height_base + cloud_height_apex)/2, 10)
+  //     ) - snoise(p * 0.9) * 0.3,
+  // 0, 1);
 
 
-  float density = snoise(p * 0.01);
-  density -= max(0, snoise(p * 0.02) * 1.9);
-  density -= snoise(p * 0.1) * 0.3;
-  density *= 2.1;
-  return clamp(pow(density, 1), 0, 1);
+  float density = pow(snoise(p * 0.01), 1) * (1 - p.y / cloud_height_apex);
+  // density -= snoise(p * 0.9) * 0.3;
+  // density -= snoise(p * 0.1) * 0.3;
+  // density *= 2.1;
+  return clamp(density, 0, 1);
 }
 
 vec4 calculate_volumetrics() {
@@ -210,6 +214,7 @@ vec4 calculate_volumetrics() {
           float cloud_march_length = t_out - t_in;
 
           step_length = jitter + CLOUD_STEP_LENGTH;//min(10, cloud_march_length / float(STEPS_CLOUDS));
+          float in_cloud_step_length = step_length;
           step_vector = ray_dir * step_length;
 
           vec3 start_pos = camera_world_pos + ray_dir * t_in;
@@ -220,7 +225,7 @@ vec4 calculate_volumetrics() {
             if (distance_travelled > cloud_march_length) break;
 
 
-            current_pos = start_pos + ray_dir * distance_travelled + step_vector;
+            current_pos = start_pos + ray_dir * distance_travelled;
             distance_travelled += step_length;
             float current_density = sample_cloud_density(current_pos);
 
@@ -233,7 +238,7 @@ vec4 calculate_volumetrics() {
               float light_transmittance = 1;
               float light_density = 0;
               for (int j = 0; j < STEPS_CLOUDS_LIGHTING; j++) {
-                if (light_transmittance < 0.001) break;
+                if (light_transmittance < 0.01) break;
                 if (light_distance_travelled > cloud_march_length) break;
 
                 float light_current_density = sample_cloud_density(light_current_pos);
@@ -249,6 +254,9 @@ vec4 calculate_volumetrics() {
               // cloud_light = light_transmittance;
               cloud += current_density * cloud_transmittance * step_length;
               cloud_transmittance *= exp(-current_density * CLOUD_DENSITY * step_length);
+              step_length = in_cloud_step_length;
+            } else {
+              // step_length = in_cloud_step_length * 5;
             }
 
           }

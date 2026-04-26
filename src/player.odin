@@ -143,7 +143,7 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
   }
   basis_draw_scale := f32(1)
 
-  if player.is_flying do player.position += local_forward * 0.05 * 10
+  if player.is_flying do player.position += local_forward * 0.05 * 3
 
   debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position, player.position + local_forward * basis_draw_scale, {0, 0, 1})
   debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position, player.position + local_up * basis_draw_scale, {0, 1, 0})
