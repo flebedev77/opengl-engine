@@ -19,6 +19,9 @@ uniform vec3 light_pos;
 uniform mat4 view_matrix;
 uniform mat4 macroshadowmap_matrix;
 
+uniform float roughness_strength;
+uniform float metallic_strength;
+
 uniform vec4 uv;
 
 const float PI = 3.141592653589793;
@@ -26,7 +29,7 @@ const float PI = 3.141592653589793;
 const float shadow_pcf_border_exponent = 10; // Helps make the transition between nonshadow and shadow more natural and non linear
 const float shadow_pcf_noisiness = 1.0;
 const int shadow_pcf_samples = 5;
-const float ambient_light_intensity = 0.5;
+const float ambient_light_intensity = 0.2;
 
 const vec2 poisson_offsets[64] = vec2[](
 vec2(0.24772918, 0.42333201), 
@@ -101,6 +104,39 @@ float rand(vec2 co) {
 
 vec2 randtwo(vec2 co) {
   return vec2(rand(co), rand(co + frag_uv)) * 2 - 1;
+}
+
+float distribution_ggx(vec3 n, vec3 h, float roughness) {
+    float a = roughness*roughness;
+    float a2 = a*a;
+    float ndoth = max(dot(n, h), 0.0);
+    float ndoth2 = ndoth*ndoth;
+
+    float nom   = a2;
+    float denom = (ndoth2 * (a2 - 1.0) + 1.0);
+    denom = PI * denom * denom;
+
+    return nom / denom;
+}
+float geometryschlick_ggx(float ndotv, float roughness) {
+    float r = (roughness + 1.0);
+    float k = (r*r) / 8.0;
+
+    float nom   = ndotv;
+    float denom = ndotv * (1.0 - k) + k;
+
+    return nom / denom;
+}
+float geometrysmith(vec3 n, vec3 v, vec3 l, float roughness) {
+    float ndotv = max(dot(n, v), 0.0);
+    float ndotl = max(dot(n, l), 0.0);
+    float ggx2 = geometryschlick_ggx(ndotv, roughness);
+    float ggx1 = geometryschlick_ggx(ndotl, roughness);
+
+    return ggx1 * ggx2;
+}
+vec3 fresnelschlick(float costheta, vec3 f0) {
+    return f0 + (1.0 - f0) * pow(clamp(1.0 - costheta, 0.0, 1.0), 5.0);
 }
 
 float calculate_shadow(vec3 proj_coords, vec3 light_dir, sampler2D shadowmap) {
@@ -215,27 +251,46 @@ void main() {
   out_frag_normal = vec4(frag_normal, 0);
 
   vec4 textureSample = texture(albedo_texture, (frag_uv + uv.xy) * uv.zw);
-  out_frag_color = textureSample * vec4(tint, 1) * vec4(frag_vert_color, 1);
+  vec3 albedo = textureSample.rgb * tint * frag_vert_color;
 
-  vec3 light_dir = normalize(-light_pos); // TODO change this to point from an actual light
-  vec3 view_dir = normalize(frag_pos - camera_pos);
+  vec3 light_dir = normalize(light_pos); // TODO change this to point from an actual light
+  vec3 view_dir = normalize(camera_pos - frag_pos);
 
-  float specularity = 1-texture(roughness_texture, frag_uv).r;//step(0.99, (textureSample.r + textureSample.g + textureSample.b));
-  vec3 light_view_midway = normalize((-light_dir) + (-view_dir));
-  float specular = clamp(
-      pow(
-        dot(light_view_midway, frag_normal),
-        specularity * 30
-      ),
-      0,
-      1
-  ) * specularity * 2;
-  // specular *= clamp(specularity, 0, 1.0);
 
-  float diffuse = clamp(dot(light_dir, -frag_normal), 0, 1) * 0.5;
+  float metallic = metallic_strength;
+  vec3 fr = vec3(0.04); // Reflectance at normal incidence
+  fr = mix(fr, albedo, metallic);
+
+  float roughness = 1 - texture(roughness_texture, frag_uv).r * roughness_strength;
+  vec3 light_view_midway = normalize(light_dir + view_dir);
+
+
+  // Cook-Torrance BRDF
+  float NDF = distribution_ggx(frag_normal, light_view_midway, roughness);   
+  float G   = geometrysmith(frag_normal, view_dir, light_dir, roughness);      
+  vec3 F    = fresnelschlick(clamp(dot(light_view_midway, view_dir), 0.0, 1.0), fr);
+
+  vec3 numerator    = NDF * G * F; 
+  float denominator = 4.0 * max(dot(frag_normal, view_dir), 0.0) * max(dot(frag_normal, light_dir), 0.0) + 0.0001; // + 0.0001 to prevent divide by zero
+  vec3 specular = numerator / denominator;
+
+  // kS is equal to Fresnel
+  vec3 kS = F;
+  // for energy conservation, the diffuse and specular light can't
+  // be above 1.0 (unless the surface emits light); to preserve this
+  // relationship the diffuse component (kD) should equal 1.0 - kS.
+  vec3 kD = vec3(1.0) - kS;
+  // multiply kD by the inverse metalness such that only non-metals 
+  // have diffuse lighting, or a linear blend if partly metal (pure metals
+  // have no diffuse light).
+  kD *= 1.0 - metallic;
 
   vec4 ambient = vec4(ambient_light_intensity * vec3(0.094, 0.345, 0.729), 1.0); // NOTE multiplying by the color of the sky, make sure it always corresponds
-  float shadow_darkness = 0.9;
+  float diffuse = clamp(dot(light_dir, frag_normal), 0, 1);// * 0.5;
+  vec4 light_energy = vec4((kD * albedo / PI + specular) * diffuse, 1);
+
+
+  float shadow_darkness = 0.1;
   out_frag_color += 0.1;
   
   float shadow = 1.0;
@@ -260,7 +315,8 @@ void main() {
 
   float inv_shadow = 1 - shadow;
   // out_frag_color = mix(out_frag_color, out_frag_color * shadow_ambient, clamp(pow(shadow, shadow_pcf_border_exponent), 0.0, 1.0));
-  out_frag_color *= (diffuse * inv_shadow + specular * inv_shadow + ambient);// * ((1 + shadow_darkness) - shadow);
+  out_frag_color = (light_energy * inv_shadow + vec4(albedo, 1) * ambient);
+  out_frag_color = out_frag_color / (out_frag_color + vec4(1));
 
   // out_frag_color = vec4(frag_uv, 1, 1);
   // out_frag_color = vec4(1, 1, 1, 1);

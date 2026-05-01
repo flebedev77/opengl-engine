@@ -28,16 +28,14 @@ void main() {
     for (int y = -blur_size; y < blur_size; y++) {
       vec2 sample_pos = vec2(float(x), float(y)) * res_to_unit;
       vec4 jittered_sample = texture(blur_texture, frag_uv + sample_pos);
-      // if (abs(jittered_sample.a - base_sample.a) < 0.001) {
-        result += vec4(jittered_sample.rgb, 0);
-        samples++;
-      // }
+      result += jittered_sample;
+      samples++;
     }
   }
   // frag_color = vec4(result / ((blur_size * 2) * (blur_size * 2)));
   // frag_color = texture(blur_texture, frag_uv).r;
   if (samples > 0) {
-    frag_color = vec4((result / float(samples)).rgb, base_sample.a);
+    frag_color = (result / float(samples));
     return;
   }
   frag_color = base_sample;
