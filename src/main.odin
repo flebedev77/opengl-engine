@@ -101,14 +101,16 @@ main :: proc() {
 
   albedo_texture := texture_load("assets/textures/box_placeholder.ppm")
   grass_texture := texture_load("assets/textures/whispy-grass-meadow-bl/wispy-grass-meadow_albedo.png")
-  white_texture := texture_load("assets/textures/white.png")
+  black_texture := texture_load("assets/textures/black.png")
 
   default_material := Material{
     is_valid = true,
     albedo_texture = albedo_texture,
     albedo_tint = {0.8,0.8,0.98},
-    roughness_texture = white_texture,
-    shader = renderer.default_shader
+    roughness_texture = black_texture,
+    shader = renderer.default_shader,
+    roughness_strength = 0,
+    metallic_strength = 0
   }
   sky_material := Material{
     is_valid = true,
@@ -117,9 +119,11 @@ main :: proc() {
   ground_material := Material{
     is_valid = true,
     albedo_texture = grass_texture,
-    roughness_texture = white_texture,
+    roughness_texture = black_texture,
     uv = {0, 0, 40, 40},
     shader = renderer.default_shader,
+    roughness_strength = 0,
+    metallic_strength = 0
   }
 
   glfw.SetWindowRefreshCallback(GlfwWindow, window_refresh)

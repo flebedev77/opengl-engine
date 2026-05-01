@@ -20,6 +20,8 @@ ShaderFlags :: enum {
 }
 
 ShaderParameters :: struct {
+  metallic_strength_location,
+  roughness_strength_location,
   screen_texture_location,
   ssao_texture_location,
   blur_texture_location,
@@ -70,6 +72,8 @@ Material :: struct {
   albedo_tint: Vec3,
   uv: Vec4,
   shader: Shader,
+  roughness_strength,
+  metallic_strength: f32
 }
 
 Mesh :: struct {
@@ -250,7 +254,7 @@ renderer_render :: proc(renderer: ^Renderer) {
   gl.ActiveTexture(gl.TEXTURE5)
   gl.BindTexture(gl.TEXTURE_2D, renderer.volumetrics_framebuffer.color_texture)
   // Volumetrics blur pass
-  renderer.blur_framebuffer.material.shader.parameters.blur_amount = 1
+  renderer.blur_framebuffer.material.shader.parameters.blur_amount = 0
   renderer_bind_and_clear_framebuffer(renderer, renderer.blur_framebuffer)
   render_mesh(renderer, &renderer.post_process_quad, &renderer.blur_framebuffer.material)
   framebuffer_blit(renderer.blur_framebuffer, renderer.volumetrics_framebuffer)
@@ -456,6 +460,9 @@ mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}) {
     gl.Uniform1i(shader.parameters.albedo_texture_location, 0)
     gl.Uniform1i(shader.parameters.roughness_texture_location, 2)
 
+    gl.Uniform1f(shader.parameters.roughness_strength_location, material.roughness_strength)
+    gl.Uniform1f(shader.parameters.metallic_strength_location, material.metallic_strength)
+
     gl.UniformMatrix4fv(shader.parameters.model_matrix_location, 1, gl.FALSE, &mesh.model_matrix[0,0])
     // gl.UniformMatrix4fv(shader.parameters.projection_matrix_location, 1, gl.FALSE, &shader.parameters.projection_matrix[0,0])
     // gl.UniformMatrix4fv(shader.parameters.view_matrix_location, 1, gl.FALSE, &shader.parameters.view_matrix[0,0])
@@ -547,6 +554,8 @@ shader_init :: proc(shader: ^Shader) {
       shader.parameters.model_matrix_location = gl.GetUniformLocation(shader.program, "model_matrix")
       shader.parameters.view_matrix_location = gl.GetUniformLocation(shader.program, "view_matrix")
       shader.parameters.roughness_texture_location = gl.GetUniformLocation(shader.program, "roughness_texture")
+      shader.parameters.roughness_strength_location = gl.GetUniformLocation(shader.program, "roughness_strength")
+      shader.parameters.metallic_strength_location = gl.GetUniformLocation(shader.program, "metallic_strength")
     // case .TWO_DIMENTIONAL:
       shader.parameters.volumetrics_texture_location = gl.GetUniformLocation(shader.program, "volumetrics_texture")
       shader.parameters.screen_texture_location = gl.GetUniformLocation(shader.program, "screen_texture")
