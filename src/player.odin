@@ -10,6 +10,9 @@ Player :: struct {
   roll, pitch, yaw: f32,
   zoom: f32,
   look_sensitivity: Vec2,
+  mass,
+  wing_area,
+  body_crossectional_area,
   walk_speed: f32,
   position,
   velocity: Vec3,
@@ -31,11 +34,18 @@ player_init :: proc(scene: ^Scene, player: ^Player) {
   player.debug_movement = false
   player.camera_pitch = math.PI * 3/2
   player.zoom = 1.2
+  player.mass = 11000
+  player.wing_area = 38
+  player.body_crossectional_area = 10
+
+  // player.aerodynamics_triangle[0] = {-1, 0, 0, 1}
+  // player.aerodynamics_triangle[1] = {0, 2, 0, 1}
+  // player.aerodynamics_triangle[2] = {1, 0, 0, 1}
 
   player.aerodynamics_triangle[0] = {-1, 0, 0, 1}
-  player.aerodynamics_triangle[1] = {0, 2, 0, 1}
+  player.aerodynamics_triangle[1] = {0, 0, 2, 1}
   player.aerodynamics_triangle[2] = {1, 0, 0, 1}
-  // player.velocity = {0, 0, 0.2}
+  // player.velocity = {0, -0.02, 0}
 
   player.basis_matrix = identity_matrix()
 
@@ -95,8 +105,8 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
   player.zoom -= scene.mouse.scroll * 0.1
 
   moveinput: Vec3
-  // rotation_speed := f32(0.01)
-  rotation_speed := f32(0.1)
+  rotation_speed := f32(0.03) // TODO: Make this variable depending on drag/lift from elevons
+  // rotation_speed := f32(0.1)
   delta_pitch, delta_yaw, delta_roll: f32
   // TODO move this to glfw layer
   if glfw.GetKey(GlfwWindow, glfw.KEY_W) > 0 {
@@ -152,30 +162,42 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
   basis_draw_scale := f32(1)
 
   if player.is_flying { 
-    player.velocity += local_forward * 0.00005 * 1 * scene.delta_time
+    player.velocity += ((local_forward * 0.98) / player.mass) * scene.delta_time
     player.position += player.velocity * scene.delta_time
 
     // DRAG
-    air_density := f32(1.225)
-    Cd := f32(0.04)
+    speed_sq := linalg.length2(player.velocity)
+    if (speed_sq < 0.000001) do player.velocity = {0, 0, 0}
+    else {
+      air_density := f32(10000.225)
+      Cd := f32(0.04)
 
-    aerodynamics_triangle_area := f32(0)
-    { // CROSS SECTION CALCULATIONS
-      wind_view_matrix := linalg.matrix4_look_at_f32(player.velocity, {0, 0, 0}, GLOBAL_UP)
-      A := wind_view_matrix * player.basis_matrix * player.aerodynamics_triangle[0]
-      B := wind_view_matrix * player.basis_matrix * player.aerodynamics_triangle[1]
-      C := wind_view_matrix * player.basis_matrix * player.aerodynamics_triangle[2]
-      AC_midpoint := (A+C)/2
-      triangle_height := linalg.length(B-AC_midpoint)
-      triangle_base := linalg.length(A-C)
+      aerodynamics_triangle_area := f32(0)
+      { // CROSS SECTION CALCULATIONS
+        wind_view_matrix := linalg.matrix4_look_at_f32(player.velocity, {0, 0, 0}, GLOBAL_UP + {0.00001,0,0})
+        A := wind_view_matrix * player.basis_matrix * player.aerodynamics_triangle[0]
+        B := wind_view_matrix * player.basis_matrix * player.aerodynamics_triangle[1]
+        C := wind_view_matrix * player.basis_matrix * player.aerodynamics_triangle[2]
 
-      aerodynamics_triangle_area = (triangle_base*triangle_height) / 2
-      aerodynamics_triangle_area *= 100
+        aerodynamics_triangle_area = abs(linalg.cross((B-A).xy, (C-A).xy) / 2)
+        // Test wing cross section detection
+        // debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position, player.position + GLOBAL_UP * aerodynamics_triangle_area, {1, 0, 0})
+        aerodynamics_triangle_area *= player.wing_area
+      }
+
+      cross_sectional_area := max(player.body_crossectional_area, aerodynamics_triangle_area)
+      drag := 0.5 * air_density * speed_sq * Cd * cross_sectional_area
+      drag_force := ((-linalg.normalize(player.velocity) * drag) / player.mass) * scene.delta_time
+      player.velocity += drag_force
+
+      debugrenderer_linebatch(
+        &scene.renderer.debug_renderer,
+        player.position,
+        player.position + drag_force * 700,
+        {1, 0, 0}
+      )
     }
 
-    cross_sectional_area := min(8, aerodynamics_triangle_area)
-    drag := 0.5 * air_density * linalg.length2(player.velocity) * Cd * cross_sectional_area
-    player.velocity -= linalg.normalize(player.velocity) * drag
   }
 
   // debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position, player.position + local_forward * basis_draw_scale, {0, 0, 1})

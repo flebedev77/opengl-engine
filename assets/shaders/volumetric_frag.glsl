@@ -22,12 +22,12 @@ const float cloud_height_apex = 52;
 
 #define STEPS_CLOUDS 200
 #define STEPS_CLOUDS_INSIDE 50
-#define STEPS_CLOUDS_LIGHTING 7
+#define STEPS_CLOUDS_LIGHTING 5
 #define CLOUD_DENSITY 5.1//1.84//0.3//2.3
 #define CLOUD_LIGHT_DENSITY 1.1//1.04//1.831
 #define CLOUD_STEP_LENGTH 0.5
 #define CLOUD_LARGE_STEP_LENGTH 1
-#define CLOUD_LIGHT_STEP_LENGTH 1.6
+#define CLOUD_LIGHT_STEP_LENGTH 3.6
 #define CLOUD_LIGHT_MARCH_MAX_LENGTH 100
 
 //	Simplex 3D Noise 
@@ -110,15 +110,15 @@ float rand(vec2 co){
 }
 
 float sample_cloud_density(vec3 p) {
-  return clamp(
-      10 - length(
-        p - vec3(0, (cloud_height_base + cloud_height_apex)/2, 0)
-      ) - snoise(p * 0.9) * 0.3,
-  0, 1) + clamp(
-    10 - length(
-        p - vec3(15, (cloud_height_base + cloud_height_apex)/2, 10)
-      ) - snoise(p * 0.9) * 0.3,
-  0, 1);
+  // return clamp(
+  //     10 - length(
+  //       p - vec3(0, (cloud_height_base + cloud_height_apex)/2, 0)
+  //     ) - snoise(p * 0.9) * 0.3,
+  // 0, 1) + clamp(
+  //   10 - length(
+  //       p - vec3(15, (cloud_height_base + cloud_height_apex)/2, 10)
+  //     ) - snoise(p * 0.9) * 0.3,
+  // 0, 1);
 
 
   float density = pow(snoise(p * 0.01), 1) * 
@@ -144,7 +144,7 @@ vec4 calculate_volumetrics() {
     float ray_length = length(ray_dir);
     ray_dir = normalize(ray_dir);
 
-    float max_distance = 1040.0; 
+    float max_distance = 100040.0; 
     ray_length = min(ray_length, max_distance);
 
     float jitter = rand(frag_uv) * 0.8;

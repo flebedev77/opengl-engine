@@ -139,7 +139,7 @@ main :: proc() {
   scene.sky_mesh = sky_mesh
 
   ground_mesh := asset_loader_obj_mesh("assets/models/terrain.obj", ground_material)
-  scl := f32(5.2)
+  scl := f32(50.2)
   ground_mesh.material.albedo_tint = {0.3, 0.7, 0.3}
   ground_mesh.model_matrix *= scale_matrix({scl, scl, scl})
   ground_mesh.model_matrix *= translation_matrix({0, -3, 0})
