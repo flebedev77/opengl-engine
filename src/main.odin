@@ -120,7 +120,7 @@ main :: proc() {
     is_valid = true,
     albedo_texture = grass_texture,
     roughness_texture = black_texture,
-    uv = {0, 0, 40, 40},
+    uv = {0, 0, 400, 400},
     shader = renderer.default_shader,
     roughness_strength = 0,
     metallic_strength = 0

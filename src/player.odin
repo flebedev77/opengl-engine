@@ -45,7 +45,7 @@ player_init :: proc(scene: ^Scene, player: ^Player) {
   player.aerodynamics_triangle[0] = {-1, 0, 0, 1}
   player.aerodynamics_triangle[1] = {0, 0, 2, 1}
   player.aerodynamics_triangle[2] = {1, 0, 0, 1}
-  // player.velocity = {0, -0.02, 0}
+  // player.velocity = {0, 0, 0.3}
 
   player.basis_matrix = identity_matrix()
 
@@ -162,15 +162,26 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
   basis_draw_scale := f32(1)
 
   if player.is_flying { 
-    player.velocity += ((local_forward * 0.98) / player.mass) * scene.delta_time
-    player.position += player.velocity * scene.delta_time
+    player.position += player.velocity * scene.delta_time * 0.2
+    thrust_force := ((local_forward * 2.98) / player.mass) * scene.delta_time
+    player.velocity += thrust_force
+    player.velocity += -GLOBAL_UP * 0.0001 * scene.delta_time
+
+    debugrenderer_linebatch(
+      &scene.renderer.debug_renderer,
+      player.position,
+      player.position + thrust_force * 6000,
+      {0, 1, 0}
+    )
+
 
     // DRAG
     speed_sq := linalg.length2(player.velocity)
     if (speed_sq < 0.000001) do player.velocity = {0, 0, 0}
     else {
-      air_density := f32(10000.225)
-      Cd := f32(0.04)
+      velocity_dir := linalg.normalize(player.velocity)
+      air_density := f32(1.225)
+      Cd := f32(7.4)
 
       aerodynamics_triangle_area := f32(0)
       { // CROSS SECTION CALCULATIONS
@@ -187,14 +198,32 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
 
       cross_sectional_area := max(player.body_crossectional_area, aerodynamics_triangle_area)
       drag := 0.5 * air_density * speed_sq * Cd * cross_sectional_area
-      drag_force := ((-linalg.normalize(player.velocity) * drag) / player.mass) * scene.delta_time
+      drag_force := ((-velocity_dir * drag) / player.mass) * scene.delta_time
       player.velocity += drag_force
 
       debugrenderer_linebatch(
         &scene.renderer.debug_renderer,
         player.position,
-        player.position + drag_force * 700,
+        player.position + drag_force * 6000,
         {1, 0, 0}
+      )
+
+      // LIFT
+      flight_angle := linalg.dot(velocity_dir, local_forward) 
+      stall_factor := math.max(0.8-math.abs(local_forward.y), 0)
+      lift_dir := linalg.normalize(linalg.cross(-local_right, velocity_dir))
+
+      lift_coefficient := 3.7 * max(0.0, flight_angle)
+      lift := 0.5 * air_density * speed_sq * player.wing_area * lift_coefficient * stall_factor
+      lift_force := lift_dir * lift / player.mass * scene.delta_time
+      player.velocity += lift_force
+
+
+      debugrenderer_linebatch(
+        &scene.renderer.debug_renderer,
+        player.position,
+        player.position + lift_force * 6000,
+        {0, 1, 1}
       )
     }
 

@@ -189,7 +189,7 @@ renderer_render :: proc(renderer: ^Renderer) {
     lightmap_proj_size,
     -lightmap_proj_size,
     3, 2*70)
-  macromap_proj_size := f32(50)
+  macromap_proj_size := f32(500)
   light_macromap_projmatrix := orthographic_projection_matrix(
     -macromap_proj_size,
     macromap_proj_size,
