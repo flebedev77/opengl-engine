@@ -10,11 +10,14 @@ Scene :: struct {
   mouse: Mouse,
   meshes: [dynamic]Mesh,
   renderer: ^Renderer,
-  delta_time: f32
+  resources: Resources,
+  delta_time: f32,
+  frame_number: i32
 }
 
 scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
   platform_init(scene)
+  resources_load(&scene.resources)
   renderer_init(renderer, scene)
   player_init(scene, &scene.player)
   scene.delta_time = 16.666;
@@ -38,6 +41,7 @@ scene_update :: proc(scene: ^Scene) {
   player_update(scene, &scene.player)
 
   scene.mouse.scroll = 0
+  scene.frame_number += 1
 }
 
 scene_delete :: proc(scene: ^Scene, verbose := false) {

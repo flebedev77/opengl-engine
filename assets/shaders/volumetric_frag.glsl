@@ -7,6 +7,7 @@ uniform sampler2D screen_texture;
 uniform sampler2D depth_texture;
 uniform sampler2D shadowmap_texture;
 uniform sampler2D macroshadowmap_texture;
+uniform sampler2D blue_noise_texture;
 
 uniform mat4 projection_matrix;
 uniform mat4 view_matrix;
@@ -17,18 +18,24 @@ uniform mat4 macroshadowmap_matrix;
 
 uniform vec3 light_pos;
 
-const float cloud_height_base = 0;
-const float cloud_height_apex = 52;
+uniform int frame_number;
 
-#define STEPS_CLOUDS 200
-#define STEPS_CLOUDS_INSIDE 50
-#define STEPS_CLOUDS_LIGHTING 5
-#define CLOUD_DENSITY 5.1//1.84//0.3//2.3
-#define CLOUD_LIGHT_DENSITY 1.1//1.04//1.831
-#define CLOUD_STEP_LENGTH 0.5
-#define CLOUD_LARGE_STEP_LENGTH 1
-#define CLOUD_LIGHT_STEP_LENGTH 3.6
+const float cloud_height_base = 10;
+const float cloud_height_apex = 162;
+
+#define STEPS_CLOUDS 100
+#define STEPS_CLOUDS_INSIDE 16
+#define STEPS_CLOUDS_LIGHTING 4
+#define CLOUD_DENSITY 15.1//1.84//0.3//2.3
+#define CLOUD_LIGHT_DENSITY 15.1//1.04//1.831
+#define CLOUD_STEP_LENGTH 1.5
+#define CLOUD_STEP_LOD_ONE_LENGTH 5.5
+#define CLOUD_STEP_LOD_TWO_LENGTH 8.5
+#define CLOUD_LARGE_STEP_LENGTH 20.5
+#define CLOUD_LIGHT_STEP_LENGTH 18.6
 #define CLOUD_LIGHT_MARCH_MAX_LENGTH 100
+#define CLOUD_LOD_ONE_DISTANCE 1000
+#define CLOUD_LOD_TWO_DISTANCE 10000
 
 //	Simplex 3D Noise 
 //	by Ian McEwan, Stefan Gustavson (https://github.com/stegu/webgl-noise)
@@ -104,33 +111,45 @@ float snoise(vec3 v){
   return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), 
                                 dot(p2,x2), dot(p3,x3) ) );
 }
+const float golden_ratio = 1.61803398875;
 
 float rand(vec2 co){
+  vec2 res = textureSize(screen_texture, 0);
+  float aspect = res.x / res.y;
+  float frame_offset = fract(float(frame_number) * golden_ratio);
+  co.x *= aspect;
+  return fract(texture(blue_noise_texture, co * 5).r + frame_offset);
     return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
 }
 
 float sample_cloud_density(vec3 p) {
-  // return clamp(
-  //     10 - length(
-  //       p - vec3(0, (cloud_height_base + cloud_height_apex)/2, 0)
-  //     ) - snoise(p * 0.9) * 0.3,
-  // 0, 1) + clamp(
-  //   10 - length(
-  //       p - vec3(15, (cloud_height_base + cloud_height_apex)/2, 10)
-  //     ) - snoise(p * 0.9) * 0.3,
-  // 0, 1);
+  return clamp(
+      100 - length(
+        p - vec3(0, (cloud_height_base + cloud_height_apex)/2, 0)
+      ) - snoise(p * 0.9) * 0.3,
+  0, 1) + clamp(
+    10 - length(
+        p - vec3(150, (cloud_height_base + cloud_height_apex)/2, 150)
+      ) - snoise(p * 0.9) * 0.3,
+  0, 1);
 
 
-  float density = pow(snoise(p * 0.01), 1) * 
-    max((0.99 - (p.y / (cloud_height_apex - cloud_height_base))), 0) * // Taper off clouds on the tops
-    1;//max(0.99 - p.y, 0);
-  density -= snoise(p * 0.09) * density;
+  vec3 off = vec3(float(frame_number) * 0.004);
+  float density = clamp(snoise(
+        p * 0.003
+  ), 0, 1);
+    //1;//max(0.99 - p.y, 0);
+  density *= 0.1;
+  density *= max(0.98 - (p.y / (cloud_height_apex - cloud_height_base)), 0); // Taper off clouds on the tops
+  density -= snoise(p * 0.06 + off) * density * 0.9;
+  // if (density > 0.2) density = 1;
   // density -= snoise(p * 0.1) * 0.3;
   // density *= 2.1;
   return clamp(density, 0, 1);
 }
 
 vec4 calculate_volumetrics() {
+  // return vec4(vec3(1), rand(frag_uv));
     float depth = texture(depth_texture, frag_uv).r;
 
     vec4 clip_space = vec4(frag_uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
@@ -143,15 +162,13 @@ vec4 calculate_volumetrics() {
     vec3 ray_dir = world_space_pixel - camera_world_pos;
     float ray_length = length(ray_dir);
     ray_dir = normalize(ray_dir);
+    // ray_length = min(ray_length, 100);
 
-    float max_distance = 100040.0; 
-    ray_length = min(ray_length, max_distance);
-
-    float jitter = rand(frag_uv) * 0.8;
+    float jitter = rand(frag_uv);// * 0.8;
     float density = 0.0;
     bool far_away = false;
 
-    float g = 0.85; // Forward scattering (0.0 to 0.99)
+    float g = 0.65; // Forward scattering (0.0 to 0.99)
     float cos_theta = dot(ray_dir, normalize(light_pos));
     float hg_phase = (1.0 - g * g) / (4.0 * 3.14159 * pow(1.0 + g * g - 2.0 * g * cos_theta, 1.5));
 
@@ -228,6 +245,7 @@ vec4 calculate_volumetrics() {
       if (t_out > 0.0) {
         t_in = max(t_in, 0.0);
 
+        if (ray_length > 1000) ray_length = 1e6;
         t_out = min(t_out, ray_length);
 
         if (t_in < t_out) {
@@ -235,7 +253,6 @@ vec4 calculate_volumetrics() {
           float cloud_march_length = t_out - t_in;
 
           vec3 start_pos = camera_world_pos + ray_dir * t_in;
-          float distance_travelled = jitter * CLOUD_STEP_LENGTH;
 
           // bool large_step = false;
 
@@ -243,128 +260,101 @@ vec4 calculate_volumetrics() {
 
           // float step_length = CLOUD_STEP_LENGTH;
 
-          float current_density = 0;
           vec3 current_pos = start_pos;
+          float current_density = sample_cloud_density(current_pos); 
 
-          // for (int i = 0; i < STEPS_CLOUDS; i++) {
-          //   if (cloud_transmittance < 0.01) break;
-          //   if (distance_travelled > cloud_march_length) break;
-          //
-          //   current_density = sample_cloud_density(current_pos);
-          //   if (current_density > 0) {
-          //     if (large_step) {
-          //       for (int j = 0; j < 10; j++) {
-          //         distance_travelled -= CLOUD_STEP_LENGTH;
-          //         current_pos = start_pos + ray_dir * distance_travelled;
-          //         current_density = sample_cloud_density(current_pos);
-          //         if (current_density <= 0) {
-          //           distance_travelled -= CLOUD_STEP_LENGTH;
-          //           break;
-          //         }
-          //       }
-          //     }
-          //     large_step = false;
-          //     step_length = CLOUD_STEP_LENGTH;
-          //     zero_density_encountered = 0;
-          //   } else {
-          //     zero_density_encountered++;
-          //     if (zero_density_encountered > 2) {
-          //       step_length = CLOUD_LARGE_STEP_LENGTH;
-          //       large_step = true;
-          //     }
-          //   }
-          //
-          //   current_pos = start_pos + ray_dir * distance_travelled;
-          //   distance_travelled += step_length;
-          //
-          //   if (current_density > 0) {
-          //     vec3 light_dir = normalize(light_pos);
-          //     vec3 light_step_vector = light_dir * CLOUD_LIGHT_STEP_LENGTH;
-          //     vec3 light_current_pos = current_pos;
-          //
-          //     float light_distance_travelled = 0;
-          //     float light_transmittance = 1;
-          //     float light_march_length = CLOUD_LIGHT_MARCH_MAX_LENGTH;//min(CLOUD_LIGHT_MARCH_MAX_LENGTH, cloud_march_length);
-          //     for (int j = 0; j < STEPS_CLOUDS_LIGHTING; j++) {
-          //       if (light_transmittance < 0.01) break;
-          //       if (light_distance_travelled > light_march_length) break;
-          //
-          //       float light_current_density = sample_cloud_density(light_current_pos);
-          //
-          //       light_transmittance *= exp(-light_current_density * CLOUD_LIGHT_DENSITY * CLOUD_LIGHT_STEP_LENGTH);
-          //
-          //       light_current_pos += light_step_vector;
-          //       light_distance_travelled += CLOUD_LIGHT_STEP_LENGTH;
-          //     }
-          //
-          //     float powder = 1.0 - exp(-current_density * CLOUD_DENSITY * step_length * 2.0);
-          //     cloud_light += current_density * cloud_transmittance * powder * light_transmittance * step_length * 50;
-          //     cloud += current_density * cloud_transmittance * step_length;
-          //     cloud_transmittance *= exp(-current_density * CLOUD_DENSITY * step_length);
-          //   }
-          //
-          // }
-bool large_step = true;
-bool in_cloud = false;
-float step_length = CLOUD_LARGE_STEP_LENGTH;
+          bool large_step = true;
+          bool in_cloud = false;
 
-int steps_inside_cloud = 0;
+          float distance_travelled = jitter * CLOUD_LARGE_STEP_LENGTH;
+          float step_length = CLOUD_LARGE_STEP_LENGTH;
 
-for (int i = 0; i < STEPS_CLOUDS; i++) {
-    if (cloud_transmittance < 0.01) break;
-    if (distance_travelled > cloud_march_length) break;
-
-    current_pos = start_pos + ray_dir * distance_travelled;
-    current_density = sample_cloud_density(current_pos);
-
-    if (current_density > 0.0) {
-        if (!in_cloud && large_step) {
-            distance_travelled -= CLOUD_LARGE_STEP_LENGTH;
+          if (current_density > 0) {
             large_step = false;
+            in_cloud = true;
+            distance_travelled = jitter * CLOUD_STEP_LENGTH;
             step_length = CLOUD_STEP_LENGTH;
-            
-            continue; 
-        }
+          }
 
-        in_cloud = true;
+          int steps_inside_cloud = 0;
 
-        steps_inside_cloud++;
-        if (steps_inside_cloud > STEPS_CLOUDS_INSIDE) break;
+          for (int i = 0; i < STEPS_CLOUDS; i++) {
+            if (cloud_transmittance < 0.01) break;
+            if (distance_travelled > cloud_march_length) break;
 
-        vec3 light_dir = normalize(light_pos);
-        vec3 light_step_vector = light_dir * CLOUD_LIGHT_STEP_LENGTH;
-        vec3 light_current_pos = current_pos;
-        
-        float light_distance_travelled = 0.0;
-        float light_transmittance = 1.0;
-        float light_march_length = CLOUD_LIGHT_MARCH_MAX_LENGTH;
+            current_pos = start_pos + ray_dir * distance_travelled;
+            current_density = sample_cloud_density(current_pos);
 
-        for (int j = 0; j < STEPS_CLOUDS_LIGHTING; j++) {
-            if (light_transmittance < 0.01) break;
-            if (light_distance_travelled > light_march_length) break;
+            if (current_density > 0.0) {
+              if (!in_cloud && large_step) {
+                if (t_in < CLOUD_LOD_TWO_DISTANCE) {
+                  float t_empty = distance_travelled - CLOUD_LARGE_STEP_LENGTH;
+                  float t_cloud = distance_travelled;
 
-            float light_current_density = sample_cloud_density(light_current_pos);
-            light_transmittance *= exp(-light_current_density * CLOUD_LIGHT_DENSITY * CLOUD_LIGHT_STEP_LENGTH);
+                  for (int refine = 0; refine < 4; refine++) {
+                    float t_mid = (t_empty + t_cloud) * 0.5;
+                    if (sample_cloud_density(start_pos + ray_dir * t_mid) > 0.0) {
+                      t_cloud = t_mid;
+                    } else {
+                      t_empty = t_mid;
+                    }
+                  }
 
-            light_current_pos += light_step_vector;
-            light_distance_travelled += CLOUD_LIGHT_STEP_LENGTH;
-        }
+                  distance_travelled = t_cloud; 
+                }
 
-        float powder = 1.0 - exp(-current_density * CLOUD_DENSITY * step_length * 2.0);
-        cloud_light += current_density * cloud_transmittance * powder * light_transmittance * step_length * 5000.0 * hg_phase;
-        cloud += current_density * cloud_transmittance * step_length;
-        cloud_transmittance *= exp(-current_density * CLOUD_DENSITY * step_length);
+                large_step = false;
+                float lod_distance = t_in + distance_travelled;
+                if (t_in < CLOUD_LOD_ONE_DISTANCE) {
+                  step_length = CLOUD_STEP_LENGTH;
+                } else if (t_in < CLOUD_LOD_TWO_DISTANCE) {
+                  step_length = CLOUD_STEP_LOD_ONE_LENGTH;
+                } else {
+                  step_length = CLOUD_LOD_TWO_DISTANCE;
+                }
+                continue;
+              }
 
-    } else {
-        if (in_cloud) {
-            in_cloud = false;
-            large_step = true;
-            step_length = CLOUD_LARGE_STEP_LENGTH;
-        }
-    }
+              in_cloud = true;
 
-    distance_travelled += step_length;
-}
+              // steps_inside_cloud++;
+              // if (steps_inside_cloud > STEPS_CLOUDS_INSIDE) break;
+
+              vec3 light_dir = normalize(light_pos);
+              vec3 light_step_vector = light_dir * CLOUD_LIGHT_STEP_LENGTH;
+              vec3 light_current_pos = current_pos;
+
+              float light_distance_travelled = 0.0;
+              float light_transmittance = 1.0;
+              float light_march_length = CLOUD_LIGHT_MARCH_MAX_LENGTH;
+
+              for (int j = 0; j < STEPS_CLOUDS_LIGHTING; j++) {
+                // if (light_transmittance < 0.1) break;
+                if (light_distance_travelled > light_march_length) break;
+
+                float light_current_density = sample_cloud_density(light_current_pos);
+                light_transmittance *= exp(-light_current_density * CLOUD_LIGHT_DENSITY * CLOUD_LIGHT_STEP_LENGTH);
+
+                light_current_pos += light_step_vector;
+                light_distance_travelled += CLOUD_LIGHT_STEP_LENGTH;
+              }
+
+              float powder = 1.0 - exp(-current_density * CLOUD_DENSITY * step_length * 2.0);
+              cloud_light += current_density * cloud_transmittance * light_transmittance * step_length * 100;// * 900.0 * hg_phase * powder;
+              cloud += current_density * cloud_transmittance * step_length;
+              cloud_transmittance *= exp(-current_density * CLOUD_DENSITY * step_length);
+
+            } else {
+              if (in_cloud) {
+                in_cloud = false;
+                large_step = true;
+                step_length = CLOUD_LARGE_STEP_LENGTH;
+              }
+            }
+
+            distance_travelled += step_length;
+          }
+
 
         }
       }
@@ -373,7 +363,7 @@ for (int i = 0; i < STEPS_CLOUDS; i++) {
     return vec4(
         // vec3(cloud_light),
         // vec3(1.0),
-        mix(vec3(0.094, 0.345, 0.729), vec3(1), cloud_light + 0.25),
+        mix(vec3(0.094, 0.345, 0.729), vec3(1), cloud_light + 0.15),
         clamp(1-cloud_transmittance, 0, 1)
     );
 }

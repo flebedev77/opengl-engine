@@ -181,7 +181,7 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
     else {
       velocity_dir := linalg.normalize(player.velocity)
       air_density := f32(1.225)
-      Cd := f32(7.4)
+      Cd := f32(4.4)
 
       aerodynamics_triangle_area := f32(0)
       { // CROSS SECTION CALCULATIONS
@@ -210,11 +210,11 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
 
       // LIFT
       flight_angle := linalg.dot(velocity_dir, local_forward) 
-      stall_factor := math.max(0.8-math.abs(local_forward.y), 0)
+      stall_factor := math.min(math.max(0.8-math.abs(local_forward.y) + 0.3, 0), 1)
       lift_dir := linalg.normalize(linalg.cross(-local_right, velocity_dir))
 
-      lift_coefficient := 3.7 * max(0.0, flight_angle)
-      lift := 0.5 * air_density * speed_sq * player.wing_area * lift_coefficient * stall_factor
+      lift_coefficient := 0.2 * max(0.0, flight_angle) * stall_factor
+      lift := 0.5 * air_density * speed_sq * player.wing_area * lift_coefficient
       lift_force := lift_dir * lift / player.mass * scene.delta_time
       player.velocity += lift_force
 

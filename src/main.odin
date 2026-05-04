@@ -135,7 +135,8 @@ main :: proc() {
   cube_mesh.model_matrix *= scale_matrix({1, 0.8, 1})
 
   sky_mesh := asset_loader_obj_mesh("assets/models/skydome.obj", sky_material)
-  sky_mesh.model_matrix *= scale_matrix({500, 500, 500})
+  sky_size := f32(1000)
+  sky_mesh.model_matrix *= scale_matrix({sky_size, sky_size, sky_size})
   scene.sky_mesh = sky_mesh
 
   ground_mesh := asset_loader_obj_mesh("assets/models/terrain.obj", ground_material)

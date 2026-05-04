@@ -35,6 +35,8 @@ ShaderParameters :: struct {
   shadowmap_matrix_location,
   macroshadowmap_texture_location,
   macroshadowmap_matrix_location,
+  blue_noise_texture_location,
+  frame_number_location,
   uv_location,
   tint_location,
   light_position_location,
@@ -53,6 +55,7 @@ ShaderParameters :: struct {
   projection_matrix: Mat4,
   sun_position,
   camera_position: Vec3,
+  frame_number: i32,
   blur_amount: int
 }
 
@@ -140,7 +143,7 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   framebuffer_init(&renderer.shadowmap_framebuffer, {4096, 4096}, {.DEPTH}, "shadowmap", .SHADOWMAP)
   framebuffer_init(&renderer.macroshadowmap_framebuffer, {4096, 4096}, {.DEPTH}, "shadowmap", .SHADOWMAP)
 
-  effects_resolution_factor: f32 = 1.0/2.0
+  effects_resolution_factor: f32 = 1.0/2.5
   effects_resolution := Vec2{WINDOW_WIDTH, WINDOW_HEIGHT} * effects_resolution_factor
   effects_resolution_int := IVec2{i32(effects_resolution.x), i32(effects_resolution.y)}
   fmt.printfln("Effects resolution %d (1/%d)", effects_resolution_int, i32(1 / effects_resolution_factor))
@@ -228,7 +231,7 @@ renderer_render :: proc(renderer: ^Renderer) {
 
   renderer.debug_renderer.shader.parameters.view_matrix = renderer.scene.camera.view_matrix
   renderer.debug_renderer.shader.parameters.projection_matrix = renderer.scene.camera.projection_matrix
-  debugrenderer_draw(&renderer.debug_renderer)
+  // debugrenderer_draw(&renderer.debug_renderer)
 
   framebuffer_blit(renderer.msaa_back_framebuffer, renderer.back_framebuffer)
 
@@ -280,7 +283,7 @@ renderer_render :: proc(renderer: ^Renderer) {
 
   // renderer.debug_renderer.shader.parameters.view_matrix = renderer.scene.camera.view_matrix
   // renderer.debug_renderer.shader.parameters.projection_matrix = renderer.scene.camera.projection_matrix
-  // debugrenderer_draw(&renderer.debug_renderer)
+  debugrenderer_draw(&renderer.debug_renderer)
   renderer.reload_shaders = false
   free_all(context.temp_allocator)
 }
@@ -336,6 +339,11 @@ render_mesh :: proc(renderer: ^Renderer, mesh: ^Mesh, material_override: ^Materi
   shader_parameters.inv_view_matrix = renderer.scene.camera.inv_view_matrix
   shader_parameters.camera_position = renderer.scene.camera.position
   shader_parameters.sun_position = renderer.sun_position
+  shader_parameters.frame_number = renderer.scene.frame_number
+
+  gl.ActiveTexture(gl.TEXTURE8)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.scene.resources.blue_noise_texture)
+
   mesh_draw(mesh^, material_override)
 }
 
@@ -429,6 +437,8 @@ mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}) {
   gl.Uniform1i(shader.parameters.shadowmap_texture_location, 1)
   gl.Uniform1i(shader.parameters.macroshadowmap_texture_location, 7)
 
+  gl.Uniform1i(shader.parameters.frame_number_location, shader.parameters.frame_number)
+
   if material.shader.type == .TWO_DIMENTIONAL {
     gl.BindVertexArray(mesh.vao)
     gl.Uniform1i(shader.parameters.screen_texture_location, 2)
@@ -437,6 +447,7 @@ mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}) {
     gl.Uniform1i(shader.parameters.ssao_texture_location, 5)
     gl.Uniform1i(shader.parameters.blur_texture_location, 5)
     gl.Uniform1i(shader.parameters.volumetrics_texture_location, 6)
+    gl.Uniform1i(shader.parameters.blue_noise_texture_location, 8)
     gl.Uniform1i(shader.parameters.blur_amount_location, i32(shader.parameters.blur_amount))
     gl.DrawElements(gl.TRIANGLE_STRIP, 4, gl.UNSIGNED_INT, cast(rawptr)(cast(uintptr)0))
   } else {
@@ -543,6 +554,7 @@ shader_init :: proc(shader: ^Shader) {
   shader.parameters.inv_view_matrix_location = gl.GetUniformLocation(shader.program, "inv_view_matrix")
   shader.parameters.inv_projection_matrix_location = gl.GetUniformLocation(shader.program, "inv_projection_matrix")
   shader.parameters.projection_matrix_location = gl.GetUniformLocation(shader.program, "projection_matrix")
+  shader.parameters.frame_number_location = gl.GetUniformLocation(shader.program, "frame_number")
   // switch shader.type {
   //   case .THREE_DIMENSIONAL:
       shader.parameters.uv_location = gl.GetUniformLocation(shader.program, "uv");
@@ -557,6 +569,7 @@ shader_init :: proc(shader: ^Shader) {
       shader.parameters.roughness_strength_location = gl.GetUniformLocation(shader.program, "roughness_strength")
       shader.parameters.metallic_strength_location = gl.GetUniformLocation(shader.program, "metallic_strength")
     // case .TWO_DIMENTIONAL:
+      shader.parameters.blue_noise_texture_location = gl.GetUniformLocation(shader.program, "blue_noise_texture")
       shader.parameters.volumetrics_texture_location = gl.GetUniformLocation(shader.program, "volumetrics_texture")
       shader.parameters.screen_texture_location = gl.GetUniformLocation(shader.program, "screen_texture")
       shader.parameters.ssao_texture_location = gl.GetUniformLocation(shader.program, "ssao_texture")
