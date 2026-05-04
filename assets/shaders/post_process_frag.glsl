@@ -3,7 +3,7 @@
 in vec2 frag_uv;
 in vec3 frag_pos;
 
-out vec4 frag_color;
+out vec3 frag_color;
 
 uniform sampler2D screen_texture;
 uniform sampler2D ssao_texture;
@@ -41,12 +41,13 @@ float linearize_depth(float depth) {
 
 void main() {
   float depth = texture(depth_texture, frag_uv).r;
-  frag_color = texture(screen_texture, frag_uv);
+  frag_color = texture(screen_texture, frag_uv).rgb;
   vec4 volumetrics = texture(volumetrics_texture, frag_uv);
   // frag_color *= 1-volumetrics.a;
   // frag_color += vec4(volumetrics.rgb, 0);
   frag_color *= 1-texture(ssao_texture, frag_uv).r;
-  frag_color = mix(frag_color, vec4(volumetrics.rgb, 0), volumetrics.a);
+  // frag_color = mix(frag_color, vec4(volumetrics.rgb, 0), volumetrics.a);
+  frag_color = volumetrics.rgb + frag_color * volumetrics.a;
   // frag_color += volumetrics;
   // frag_color = vec4(ACES_ToneMap(frag_color.xyz * 1), 1);
 }
