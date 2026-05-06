@@ -107,7 +107,7 @@ void main() {
   vec3 light_dir = normalize(light_pos);
 
   float sun_factor = clamp((pow(max(dot(view_dir, light_dir) - 0.002, 0), 100)) * 2.0, 0, 1);
-  out_color = mix(out_color, vec3(1, 1, 0.8), sun_factor);
+  out_color = mix(out_color, vec3(1, 1, 0.98), sun_factor);
 
   out_frag_color = vec4(out_color, 1.0);
   out_frag_normal = vec4(0);
