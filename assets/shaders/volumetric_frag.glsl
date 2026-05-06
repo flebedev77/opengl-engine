@@ -20,14 +20,15 @@ uniform vec3 light_pos;
 
 uniform int frame_number;
 
+const float cloud_layer_thickness = (186-10);
 const float cloud_height_base = 10;
-const float cloud_height_apex = 186;
+const float cloud_height_apex = cloud_height_base+cloud_layer_thickness;
 
 #define STEPS_CLOUDS 100
 #define STEPS_CLOUDS_LIGHTING 5
-#define CLOUD_DENSITY 0.4//0.3//2.3
-#define CLOUD_LIGHT_DENSITY 1.3//1.831
-#define CLOUD_STEP_LENGTH 2.5
+#define CLOUD_DENSITY 0.4
+#define CLOUD_LIGHT_DENSITY 1.3
+#define CLOUD_STEP_LENGTH 5.5
 #define CLOUD_LIGHT_STEP_LENGTH 5.6
 
 #define EXTINCTION_FACTOR 1.3
@@ -35,7 +36,7 @@ const float cloud_height_apex = 186;
 
 #define POWDER_FACTOR 3
 
-#define TEMPORAL_ACCUMULATION_ENABLED false
+#define TEMPORAL_ACCUMULATION_ENABLED true
 
 const float PI = 3.141592653589793;
 
@@ -141,7 +142,7 @@ float sample_cloud_density(vec3 p) {
   //     20 - length(
   //       p - vec3(0, (cloud_height_base + cloud_height_apex)/2, 0)
   //       ) - snoise(p * 0.9) * 0.3,
-  //     0, 1) + clamp(
+  //     0, 1) * 0.3 + clamp(
   //       10 - length(
   //         p - vec3(150, (cloud_height_base + cloud_height_apex)/2, 150)
   //         ) - snoise(p * 0.9) * 0.3,
@@ -333,12 +334,12 @@ vec4 calculate_volumetrics() {
 
           float distance_travelled = rand(frag_uv) * CLOUD_STEP_LENGTH;
           float step_length = CLOUD_STEP_LENGTH;
+          float current_step_length = step_length;
 
           for (int i = 0; i < STEPS_CLOUDS; i++) {
-            if (extinction < 0.00001) break;
+            if (extinction < 0.01) { extinction = 0; break; }
             if (distance_travelled >= cloud_march_length) break;
 
-            float current_step_length = min(step_length, cloud_march_length - distance_travelled);
             current_pos = start_pos + ray_dir * distance_travelled;
             float current_density = CLOUD_DENSITY * sample_cloud_density(current_pos);
 
@@ -355,7 +356,10 @@ vec4 calculate_volumetrics() {
 
               for (int j = 0; j < STEPS_CLOUDS_LIGHTING; j++) {
                 if (light_transmittance < 0.0001) break;
-                // if (light_distance_travelled > light_march_length) break;
+                if (
+                    light_current_pos.y < cloud_height_base ||
+                    light_current_pos.y > cloud_height_apex
+                    ) break;
 
                 float light_current_density = sample_cloud_density(light_current_pos);
                 light_transmittance *= exp(-EXTINCTION_FACTOR * light_current_density * CLOUD_LIGHT_DENSITY * CLOUD_LIGHT_STEP_LENGTH);
