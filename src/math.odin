@@ -16,6 +16,36 @@ Basis :: struct {
 
 GLOBAL_UP :: Vec3{0, 1, 0}
 
+
+@(require_results)
+mat4_perspective :: proc "contextless" (fovy, aspect, near, far: f32) -> (m: Mat4) #no_bounds_check {
+
+
+tan_half_fovy := math.tan(0.5 * fovy)
+    
+    m[0, 0] = 1 / (aspect * tan_half_fovy)
+    m[1, 1] = 1 / (tan_half_fovy)
+    
+    // Mapping Z: -near -> 1, -far -> 0
+    m[2, 2] = near / (far - near)
+    m[2, 3] = (far * near) / (far - near)
+    
+    // W = -Z
+    m[3, 2] = -1
+    m[3, 3] = 0
+
+    return
+
+	// tan_half_fovy := math.tan(0.5 * fovy)
+	// m[0, 0] = 1 / (aspect*tan_half_fovy)
+	// m[1, 1] = 1 / (tan_half_fovy)
+	// m[2, 2] = (far / (far - near))
+	// m[3, 2] = 1
+	// m[2, 3] = (far*near / (far - near))
+
+	// return
+}
+
 @(require_results) is_numeric :: proc(c: u8) -> bool {
   return (c == '-' || c == '.' || (c > 0x2F && c < 0x3A))
 }
@@ -101,19 +131,46 @@ GLOBAL_UP :: Vec3{0, 1, 0}
   // }
 }
 
-@(require_results) orthographic_projection_matrix :: proc(left, right, top, bottom, near, far: f32) -> Mat4 {
+@(require_results) orthographic_projection_matrix :: proc(l, r, t, b, n, f: f32) -> Mat4 {
+right, left, top, bottom, near, far := r, l, t, b, n, f
+return Mat4{
+    2 / (right - left), 0, 0, -((right + left) / (right - left)),
+    0, 2 / (top - bottom), 0, -((top + bottom) / (top - bottom)),
+    0, 0, -1 / (far - near), -near / (far - near), 
+    0, 0, 0, 1,
+}
   // return Mat4{
   //   2/(right-left),          0,                 0,                 0,
   //   0,                2/(top-bottom),           0,                 0,
   //   0,                0,               -2/(far-near),           0,
   //   -((right+left)/(right-left)), -((top+bottom)/(top-bottom)), -((far+near)/(far-near)),        1
   // }
-  return Mat4{
-    2 / (right - left), 0, 0, -((right + left) / (right - left)),
-    0, 2 / (top - bottom), 0, -((top + bottom) / (top - bottom)),
-    0, 0, -2 / (far - near), -((far + near) / (far - near)),
-    0, 0, 0, 1
-  }
+  // return Mat4{
+  //   2 / (right - left), 0, 0, -((right + left) / (right - left)),
+  //   0, 2 / (top - bottom), 0, -((top + bottom) / (top - bottom)),
+  //   0, 0, -2 / (far - near), -((far + near) / (far - near)),
+  //   0, 0, 0, 1
+  // }
+// return Mat4{
+//   2 / (right - left), 0, 0, -((right + left) / (right - left)),
+//   0, 2 / (top - bottom), 0, -((top + bottom) / (top - bottom)),
+//   0, 0, 1 / (far - near), far / (far - near),
+//   0, 0, 0, 1,
+// }
+
+// return Mat4{
+//   2/(r-l), 0, 0, -(r+l)/(r-l),
+//   0, 2/(t-b), 0, -(t+b)/(t-b),
+//   0, 0, -1/(f-n), -n/(f-n),
+//   0, 0, 0, 1
+// }
+
+// return Mat4{
+//     2 / (right - left), 0, 0, -((right + left) / (right - left)),
+//     0, 2 / (top - bottom), 0, -((top + bottom) / (top - bottom)),
+//     0, 0, 1 / (far - near), far / (far - near), // Reversed Z mapping
+//     0, 0, 0, 1,
+// }
 }
 
 @(require_results) identity_matrix :: proc() -> matrix[4,4]f32 {

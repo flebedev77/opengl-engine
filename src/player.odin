@@ -36,7 +36,7 @@ player_init :: proc(scene: ^Scene, player: ^Player) {
   player.zoom = 1.2
   player.mass = 11000
   player.wing_area = 38
-  player.body_crossectional_area = 10
+  player.body_crossectional_area = 2
 
   // player.aerodynamics_triangle[0] = {-1, 0, 0, 1}
   // player.aerodynamics_triangle[1] = {0, 2, 0, 1}
@@ -213,7 +213,7 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
       stall_factor := math.min(math.max(0.8-math.abs(local_forward.y) + 0.3, 0), 1)
       lift_dir := linalg.normalize(linalg.cross(-local_right, velocity_dir))
 
-      lift_coefficient := 0.2 * max(0.0, flight_angle) * stall_factor
+      lift_coefficient := 0.7 * max(0.0, flight_angle) * stall_factor
       lift := 0.5 * air_density * speed_sq * player.wing_area * lift_coefficient
       lift_force := lift_dir * lift / player.mass * scene.delta_time
       player.velocity += lift_force

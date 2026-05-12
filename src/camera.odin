@@ -12,11 +12,11 @@ Camera :: struct {
 
 camera_update :: proc(camera: ^Camera) {
     // If near or far planes get changed, change in post process shader
-    camera.projection_matrix = linalg.matrix4_perspective_f32(
+    camera.projection_matrix = mat4_perspective(
       80 * math.PI / 180, 
       f32(FrameBuffer.w) / f32(FrameBuffer.h), 
       0.001,
-      1000
+      1000000000
     )
     camera.inv_projection_matrix = linalg.inverse(camera.projection_matrix)
     camera.inv_view_matrix = linalg.inverse(camera.view_matrix)

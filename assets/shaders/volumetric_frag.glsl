@@ -27,7 +27,7 @@ const float cloud_height_apex = cloud_height_base+cloud_layer_thickness;
 #define STEPS_CLOUDS 100
 #define STEPS_CLOUDS_LIGHTING 5
 #define CLOUD_DENSITY 0.4
-#define CLOUD_LIGHT_DENSITY 1.3
+#define CLOUD_LIGHT_DENSITY 0.73
 #define CLOUD_STEP_LENGTH 5.5
 #define CLOUD_LIGHT_STEP_LENGTH 5.6
 
@@ -188,7 +188,7 @@ float sample_cloud_density(vec3 p) {
 #define AMBIENT_BOTTOM_COEFFICIENT 0.2
 #define AMBIENT_BOTTOM_COLOR vec3(0.35, 0.35, 0.4)
 #define AMBIENT_CONSTANT_COEFFICIENT 3.2
-#define AMBIENT_CONSTANT_COLOR vec3(0.247, 0.325, 0.439)
+#define AMBIENT_CONSTANT_COLOR vec3(0.247, 0.325, 0.539)
 #define AMBIENT_OCCLUSION_DISTANCE 2
 #define AMBIENT_OCCLUSION_STRENGTH 2.5
 
@@ -215,7 +215,7 @@ float HG(float g, float cos_theta) {
 
 // https://youtu.be/9-HTvoBi0Iw?t=7923
 float calculate_phase(float g, float cos_theta, float extinction) {
-  float wzero = 0.66;
+  float wzero = 0.56;
   float wone = 1-wzero;
   int M = 2;
   float octave_sum = 0;
@@ -229,12 +229,14 @@ vec4 calculate_volumetrics() {
   // return vec4(vec3(1), rand(frag_uv));
     float depth = texture(depth_texture, frag_uv).r;
 
-    vec4 clip_space = vec4(frag_uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+    vec4 clip_space = vec4(frag_uv * 2.0 - 1.0, depth, 1.0);
     vec4 view_space = inv_projection_matrix * clip_space;
     view_space /= view_space.w;
 
     vec3 world_space_pixel = (inv_view_matrix * view_space).xyz;
     vec3 camera_world_pos = inv_view_matrix[3].xyz;
+
+    // return vec4(world_space_pixel, 0.5);
 
     vec3 ray_dir = world_space_pixel - camera_world_pos;
     float ray_length = length(ray_dir);
@@ -375,7 +377,9 @@ vec4 calculate_volumetrics() {
 
               float occ = exp(-sample_cloud_density(current_pos + vec3(0, AMBIENT_OCCLUSION_DISTANCE, 0)) * AMBIENT_OCCLUSION_STRENGTH);
 
-              vec3 sun_color = powder * light_transmittance * vec3(177);
+              vec3 sun_light = vec3(177);
+              sun_light *= vec3(1, 1, 1.2);
+              vec3 sun_color = powder * light_transmittance * sun_light;
               vec3 ambient_color = occ * calculate_ambient_color(current_pos, extinction_coefficient);
               float ambient_phase = 1 / (4 * PI);
               float sun_phase = calculate_phase(0.9, cos_theta, extinction_coefficient);

@@ -15,8 +15,8 @@ WINDOW_HEIGHT :: 1080
 MIN_WINDOW_WIDTH :: 600
 MIN_WINDOW_HEIGHT :: 480
 
-GL_VERSION_MAJOR :: 3
-GL_VERSION_MINOR :: 3
+GL_VERSION_MAJOR :: 4
+GL_VERSION_MINOR :: 5
 
 PLAYER_WALK_SPEED :: 0.006
 PLAYER_LOOK_SENSITIVITY :: Vec2{0.0001, 0.0002}
@@ -120,7 +120,7 @@ main :: proc() {
     is_valid = true,
     albedo_texture = grass_texture,
     roughness_texture = black_texture,
-    uv = {0, 0, 100, 100},
+    uv = {0, 0, 2600, 2600},
     shader = renderer.default_shader,
     roughness_strength = 0,
     metallic_strength = 0
@@ -135,14 +135,14 @@ main :: proc() {
   cube_mesh.model_matrix *= scale_matrix({1, 0.8, 1})
 
   sky_mesh := asset_loader_obj_mesh("assets/models/skydome.obj", sky_material)
-  sky_size := f32(1000)
+  sky_size := f32(100000000)
   sky_mesh.model_matrix *= scale_matrix({sky_size, sky_size, sky_size})
   scene.sky_mesh = sky_mesh
 
   ground_mesh := asset_loader_obj_mesh("assets/models/terrain.obj", ground_material)
   scl := f32(50.2)
   ground_mesh.material.albedo_tint = {0.3, 0.7, 0.3}
-  ground_mesh.model_matrix *= scale_matrix({scl, scl, scl})
+  ground_mesh.model_matrix *= scale_matrix({scl * 30, scl, scl * 30})
   ground_mesh.model_matrix *= translation_matrix({0, -3, 0})
   
   append(&scene.meshes, cube_mesh)

@@ -139,8 +139,8 @@ vec3 fresnelschlick(float costheta, vec3 f0) {
     return f0 + (1.0 - f0) * pow(clamp(1.0 - costheta, 0.0, 1.0), 5.0);
 }
 
-float calculate_shadow(vec3 proj_coords, vec3 light_dir, sampler2D shadowmap) {
-  if (proj_coords.z >= 1.0) return 0.0;
+float calculate_shadow(vec3 proj_coords, sampler2D shadowmap) {
+  if (proj_coords.z >= 1 || proj_coords.x < 0 || proj_coords.y < 0 || proj_coords.x > 1 || proj_coords.y > 1) return 0.0;
 
   float max_bias = 0.0002;
   float min_bias = 0.0001;
@@ -297,17 +297,17 @@ void main() {
   
   if (diffuse != 0) {
     vec3 proj_coords = frag_pos_lightspace.xyz / frag_pos_lightspace.w;
-    proj_coords = proj_coords * 0.5 + 0.5;
+    proj_coords = vec3(vec2(proj_coords.xy * 0.5 + 0.5), proj_coords.z);
 
     float p = 0.01;
     // TODO: OPTIMISATION: Move this comparison to the vertex shader and pass the properly selected shadowmap sampler from there
     if (proj_coords.x <= 1-p && proj_coords.y <= 1-p && proj_coords.x >= p && proj_coords.y >= p) {
-      shadow = calculate_shadow(proj_coords, light_dir, shadowmap_texture);
+      shadow = calculate_shadow(proj_coords, shadowmap_texture);
     } else {
       vec4 macromap_space = macroshadowmap_matrix * vec4(frag_pos, 1);
       proj_coords = macromap_space.xyz / macromap_space.w;
-      proj_coords = proj_coords * 0.5 + 0.5;
-      shadow = calculate_shadow(proj_coords, light_dir, macroshadowmap_texture);
+      proj_coords = vec3(vec2(proj_coords.xy * 0.5 + 0.5), proj_coords.z);
+      shadow = calculate_shadow(proj_coords, macroshadowmap_texture);
     }
 
     shadow = clamp(pow(shadow, shadow_pcf_border_exponent), 0, 1);

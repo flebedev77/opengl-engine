@@ -16,9 +16,6 @@ uniform mat4 view_matrix;
 
 uniform vec3 light_pos;
 
-#define near 0.001
-#define far  1000
-#define fov 80
 #define num_samples 200
 
 vec3 RRTAndODTFit(vec3 v) {
@@ -35,10 +32,6 @@ vec3 ACES_ToneMap(vec3 color) {
     return x;
 }
 
-float linearize_depth(float depth) {
-  return (near * far) / (far - depth * (far - near));
-}
-
 void main() {
   float depth = texture(depth_texture, frag_uv).r;
   frag_color = texture(screen_texture, frag_uv).rgb;
@@ -49,5 +42,5 @@ void main() {
   // frag_color = mix(frag_color, vec4(volumetrics.rgb, 0), volumetrics.a);
   frag_color = volumetrics.rgb + frag_color * volumetrics.a;
   // frag_color += volumetrics;
-  // frag_color = vec4(ACES_ToneMap(frag_color.xyz * 1), 1);
+  // frag_color = ACES_ToneMap(frag_color.xyz * 1000);
 }
