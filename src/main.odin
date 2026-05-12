@@ -99,8 +99,8 @@ main :: proc() {
   defer gl.DeleteProgram(sky_shader.program)
 
 
-  albedo_texture := texture_load("assets/textures/box_placeholder.ppm")
-  grass_texture := texture_load("assets/textures/whispy-grass-meadow-bl/wispy-grass-meadow_albedo.png")
+  albedo_texture := texture_load("assets/textures/box_placeholder.ppm", true)
+  grass_texture := texture_load("assets/textures/whispy-grass-meadow-bl/wispy-grass-meadow_albedo.png", true)
   black_texture := texture_load("assets/textures/black.png")
 
   default_material := Material{

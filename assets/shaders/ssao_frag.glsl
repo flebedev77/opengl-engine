@@ -19,7 +19,7 @@ uniform mat4 view_matrix;
 
 const int ssao_samples = 16;
 const float ssao_radius = 0.09;
-const float ssao_intensity = 0.7;
+const float ssao_intensity = 0.97;
 const float ssao_max_range = 15;
 
 const vec3 ssao_kernel[16] = vec3[](
@@ -51,7 +51,7 @@ float rand(vec2 co){
 
 vec3 reconstruct_position(vec2 uv, float non_linear_depth) {
   vec2 ndc = uv * 2 - 1;
-  vec4 clip = vec4(ndc.x, ndc.y, non_linear_depth * 2 - 1, 1);
+  vec4 clip = vec4(ndc.x, ndc.y, non_linear_depth, 1);
   vec4 view = inv_projection_matrix * clip;
   return view.xyz / view.w;
 }

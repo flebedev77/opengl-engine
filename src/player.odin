@@ -51,7 +51,7 @@ player_init :: proc(scene: ^Scene, player: ^Player) {
 
   player_material := Material{
     is_valid = true,
-    albedo_texture = texture_load("assets/models/mig/textures/BaseColor.png"),
+    albedo_texture = texture_load("assets/models/mig/textures/BaseColor.png", true),
     roughness_texture = texture_load("assets/models/mig/textures/metallic.png"),
     shader = scene.renderer.default_shader,
     metallic_strength = 1,

@@ -37,6 +37,7 @@ ShaderParameters :: struct {
   macroshadowmap_matrix_location,
   blue_noise_texture_location,
   frame_number_location,
+  volumetrics_taa_frames_location,
   uv_location,
   tint_location,
   light_position_location,
@@ -55,6 +56,7 @@ ShaderParameters :: struct {
   projection_matrix: Mat4,
   sun_position,
   camera_position: Vec3,
+  volumetrics_taa_frames,
   frame_number: i32,
   blur_amount: int
 }
@@ -104,8 +106,8 @@ Renderer :: struct {
   back_framebuffer: Framebuffer,
 
   ssao_framebuffer: Framebuffer,
-  volumetrics_current_fb: u8,
-  volumetrics_framebuffers: [4]Framebuffer,
+  volumetrics_taa_frames: i32,
+  volumetrics_framebuffers: Framebuffer,
   blur_framebuffer: Framebuffer,
   shadowmap_framebuffer: Framebuffer,
   macroshadowmap_framebuffer: Framebuffer,
@@ -121,7 +123,7 @@ Renderer :: struct {
 }
 
 renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
-  renderer.sun_position = {10, 10, 10}
+  renderer.sun_position = {1, 10, 1}
 
   gl.LineWidth(5.0)
   gl.Enable(gl.DEPTH_TEST)
@@ -146,15 +148,15 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   framebuffer_init(&renderer.shadowmap_framebuffer, {4096, 4096}, {.DEPTH}, "shadowmap", .SHADOWMAP)
   framebuffer_init(&renderer.macroshadowmap_framebuffer, {4096, 4096}, {.DEPTH}, "shadowmap", .SHADOWMAP)
 
-  effects_resolution_factor: f32 = 1.0/4
+  effects_resolution_factor: f32 = 1.0/2
   effects_resolution := Vec2{WINDOW_WIDTH, WINDOW_HEIGHT} * effects_resolution_factor
   effects_resolution_int := IVec2{i32(effects_resolution.x), i32(effects_resolution.y)}
   fmt.printfln("Effects resolution %d (1/%d)", effects_resolution_int, i32(1 / effects_resolution_factor))
   framebuffer_init(&renderer.ssao_framebuffer, effects_resolution_int, {.RED}, "ssao", .TWO_DIMENTIONAL)
   framebuffer_init(&renderer.blur_framebuffer, effects_resolution_int, {.COLOR}, "blur", .TWO_DIMENTIONAL)
-  for &fb in renderer.volumetrics_framebuffers {
-    framebuffer_init(&fb, effects_resolution_int, {.COLOR}, "volumetric", .TWO_DIMENTIONAL)
-  }
+
+  renderer.volumetrics_taa_frames = 32
+  framebuffer_init(&renderer.volumetrics_framebuffers, effects_resolution_int, {.TEMPORAL_COLOR}, "volumetric", .TWO_DIMENTIONAL, false, 0, renderer.volumetrics_taa_frames)
 
   renderer.final_pass_material = asset_loader_material(0, 0, "post_process", .TWO_DIMENTIONAL)
 
@@ -186,7 +188,7 @@ renderer_render :: proc(renderer: ^Renderer) {
   // Shadowmap pass
 
   light_viewmatrix := linalg.matrix4_look_at_f32(
-    renderer.scene.camera.position + linalg.normalize(renderer.sun_position) * 3, 
+    renderer.scene.camera.position + linalg.normalize(renderer.sun_position) * 1000, 
     renderer.scene.camera.position,
     {0, 1, 0}
   )
@@ -254,11 +256,11 @@ renderer_render :: proc(renderer: ^Renderer) {
   gl.ActiveTexture(gl.TEXTURE5)
   gl.BindTexture(gl.TEXTURE_2D, renderer.ssao_framebuffer.red_texture)
   gl.ActiveTexture(gl.TEXTURE6)
-  gl.BindTexture(gl.TEXTURE_2D, renderer.volumetrics_framebuffers[renderer.volumetrics_current_fb].color_texture)
+  gl.BindTexture(gl.TEXTURE_2D_ARRAY, renderer.volumetrics_framebuffers.color_texturearray)
 
   // Volumetrics pass
-  renderer_bind_and_clear_framebuffer(renderer, renderer.volumetrics_framebuffers[renderer.volumetrics_current_fb])
-  render_mesh(renderer, &renderer.post_process_quad, &renderer.volumetrics_framebuffers[0].material)
+  renderer_bind_and_clear_framebuffer(renderer, renderer.volumetrics_framebuffers)
+  render_mesh(renderer, &renderer.post_process_quad, &renderer.volumetrics_framebuffers.material)
 
   // gl.ActiveTexture(gl.TEXTURE5)
   // gl.BindTexture(gl.TEXTURE_2D, renderer.volumetrics_framebuffers[rende].color_texture)
@@ -302,6 +304,10 @@ renderer_bind_and_clear_framebuffer :: proc(renderer: ^Renderer, framebuffer: Fr
     framebuffer.size.x,
     framebuffer.size.y
   )
+  if .TEMPORAL_COLOR in framebuffer.type {
+    current_layer := i32(renderer.scene.frame_number % renderer.volumetrics_taa_frames)
+    gl.FramebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, framebuffer.color_texturearray, 0, current_layer)
+  }
   reversed_z := (.REVERSED_Z in framebuffer.type)
   if reversed_z {
     gl.DepthFunc(gl.GREATER)
@@ -357,6 +363,7 @@ render_mesh :: proc(renderer: ^Renderer, mesh: ^Mesh, material_override: ^Materi
   shader_parameters.camera_position = renderer.scene.camera.position
   shader_parameters.sun_position = renderer.sun_position
   shader_parameters.frame_number = renderer.scene.frame_number
+  shader_parameters.volumetrics_taa_frames = renderer.volumetrics_taa_frames
 
   gl.ActiveTexture(gl.TEXTURE8)
   gl.BindTexture(gl.TEXTURE_2D, renderer.scene.resources.blue_noise_texture)
@@ -466,6 +473,7 @@ mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}) {
     gl.Uniform1i(shader.parameters.volumetrics_texture_location, 6)
     gl.Uniform1i(shader.parameters.blue_noise_texture_location, 8)
     gl.Uniform1i(shader.parameters.blur_amount_location, i32(shader.parameters.blur_amount))
+    gl.Uniform1i(shader.parameters.volumetrics_taa_frames_location, shader.parameters.volumetrics_taa_frames)
     gl.DrawElements(gl.TRIANGLE_STRIP, 4, gl.UNSIGNED_INT, cast(rawptr)(cast(uintptr)0))
   } else {
     gl.Uniform3fv(shader.parameters.camera_position_location, 1, &shader.parameters.camera_position[0])
@@ -594,6 +602,7 @@ shader_init :: proc(shader: ^Shader) {
       shader.parameters.normal_texture_location = gl.GetUniformLocation(shader.program, "normal_texture")
       shader.parameters.blur_texture_location = gl.GetUniformLocation(shader.program, "blur_texture");
       shader.parameters.blur_amount_location = gl.GetUniformLocation(shader.program, "blur_size")
+      shader.parameters.volumetrics_taa_frames_location = gl.GetUniformLocation(shader.program, "volumetrics_taa_frames")
     // case .SHADOWMAP:
       shader.parameters.model_matrix_location = gl.GetUniformLocation(shader.program, "model_matrix")
       shader.parameters.view_matrix_location = gl.GetUniformLocation(shader.program, "view_matrix")
@@ -623,7 +632,7 @@ renderer_info :: proc() {
   fmt.printfln("OpenGL vendor   : %s", gl.GetString(gl.VENDOR))
 }
 
-texture_load :: proc(filepath: string) -> u32 {
+texture_load :: proc(filepath: string, srgb := false) -> u32 {
   contents := os.read_entire_file(filepath) or_else nil
   if contents == nil {
     fmt.eprintfln("Failed to read %s image", filepath)
@@ -653,7 +662,7 @@ texture_load :: proc(filepath: string) -> u32 {
     gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RED, img_w, img_h,
       0, gl.RED, gl.UNSIGNED_BYTE, &img_data[0])
   } else {
-    gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGB, img_w, img_h,
+    gl.TexImage2D(gl.TEXTURE_2D, 0, (srgb) ? gl.SRGB : gl.RGB, img_w, img_h,
       0, (img_channels == 3) ? gl.RGB : gl.RGBA, gl.UNSIGNED_BYTE, &img_data[0])
   }
   gl.GenerateMipmap(gl.TEXTURE_2D)
@@ -664,12 +673,14 @@ texture_load :: proc(filepath: string) -> u32 {
 
 Framebuffer :: struct {
   color_texture,
+  color_texturearray,
   depth_texture,
   normal_texture,
   red_texture,
   framebuffer: GpuID,
   material: Material,
   size: IVec2,
+  layers: i32,
   type: bit_set[FramebufferType]
 }
 
@@ -678,7 +689,8 @@ FramebufferType :: enum {
   NORMAL,
   DEPTH,
   RED,
-  REVERSED_Z
+  REVERSED_Z,
+  TEMPORAL_COLOR
 }
 
 framebuffer_init :: proc(
@@ -689,6 +701,7 @@ framebuffer_init :: proc(
   shader_type: ShaderType = .THREE_DIMENSIONAL,
   msaa: bool = false,
   msaa_samples: i32 = 8,
+  layers: i32 = 8
 ) {
   if len(shader_name) != 0 {
     framebuffer.material = asset_loader_material(0, 0, shader_name, shader_type)
@@ -697,6 +710,7 @@ framebuffer_init :: proc(
   texture_attachment: u32 = (msaa) ? gl.TEXTURE_2D_MULTISAMPLE : gl.TEXTURE_2D
   framebuffer.size = size
   framebuffer.type = type
+  framebuffer.layers = layers
 
   gl.GenFramebuffers(1, &framebuffer.framebuffer)
   gl.BindFramebuffer(gl.FRAMEBUFFER, framebuffer.framebuffer)
@@ -751,7 +765,7 @@ framebuffer_init :: proc(
       gl.TexImage2DMultisample(
         gl.TEXTURE_2D_MULTISAMPLE,
         msaa_samples,
-        gl.RGBA,
+        gl.RGBA16F,
         size.x,
         size.y,
         gl.TRUE
@@ -800,6 +814,21 @@ framebuffer_init :: proc(
       gl.COLOR_ATTACHMENT1,
     }
     gl.DrawBuffers(2, &draw_attachments[0])
+  }
+
+  if .TEMPORAL_COLOR in type {
+    gl.GenTextures(1, &framebuffer.color_texturearray)
+    gl.BindTexture(gl.TEXTURE_2D_ARRAY, framebuffer.color_texturearray)
+
+    gl.TexImage3D(gl.TEXTURE_2D_ARRAY, 0,
+      gl.RGBA16F, size.x, size.y, layers, 0, gl.RGBA, gl.FLOAT, nil)
+
+    gl.TexParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+    gl.TexParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+    gl.TexParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+    gl.TexParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+
+    gl.FramebufferTextureLayer(gl.TEXTURE_2D_ARRAY, gl.COLOR_ATTACHMENT0, framebuffer.color_texturearray, 0, 0)
   }
 
   if gl.CheckFramebufferStatus(gl.FRAMEBUFFER) != gl.FRAMEBUFFER_COMPLETE {
