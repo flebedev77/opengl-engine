@@ -40,10 +40,10 @@ void main() {
   frag_color = texture(screen_texture, frag_uv).rgb;
   vec4 volumetrics = vec4(0);
   int current_volumetric_frame = frame_number % volumetrics_taa_frames;
+  float weight = 1 / float(volumetrics_taa_frames);
   for (int i = 0; i < volumetrics_taa_frames; i++) {
-    volumetrics += texture(volumetrics_texture, vec3(frag_uv, float(i)));
+    volumetrics += texture(volumetrics_texture, vec3(frag_uv, float(i))) * weight;
   }
-  volumetrics /= volumetrics_taa_frames;
   // volumetrics.a = texture(volumetrics_texture, vec3(frag_uv, current_volumetric_frame)).a;
 
   // frag_color *= 1-volumetrics.a;

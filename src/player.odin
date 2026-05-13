@@ -27,7 +27,7 @@ Player :: struct {
 
 player_init :: proc(scene: ^Scene, player: ^Player) {
   // player.position = {0, 0.3, 0}
-  player.position = {0, 2, 0}
+  player.position = {0, 5200, 0}
   player.walk_speed = PLAYER_WALK_SPEED
   player.look_sensitivity = PLAYER_LOOK_SENSITIVITY
   player.is_flying = false

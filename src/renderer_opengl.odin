@@ -148,14 +148,14 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   framebuffer_init(&renderer.shadowmap_framebuffer, {4096, 4096}, {.DEPTH}, "shadowmap", .SHADOWMAP)
   framebuffer_init(&renderer.macroshadowmap_framebuffer, {4096, 4096}, {.DEPTH}, "shadowmap", .SHADOWMAP)
 
-  effects_resolution_factor: f32 = 1.0/2
+  effects_resolution_factor: f32 = 1.0/2.5
   effects_resolution := Vec2{WINDOW_WIDTH, WINDOW_HEIGHT} * effects_resolution_factor
   effects_resolution_int := IVec2{i32(effects_resolution.x), i32(effects_resolution.y)}
   fmt.printfln("Effects resolution %d (1/%d)", effects_resolution_int, i32(1 / effects_resolution_factor))
   framebuffer_init(&renderer.ssao_framebuffer, effects_resolution_int, {.RED}, "ssao", .TWO_DIMENTIONAL)
   framebuffer_init(&renderer.blur_framebuffer, effects_resolution_int, {.COLOR}, "blur", .TWO_DIMENTIONAL)
 
-  renderer.volumetrics_taa_frames = 32
+  renderer.volumetrics_taa_frames = 40
   framebuffer_init(&renderer.volumetrics_framebuffers, effects_resolution_int, {.TEMPORAL_COLOR}, "volumetric", .TWO_DIMENTIONAL, false, 0, renderer.volumetrics_taa_frames)
 
   renderer.final_pass_material = asset_loader_material(0, 0, "post_process", .TWO_DIMENTIONAL)
@@ -828,12 +828,12 @@ framebuffer_init :: proc(
     gl.TexParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
     gl.TexParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
 
-    gl.FramebufferTextureLayer(gl.TEXTURE_2D_ARRAY, gl.COLOR_ATTACHMENT0, framebuffer.color_texturearray, 0, 0)
+    gl.FramebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, framebuffer.color_texturearray, 0, 0)
   }
 
   if gl.CheckFramebufferStatus(gl.FRAMEBUFFER) != gl.FRAMEBUFFER_COMPLETE {
-    fmt.printfln("Failed to init framebuffer")
-    fmt.printfln("%d", gl.CheckFramebufferStatus(gl.FRAMEBUFFER))
+    fmt.eprintfln("Failed to init framebuffer 0x%X",
+      gl.CheckFramebufferStatus(gl.FRAMEBUFFER))
   }
 }
 
