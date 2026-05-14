@@ -29,12 +29,12 @@ const float cloud_height_apex = cloud_height_base+cloud_layer_thickness;
 #define CLOUD_DENSITY 0.8//0.5
 #define CLOUD_LIGHT_DENSITY 0.1
 #define CLOUD_STEP_LENGTH 265.5
-#define CLOUD_LIGHT_STEP_LENGTH 100.6
+#define CLOUD_LIGHT_STEP_LENGTH 300.6
 #define MIN_DENSITY 0.01
 #define SUN_INTENSITY 35//0
 
 #define BACKSCATTER_MIN 0.12
-#define BACKSCATTER_MAX 0.2
+#define BACKSCATTER_MAX 0.35
 
 #define EXTINCTION_FACTOR 0.3
 #define SCATTERING_FACTOR (EXTINCTION_FACTOR-0.001)
@@ -52,8 +52,47 @@ const float PI = 3.141592653589793;
 vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
 vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
 
+float rand_hash(vec2 p) {
+  return fract(sin(dot(p.xy ,vec2(12.9898,78.233))) * 43758.5453);
+}
+
 float remap(float v, float fmin, float fmax, float tmin, float tmax) {
   return tmin + (tmax - tmin) * (v - fmin) / (fmax - fmin);
+}
+
+float lerp(float a, float b, float t) {
+  return a + (b-a) * t;
+}
+
+vec2 rand_vec(vec2 p) {
+	return (vec2(
+		rand_hash(p) * 2.0 - 1.0, 
+		rand_hash(p + vec2(1, 2343)) * 2.0 - 1.0
+	));
+}
+
+float noisetwod(vec2 p) {
+	vec2 f = fract(p);
+	vec2 br = ceil(p);
+	vec2 bl = br - vec2(1, 0);
+	vec2 tl = bl + vec2(0, 1);
+	vec2 tr = tl + vec2(1, 0);
+	
+	vec2 brn = rand_vec(br);
+	vec2 bln = rand_vec(bl);
+	vec2 tln = rand_vec(tl);
+	vec2 trn = rand_vec(tr);
+	
+	float brv = dot(brn, (p - br));
+	float blv = dot(bln, (p - bl));
+	float trv = dot(trn, (p - tr));
+	float tlv = dot(tln, (p - tl));
+	
+	float bn = lerp(blv, brv, f.x);
+	float tn = lerp(tlv, trv, f.x);
+	
+	float v = lerp(bn, tn, f.y);
+	return v * 0.5 + 0.5;
 }
 
 float snoise(vec3 v){ 
@@ -135,7 +174,6 @@ float rand(vec2 co){
 // #endif
   co.x *= aspect;
   return fract(texture(blue_noise_texture, co * 5).r * 2.4 + frame_offset);
-    return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
 }
 
 float Ei( float z )
@@ -149,11 +187,12 @@ float Ei( float z )
 // #define DENSITY_FACTOR 0.6
 // #define DENSITY_BIAS -0.2
 #define CLOUD_SCALE 100
-#define BASE_FREQUENCY_FACTOR 0.08
+#define BASE_FREQUENCY_FACTOR 0.06
 #define AMPLITUDE_FACTOR 0.2
 #define FREQUENCY_FACTOR 1.2
 #define DENSITY_FACTOR 0.9
 #define DENSITY_BIAS -0.5
+#define COVERAGE_BIAS 0.24
 
 float sample_cloud_density(vec3 p) {
   // return clamp(
@@ -167,24 +206,32 @@ float sample_cloud_density(vec3 p) {
   //       0, 1);
   // float fade_start = cloud_height_apex - 60;
   // float fade_factor = clamp((p.y - fade_start) / (cloud_height_apex - fade_start), 0, 1);
+  float coverage = noisetwod(p.xz * 0.0001) - COVERAGE_BIAS;
+  if (coverage < 0.0) return 0.0;
   float percentage_to_apex = (p.y - cloud_height_base) / (cloud_height_apex - cloud_height_base);
-  float percentage_to_base = 1-percentage_to_apex;
   float height_factor = 1.5-percentage_to_apex;
+  float bottom_fade_height = 150;
+  float bottom_fade = clamp((p.y - cloud_height_base) / bottom_fade_height, 0, 1);
   vec3 uv = p * 0.0015;
+  uv.zx *= 0.8;
   float mg = 1.3;
   float v = snoise(uv*BASE_FREQUENCY_FACTOR) * mg * max(1.5 - percentage_to_apex, 0); mg *= AMPLITUDE_FACTOR*1.5; uv *= FREQUENCY_FACTOR * 0.3;
-  v += abs(snoise(uv * 0.7)) * mg * 0.5 * height_factor;
+  v += abs(snoise(uv * 0.7)) * mg * 2.5 * height_factor;
   mg *= AMPLITUDE_FACTOR; uv *= FREQUENCY_FACTOR;
   // v *= 1-fade_factor;
-  v += abs(snoise(uv * 1.8 + vec3(0.2))) * mg * 0.9 * height_factor;// * mg * 0.8; 
-  v += abs(snoise(uv * 0.5 - vec3(0.2))) * mg * 1.7 * height_factor;// * mg * 0.8; 
+  v += abs(snoise(uv * 1.8 + vec3(0.2))) * mg * 1.9 * height_factor;// * mg * 0.8; 
+  v += abs(snoise(uv * 0.5 - vec3(0.2))) * mg * 2.7 * height_factor;// * mg * 0.8; 
   mg *= AMPLITUDE_FACTOR; uv *= FREQUENCY_FACTOR;
-  v += abs(snoise(uv * 0.8 + vec3(10))) * mg * 10.0 * height_factor;// * mg * 0.8; 
+  v += abs(snoise(uv * 0.8 + vec3(1))) * mg * 2.0 * height_factor;// * mg * 0.8; 
   v += abs(snoise(uv * 1.0 + vec3(-0.1))) * mg * 8.0;// * mg * 0.8; 
-  // // // // uv *= 5;
-  // // // // mg *= 0.3;
-  v += abs(snoise(uv * 3)) * mg * 3.8; 
-  v += abs(snoise(uv * 5)) * mg * 2.2 * (1+snoise(uv*1)); 
+  // // // // // uv *= 5;
+  // // // // // mg *= 0.3;
+  v += abs(snoise(uv * 3)) * mg * 8.8; 
+  v += abs(snoise(uv * 7)) * mg * 4.8; 
+  v += abs(snoise(uv * 10)) * mg * 4.2 * max(0.8+0.5*snoise(uv*0.0001), 0); 
+  // v += abs(snoise(uv * 15)) * mg * 4.2 * (1+snoise(uv*1)); 
+  v *= bottom_fade;
+  v *= clamp(coverage, 0, 1);
   // v -= snoise(uv+vec3(0.1)) * mg * 0.2; 
   // mg *= AMPLITUDE_FACTOR;// uv *= FREQUENCY_FACTOR;
   // v += snoise(uv) * mg; mg *= AMPLITUDE_FACTOR; uv *= FREQUENCY_FACTOR;
@@ -213,21 +260,21 @@ float sample_cloud_density(vec3 p) {
 #define AMBIENT_COEFFICIENT 4//5//12.0
 #define AMBIENT_TOP_COEFFICIENT 0//0.87
 #define AMBIENT_TOP_COLOR vec3(0.9)
-#define AMBIENT_BOTTOM_COEFFICIENT 1.2
+#define AMBIENT_BOTTOM_COEFFICIENT 7.2
 #define AMBIENT_BOTTOM_COLOR vec3(0.35, 0.35, 0.4)
 #define AMBIENT_CONSTANT_COEFFICIENT 3.2
-#define AMBIENT_CONSTANT_COLOR vec3(0.260, 0.325, 0.389)
+#define AMBIENT_CONSTANT_COLOR vec3(0.260, 0.325, 0.489)
 #define AMBIENT_OCCLUSION_DISTANCE 2
 #define AMBIENT_OCCLUSION_STRENGTH 2.5
 
 vec3 calculate_ambient_color(vec3 p, float extinction_coefficient) {
-  float distance_top = abs(cloud_height_apex - p.y);
+  float distance_top = (cloud_height_apex - p.y);
   float a = -extinction_coefficient * distance_top;
   vec3 isotropic_scattering_top = AMBIENT_TOP_COLOR *
     max(0, exp(a) - a * Ei(a)) * AMBIENT_TOP_COEFFICIENT;
 
 
-  float distance_bottom = abs(cloud_height_base - p.y);
+  float distance_bottom = (p.y - cloud_height_base);
   a = -extinction_coefficient * distance_bottom;
   vec3 isotropic_scattering_bottom = AMBIENT_BOTTOM_COLOR *
     max(0, exp(a) - a * Ei(a)) * AMBIENT_BOTTOM_COEFFICIENT;
