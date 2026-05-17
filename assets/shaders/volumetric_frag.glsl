@@ -23,6 +23,11 @@ uniform int frame_number;
 const float cloud_layer_thickness = 2000;//(186-10);
 const float cloud_height_base = 3000;
 const float cloud_height_apex = cloud_height_base+cloud_layer_thickness;
+const float cloud_dome_radius = 1000000;
+const vec3 cloud_dome_position = vec3(0, -(cloud_dome_radius-cloud_height_base), 0);
+const float actual_cloud_height_base = cloud_dome_radius;
+const float actual_cloud_height_apex = cloud_dome_radius + cloud_layer_thickness;
+const float cloud_minimum_height = -500;
 
 #define STEPS_CLOUDS 100
 #define STEPS_CLOUDS_LIGHTING 5
@@ -206,12 +211,13 @@ float sample_cloud_density(vec3 p) {
   //       0, 1);
   // float fade_start = cloud_height_apex - 60;
   // float fade_factor = clamp((p.y - fade_start) / (cloud_height_apex - fade_start), 0, 1);
-  // float coverage = noisetwod(p.xz * 0.0001) - COVERAGE_BIAS;
-  // if (coverage < 0.0) return 0.0;
-  float percentage_to_apex = (p.y - cloud_height_base) / (cloud_height_apex - cloud_height_base);
-  float height_factor = 1;//1.5-percentage_to_apex;
+  float coverage = noisetwod(p.xz * 0.0001) - COVERAGE_BIAS;
+  if (coverage < 0.0) return 0.0;
+  float dc = length(p-cloud_dome_position);
+  float percentage_to_apex = (dc - actual_cloud_height_base) / (actual_cloud_height_apex - actual_cloud_height_base);
+  float height_factor = 1.5-percentage_to_apex;
   float bottom_fade_height = 150;
-  float bottom_fade = clamp((p.y - cloud_height_base) / bottom_fade_height, 0, 1);
+  float bottom_fade = clamp((dc - actual_cloud_height_base) / bottom_fade_height, 0, 1);
   vec3 uv = p * 0.0015;
   uv.zx *= 0.8;
   float mg = 1.3;
@@ -230,8 +236,8 @@ float sample_cloud_density(vec3 p) {
   v += abs(snoise(uv * 7)) * mg * 4.8; 
   v += abs(snoise(uv * 10)) * mg * 4.2 * max(0.8+0.5*snoise(uv*0.0001), 0); 
   // v += abs(snoise(uv * 15)) * mg * 4.2 * (1+snoise(uv*1)); 
-  // v *= bottom_fade;
-  // v *= clamp(coverage, 0, 1);
+  v *= bottom_fade;
+  v *= clamp(coverage, 0, 1);
   // v -= snoise(uv+vec3(0.1)) * mg * 0.2; 
   // mg *= AMPLITUDE_FACTOR;// uv *= FREQUENCY_FACTOR;
   // v += snoise(uv) * mg; mg *= AMPLITUDE_FACTOR; uv *= FREQUENCY_FACTOR;
@@ -268,13 +274,15 @@ float sample_cloud_density(vec3 p) {
 #define AMBIENT_OCCLUSION_STRENGTH 2.5
 
 vec3 calculate_ambient_color(vec3 p, float extinction_coefficient) {
-  float distance_top = (cloud_height_apex - p.y);
+  // return AMBIENT_CONSTANT_COLOR * AMBIENT_CONSTANT_COEFFICIENT;
+  float dc = length(p-cloud_dome_position);
+  float distance_top = (cloud_height_apex - dc);
   float a = -extinction_coefficient * distance_top;
   vec3 isotropic_scattering_top = AMBIENT_TOP_COLOR *
     max(0, exp(a) - a * Ei(a)) * AMBIENT_TOP_COEFFICIENT;
 
 
-  float distance_bottom = (p.y - cloud_height_base);
+  float distance_bottom = (dc - cloud_height_base);
   a = -extinction_coefficient * distance_bottom;
   vec3 isotropic_scattering_bottom = AMBIENT_BOTTOM_COLOR *
     max(0, exp(a) - a * Ei(a)) * AMBIENT_BOTTOM_COEFFICIENT;
@@ -303,36 +311,17 @@ float calculate_phase(float g, float cos_theta, float extinction) {
 }
 
 vec2 ray_sphere(vec3 ro, vec3 rd, float sr, vec3 sp) {
-    vec3 L = ro - sp; // Vector from sphere center to ray origin
-    
-    // a = rd . rd
+    vec3 L = ro - sp;
     float a = dot(rd, rd); 
-    
-    // b = 2 * (rd . L)
     float b = 2.0 * dot(rd, L);
-    
-    // c = (L . L) - r^2
     float c = dot(L, L) - (sr * sr);
-    
     float discriminant = b * b - 4.0 * a * c;
-
-    if (discriminant < 0.0) return vec2(-1); // No intersection
-
+    if (discriminant < 0.0) return vec2(-1);
     float sqrtD = sqrt(discriminant);
     float t0 = (-b - sqrtD) / (2.0 * a);
-    // if (t0 < 0) t0 = 1e17;
     float t1 = (-b + sqrtD) / (2.0 * a);
-    // if (t1 < 0) t1 = 1e17;
 
     return vec2(t0, t1);
-    
-  // float a = 1;
-  // vec2 bv = -2 * sp * rd + 2 * ro * rd;
-  // float b = bv.x + bv.y;
-  // vec2 cv = -2 * sp * ro + sp * sp + ro * ro;
-  // float c = cv.x + cv.y - sr * sr;
-  //
-  // return vec2(1.0);
 }
 
 vec4 calculate_volumetrics() {
@@ -423,27 +412,11 @@ vec4 calculate_volumetrics() {
     float extinction = 1.0;
     vec3 scattering = vec3(0);
 
-      // float t_base = (cloud_height_base - camera_world_pos.y) / ray_dir.y;
-      // float t_apex = (cloud_height_apex - camera_world_pos.y) / ray_dir.y;
-      float r = 170000;
-      vec3 v = vec3(0, -164000, 0);
-      // vec2 base_intersection = ray_sphere(camera_world_pos, ray_dir, r, v);
-      // float t_base = min(base_intersection.x, base_intersection.y);
-      // vec2 apex_intersection = ray_sphere(camera_world_pos, ray_dir, r+400, v);
-      // float t_apex = min(apex_intersection.x, apex_intersection.y);
-      // // float t_apex = -1;
-      // // float t_base = -1;
-      // //
-      // float t_in = min(t_base, t_apex);
-      // float t_out = max(t_base, t_apex);
-      // float t_in = -1;
-      // float t_out = -1;
+    vec2 A = ray_sphere(camera_world_pos, ray_dir, cloud_dome_radius + cloud_layer_thickness, cloud_dome_position);
+    vec2 B = ray_sphere(camera_world_pos, ray_dir, cloud_dome_radius, cloud_dome_position);
 
-vec2 A = ray_sphere(camera_world_pos, ray_dir, r + 2000.0, v);
-vec2 B = ray_sphere(camera_world_pos, ray_dir, r, v);
-
-float t_in = -1.0;
-float t_out = -1.0;
+    float t_in = -1.0;
+    float t_out = -1.0;
 
 // If A.y < 0, the entire atmosphere is behind the camera (or we missed entirely)
 if (A.y >= 0.0) { 
@@ -488,7 +461,7 @@ if (A.y >= 0.0) {
 
           for (int i = 0; i < STEPS_CLOUDS; i++) {
             if (extinction < 0.01) { extinction = 0; break; }
-            if (distance_travelled >= cloud_march_length || current_pos.y < 0) break;
+            if (distance_travelled >= cloud_march_length || current_pos.y < cloud_minimum_height) break;
 
             current_pos = start_pos + ray_dir * distance_travelled;
             float current_density = sample_cloud_density(current_pos);
