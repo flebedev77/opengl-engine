@@ -31,7 +31,7 @@ float cloud_height_apex = cloud_height_base+cloud_layer_thickness;
 vec3 cloud_dome_position = vec3(0, -(cloud_dome_radius-cloud_height_base), 0);
 float actual_cloud_height_base = cloud_dome_radius;
 float actual_cloud_height_apex = cloud_dome_radius + cloud_layer_thickness;
-const float cloud_minimum_height = -500;
+const float cloud_minimum_height = -3500;
 
 #define STEPS_CLOUDS 100
 #define STEPS_CLOUDS_LIGHTING 5
@@ -229,25 +229,24 @@ float sample_cloud_density(vec3 p) {
   float bottom_fade_height = 350;
   float bottom_fade = clamp((dc - actual_cloud_height_base) / bottom_fade_height, 0, 1);
   
-  p.y *= 2;
-  return clamp(snoise(p * 0.0015 * 0.06) * 0.1 * (1-percentage_to_apex), 0, 1);
+  // return clamp(snoise(p * 0.00015 * 0.06) * 0.1 * (1-percentage_to_apex), 0, 1);
 
-  vec3 uv = p * 0.0015;
+  vec3 uv = p * 0.00015;
   uv.zx *= 0.8;
   float mg = 1.3;
   float v = snoise(uv*BASE_FREQUENCY_FACTOR) * mg * max(1.5 - percentage_to_apex, 0); mg *= AMPLITUDE_FACTOR*1.5; uv *= FREQUENCY_FACTOR * 0.3;
-  v += abs(snoise(uv * 0.7)) * mg * 2.5 * height_factor;
+  v += (snoise(uv * 0.7)) * mg * 2.5 * height_factor;
   mg *= AMPLITUDE_FACTOR; uv *= FREQUENCY_FACTOR;
 
-  v += abs(snoise(uv * 1.8 + vec3(0.2))) * mg * 1.9 * height_factor;// * mg * 0.8; 
-  v += abs(snoise(uv * 0.5 - vec3(0.2))) * mg * 2.7 * height_factor;// * mg * 0.8; 
+  v += (snoise(uv * 1.8 + vec3(0.2))) * mg * 1.9 * height_factor;// * mg * 0.8; 
+  v += (snoise(uv * 0.5 - vec3(0.2))) * mg * 2.7 * height_factor;// * mg * 0.8; 
   mg *= AMPLITUDE_FACTOR; uv *= FREQUENCY_FACTOR;
-  v += abs(snoise(uv * 0.8 + vec3(1))) * mg * 2.0 * height_factor;// * mg * 0.8; 
-  v += abs(snoise(uv * 1.0 + vec3(-0.1))) * mg * 8.0;// * mg * 0.8; 
+  v += (snoise(uv * 0.8 + vec3(1))) * mg * 2.0 * height_factor;// * mg * 0.8; 
+  v += (snoise(uv * 1.0 + vec3(-0.1))) * mg * 8.0;// * mg * 0.8; 
 
-  v += abs(snoise(uv * 3)) * mg * 8.8; 
-  v += abs(snoise(uv * 7)) * mg * 4.8; 
-  v += abs(snoise(uv * 10)) * mg * 4.2 * max(0.8+0.5*snoise(uv*0.0001), 0); 
+  v += (snoise(uv * 3)) * mg * 8.8; 
+  v += (snoise(uv * 7)) * mg * 4.8; 
+  v += (snoise(uv * 10)) * mg * 4.2 * max(0.8+0.5*snoise(uv*0.0001), 0); 
   v *= clamp(coverage, 0, 1);
   v *= bottom_fade;
 

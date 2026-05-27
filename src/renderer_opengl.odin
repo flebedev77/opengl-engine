@@ -161,7 +161,7 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   framebuffer_init(&renderer.shadowmap_framebuffer, {4096, 4096}, {.DEPTH}, "shadowmap", .SHADOWMAP)
   framebuffer_init(&renderer.macroshadowmap_framebuffer, {4096, 4096}, {.DEPTH}, "shadowmap", .SHADOWMAP)
 
-  effects_resolution_factor: f32 = 1.0/2.5
+  effects_resolution_factor: f32 = 1.0/2
   effects_resolution := Vec2{WINDOW_WIDTH, WINDOW_HEIGHT} * effects_resolution_factor
   effects_resolution_int := IVec2{i32(effects_resolution.x), i32(effects_resolution.y)}
   fmt.printfln("Effects resolution %d (1/%d)", effects_resolution_int, i32(1 / effects_resolution_factor))
@@ -170,8 +170,8 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   framebuffer_init(&renderer.downscaled_depth_framebuffer, effects_resolution_int, {.REVERSED_Z, .DEPTH}, "", .THREE_DIMENSIONAL)
 
   renderer.cloud_settings.cloud_dome_radius = 400000
-  renderer.cloud_settings.cloud_noise = bake_cloud_noise()
-  renderer.volumetrics_taa_frames = 2
+  renderer.cloud_settings.cloud_noise = bake_cloud_noise(load_from_file = true)
+  renderer.volumetrics_taa_frames = 8
   framebuffer_init(&renderer.volumetrics_framebuffers, effects_resolution_int, {.TEMPORAL_COLOR}, "volumetric", .TWO_DIMENTIONAL, false, 0, renderer.volumetrics_taa_frames)
 
   renderer.final_pass_material = asset_loader_material(0, 0, "post_process", .TWO_DIMENTIONAL)
