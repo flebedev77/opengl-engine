@@ -1,6 +1,7 @@
 package main
 import "core:os"
 import "core:fmt"
+import "core:math"
 import "core:math/linalg"
 import "core:strings"
 import stbi "vendor:stb/image"
@@ -27,6 +28,7 @@ ShaderParameters :: struct {
   blur_texture_location,
   blur_amount_location,
   volumetrics_texture_location,
+  base_cloud_noise_texture_location,
   depth_texture_location,
   normal_texture_location,
   albedo_texture_location,
@@ -38,6 +40,7 @@ ShaderParameters :: struct {
   blue_noise_texture_location,
   frame_number_location,
   volumetrics_taa_frames_location,
+  cloud_dome_radius_location,
   uv_location,
   tint_location,
   light_position_location,
@@ -56,6 +59,7 @@ ShaderParameters :: struct {
   projection_matrix: Mat4,
   sun_position,
   camera_position: Vec3,
+  cloud_dome_radius: f32,
   volumetrics_taa_frames,
   frame_number: i32,
   blur_amount: int
@@ -102,6 +106,7 @@ Renderer :: struct {
   default_framebuffer: Framebuffer,
 
   prepass_framebuffer: Framebuffer,
+  downscaled_depth_framebuffer: Framebuffer,
   msaa_back_framebuffer: Framebuffer,
   back_framebuffer: Framebuffer,
 
@@ -119,7 +124,15 @@ Renderer :: struct {
   default_shader: Shader,
   sun_position: Vec3,
 
+
+  cloud_settings: CloudSettings,
+
   reload_shaders: bool,
+}
+
+CloudSettings :: struct {
+  cloud_noise: CloudNoise,
+  cloud_dome_radius: f32
 }
 
 renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
@@ -154,8 +167,11 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   fmt.printfln("Effects resolution %d (1/%d)", effects_resolution_int, i32(1 / effects_resolution_factor))
   framebuffer_init(&renderer.ssao_framebuffer, effects_resolution_int, {.RED}, "ssao", .TWO_DIMENTIONAL)
   framebuffer_init(&renderer.blur_framebuffer, effects_resolution_int, {.COLOR}, "blur", .TWO_DIMENTIONAL)
+  framebuffer_init(&renderer.downscaled_depth_framebuffer, effects_resolution_int, {.REVERSED_Z, .DEPTH}, "", .THREE_DIMENSIONAL)
 
-  renderer.volumetrics_taa_frames = 40
+  renderer.cloud_settings.cloud_dome_radius = 400000
+  renderer.cloud_settings.cloud_noise = bake_cloud_noise()
+  renderer.volumetrics_taa_frames = 2
   framebuffer_init(&renderer.volumetrics_framebuffers, effects_resolution_int, {.TEMPORAL_COLOR}, "volumetric", .TWO_DIMENTIONAL, false, 0, renderer.volumetrics_taa_frames)
 
   renderer.final_pass_material = asset_loader_material(0, 0, "post_process", .TWO_DIMENTIONAL)
@@ -230,6 +246,9 @@ renderer_render :: proc(renderer: ^Renderer) {
   renderer_bind_and_clear_framebuffer(renderer, renderer.prepass_framebuffer)
   renderer_draw_meshes(renderer, &renderer.prepass_framebuffer.material)
 
+  // Depth downscale
+  framebuffer_blit(renderer.prepass_framebuffer, renderer.downscaled_depth_framebuffer, {.DEPTH})
+
 
   // MSAA forward pass
   // scene.renderer.back_framebuffer.size = {FrameBuffer.w, FrameBuffer.h}
@@ -250,33 +269,34 @@ renderer_render :: proc(renderer: ^Renderer) {
   gl.ActiveTexture(gl.TEXTURE2)
   gl.BindTexture(gl.TEXTURE_2D, renderer.back_framebuffer.color_texture)
   gl.ActiveTexture(gl.TEXTURE3)
-  gl.BindTexture(gl.TEXTURE_2D, renderer.prepass_framebuffer.depth_texture)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.downscaled_depth_framebuffer.depth_texture)
   gl.ActiveTexture(gl.TEXTURE4)
   gl.BindTexture(gl.TEXTURE_2D, renderer.prepass_framebuffer.normal_texture)
-  gl.ActiveTexture(gl.TEXTURE5)
-  gl.BindTexture(gl.TEXTURE_2D, renderer.ssao_framebuffer.red_texture)
   gl.ActiveTexture(gl.TEXTURE6)
   gl.BindTexture(gl.TEXTURE_2D_ARRAY, renderer.volumetrics_framebuffers.color_texturearray)
 
   // Volumetrics pass
+  gl.ActiveTexture(gl.TEXTURE5)
+  gl.BindTexture(gl.TEXTURE_3D, renderer.cloud_settings.cloud_noise.base_shape)
   renderer_bind_and_clear_framebuffer(renderer, renderer.volumetrics_framebuffers)
   render_mesh(renderer, &renderer.post_process_quad, &renderer.volumetrics_framebuffers.material)
 
   // gl.ActiveTexture(gl.TEXTURE5)
-  // gl.BindTexture(gl.TEXTURE_2D, renderer.volumetrics_framebuffers[rende].color_texture)
-
-  // Volumetrics blur pass
+  // gl.BindTexture(gl.TEXTURE_2D, renderer.volumetrics_framebuffers.color_texture)
+  //
+  // // Volumetrics blur pass
   // renderer.blur_framebuffer.material.shader.parameters.blur_amount = 1
   // renderer_bind_and_clear_framebuffer(renderer, renderer.blur_framebuffer)
   // render_mesh(renderer, &renderer.post_process_quad, &renderer.blur_framebuffer.material)
-  // framebuffer_blit(renderer.blur_framebuffer, renderer.volumetrics_framebuffer)
+  // framebuffer_blit(renderer.blur_framebuffer, renderer.volumetrics_framebuffers)
 
   // SSAO
+  gl.ActiveTexture(gl.TEXTURE5)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.ssao_framebuffer.red_texture)
+
   renderer_bind_and_clear_framebuffer(renderer, renderer.ssao_framebuffer)
   render_mesh(renderer, &renderer.post_process_quad, &renderer.ssao_framebuffer.material)
 
-  gl.ActiveTexture(gl.TEXTURE5)
-  gl.BindTexture(gl.TEXTURE_2D, renderer.ssao_framebuffer.red_texture)
   // SSAO blur pass
   renderer.blur_framebuffer.material.shader.parameters.blur_amount = 4
   renderer_bind_and_clear_framebuffer(renderer, renderer.blur_framebuffer)
@@ -364,6 +384,8 @@ render_mesh :: proc(renderer: ^Renderer, mesh: ^Mesh, material_override: ^Materi
   shader_parameters.sun_position = renderer.sun_position
   shader_parameters.frame_number = renderer.scene.frame_number
   shader_parameters.volumetrics_taa_frames = renderer.volumetrics_taa_frames
+
+  shader_parameters.cloud_dome_radius = renderer.cloud_settings.cloud_dome_radius
 
   gl.ActiveTexture(gl.TEXTURE8)
   gl.BindTexture(gl.TEXTURE_2D, renderer.scene.resources.blue_noise_texture)
@@ -470,10 +492,12 @@ mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}) {
     gl.Uniform1i(shader.parameters.normal_texture_location, 4)
     gl.Uniform1i(shader.parameters.ssao_texture_location, 5)
     gl.Uniform1i(shader.parameters.blur_texture_location, 5)
+    gl.Uniform1i(shader.parameters.base_cloud_noise_texture_location, 5)
     gl.Uniform1i(shader.parameters.volumetrics_texture_location, 6)
     gl.Uniform1i(shader.parameters.blue_noise_texture_location, 8)
     gl.Uniform1i(shader.parameters.blur_amount_location, i32(shader.parameters.blur_amount))
     gl.Uniform1i(shader.parameters.volumetrics_taa_frames_location, shader.parameters.volumetrics_taa_frames)
+    gl.Uniform1f(shader.parameters.cloud_dome_radius_location, shader.parameters.cloud_dome_radius)
     gl.DrawElements(gl.TRIANGLE_STRIP, 4, gl.UNSIGNED_INT, cast(rawptr)(cast(uintptr)0))
   } else {
     gl.Uniform3fv(shader.parameters.camera_position_location, 1, &shader.parameters.camera_position[0])
@@ -603,6 +627,8 @@ shader_init :: proc(shader: ^Shader) {
       shader.parameters.blur_texture_location = gl.GetUniformLocation(shader.program, "blur_texture");
       shader.parameters.blur_amount_location = gl.GetUniformLocation(shader.program, "blur_size")
       shader.parameters.volumetrics_taa_frames_location = gl.GetUniformLocation(shader.program, "volumetrics_taa_frames")
+      shader.parameters.cloud_dome_radius_location = gl.GetUniformLocation(shader.program, "cloud_dome_radius")
+      shader.parameters.base_cloud_noise_texture_location = gl.GetUniformLocation(shader.program, "base_cloud_noise")
     // case .SHADOWMAP:
       shader.parameters.model_matrix_location = gl.GetUniformLocation(shader.program, "model_matrix")
       shader.parameters.view_matrix_location = gl.GetUniformLocation(shader.program, "view_matrix")
@@ -701,7 +727,7 @@ framebuffer_init :: proc(
   shader_type: ShaderType = .THREE_DIMENSIONAL,
   msaa: bool = false,
   msaa_samples: i32 = 8,
-  layers: i32 = 8
+  layers: i32 = 0
 ) {
   if len(shader_name) != 0 {
     framebuffer.material = asset_loader_material(0, 0, shader_name, shader_type)
@@ -854,11 +880,19 @@ framebuffer_delete :: proc(framebuffer: Framebuffer) {
   gl.DeleteFramebuffers(1, &framebuffer.framebuffer)
 }
 
-framebuffer_blit :: proc(framebuffer_from: Framebuffer, framebuffer_to: Framebuffer, depth: bool = false) {
+FramebufferBlitType :: enum {
+  COLOR,
+  DEPTH
+}
+
+framebuffer_blit :: proc(framebuffer_from: Framebuffer, framebuffer_to: Framebuffer, blit_type: bit_set[FramebufferBlitType] = {.COLOR}) {
   gl.BindFramebuffer(gl.READ_FRAMEBUFFER, framebuffer_from.framebuffer)
   gl.BindFramebuffer(gl.DRAW_FRAMEBUFFER, framebuffer_to.framebuffer)
+  blit_buffer: u32 = (.DEPTH in blit_type) ? gl.DEPTH_BUFFER_BIT : 0
+  if (.COLOR in blit_type) do blit_buffer |= gl.COLOR_BUFFER_BIT
+
   gl.BlitFramebuffer(0, 0, framebuffer_from.size.x, framebuffer_from.size.y,
-    0, 0, framebuffer_to.size.x, framebuffer_to.size.y, (depth) ? gl.DEPTH_BUFFER_BIT : gl.COLOR_BUFFER_BIT, gl.LINEAR)
+    0, 0, framebuffer_to.size.x, framebuffer_to.size.y, blit_buffer, (.DEPTH in blit_type) ? gl.NEAREST : gl.LINEAR)
 }
 
 DebugVertex :: struct {

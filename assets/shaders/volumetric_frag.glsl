@@ -9,6 +9,8 @@ uniform sampler2D shadowmap_texture;
 uniform sampler2D macroshadowmap_texture;
 uniform sampler2D blue_noise_texture;
 
+uniform sampler3D base_cloud_noise;
+
 uniform mat4 projection_matrix;
 uniform mat4 view_matrix;
 uniform mat4 inv_projection_matrix;
@@ -20,13 +22,15 @@ uniform vec3 light_pos;
 
 uniform int frame_number;
 
+uniform float cloud_dome_radius;
+
 const float cloud_layer_thickness = 2000;//(186-10);
 const float cloud_height_base = 3000;
-const float cloud_height_apex = cloud_height_base+cloud_layer_thickness;
-const float cloud_dome_radius = 1000000;
-const vec3 cloud_dome_position = vec3(0, -(cloud_dome_radius-cloud_height_base), 0);
-const float actual_cloud_height_base = cloud_dome_radius;
-const float actual_cloud_height_apex = cloud_dome_radius + cloud_layer_thickness;
+float cloud_height_apex = cloud_height_base+cloud_layer_thickness;
+// const float cloud_dome_radius = 1000000;
+vec3 cloud_dome_position = vec3(0, -(cloud_dome_radius-cloud_height_base), 0);
+float actual_cloud_height_base = cloud_dome_radius;
+float actual_cloud_height_apex = cloud_dome_radius + cloud_layer_thickness;
 const float cloud_minimum_height = -500;
 
 #define STEPS_CLOUDS 100
@@ -101,6 +105,7 @@ float noisetwod(vec2 p) {
 }
 
 float snoise(vec3 v){ 
+  return texture(base_cloud_noise, v).r;
   const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
   const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
 
@@ -197,7 +202,7 @@ float Ei( float z )
 #define FREQUENCY_FACTOR 1.2
 #define DENSITY_FACTOR 0.9
 #define DENSITY_BIAS -0.5
-#define COVERAGE_BIAS 0.24
+#define COVERAGE_BIAS -0.1//0.24
 
 float sample_cloud_density(vec3 p) {
   // return clamp(
@@ -211,37 +216,41 @@ float sample_cloud_density(vec3 p) {
   //       0, 1);
   // float fade_start = cloud_height_apex - 60;
   // float fade_factor = clamp((p.y - fade_start) / (cloud_height_apex - fade_start), 0, 1);
+
+
   float coverage = noisetwod(p.xz * 0.0001) - COVERAGE_BIAS;
-  if (coverage < 0.0) return 0.0;
+  // return coverage;
+  // if (coverage < 0.0) return 0.0;
+
+
   float dc = length(p-cloud_dome_position);
   float percentage_to_apex = (dc - actual_cloud_height_base) / (actual_cloud_height_apex - actual_cloud_height_base);
   float height_factor = 1.5-percentage_to_apex;
-  float bottom_fade_height = 150;
+  float bottom_fade_height = 350;
   float bottom_fade = clamp((dc - actual_cloud_height_base) / bottom_fade_height, 0, 1);
+  
+  p.y *= 2;
+  return clamp(snoise(p * 0.0015 * 0.06) * 0.1 * (1-percentage_to_apex), 0, 1);
+
   vec3 uv = p * 0.0015;
   uv.zx *= 0.8;
   float mg = 1.3;
   float v = snoise(uv*BASE_FREQUENCY_FACTOR) * mg * max(1.5 - percentage_to_apex, 0); mg *= AMPLITUDE_FACTOR*1.5; uv *= FREQUENCY_FACTOR * 0.3;
   v += abs(snoise(uv * 0.7)) * mg * 2.5 * height_factor;
   mg *= AMPLITUDE_FACTOR; uv *= FREQUENCY_FACTOR;
-  // v *= 1-fade_factor;
+
   v += abs(snoise(uv * 1.8 + vec3(0.2))) * mg * 1.9 * height_factor;// * mg * 0.8; 
   v += abs(snoise(uv * 0.5 - vec3(0.2))) * mg * 2.7 * height_factor;// * mg * 0.8; 
   mg *= AMPLITUDE_FACTOR; uv *= FREQUENCY_FACTOR;
   v += abs(snoise(uv * 0.8 + vec3(1))) * mg * 2.0 * height_factor;// * mg * 0.8; 
   v += abs(snoise(uv * 1.0 + vec3(-0.1))) * mg * 8.0;// * mg * 0.8; 
-  // // // // // uv *= 5;
-  // // // // // mg *= 0.3;
+
   v += abs(snoise(uv * 3)) * mg * 8.8; 
   v += abs(snoise(uv * 7)) * mg * 4.8; 
   v += abs(snoise(uv * 10)) * mg * 4.2 * max(0.8+0.5*snoise(uv*0.0001), 0); 
-  // v += abs(snoise(uv * 15)) * mg * 4.2 * (1+snoise(uv*1)); 
-  v *= bottom_fade;
   v *= clamp(coverage, 0, 1);
-  // v -= snoise(uv+vec3(0.1)) * mg * 0.2; 
-  // mg *= AMPLITUDE_FACTOR;// uv *= FREQUENCY_FACTOR;
-  // v += snoise(uv) * mg; mg *= AMPLITUDE_FACTOR; uv *= FREQUENCY_FACTOR;
-  // v += snoise(uv) * mg; mg *= AMPLITUDE_FACTOR; uv *= FREQUENCY_FACTOR;
+  v *= bottom_fade;
+
   return CLOUD_DENSITY * clamp(
       (DENSITY_FACTOR * v + DENSITY_BIAS)// * max(snoise(p*0.001) - 0.1, 0)
       , 0, 1);
@@ -478,7 +487,7 @@ if (A.y >= 0.0) {
               float light_transmittance = 1.0;
 
               for (int j = 0; j < STEPS_CLOUDS_LIGHTING; j++) {
-                if (light_transmittance < 0.0001) break;
+                if (light_transmittance < 0.01) break;
                 // if (
                 //     light_current_pos.y < cloud_height_base ||
                 //     light_current_pos.y > cloud_height_apex

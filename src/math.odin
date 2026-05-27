@@ -1,6 +1,7 @@
 package main
 import "core:math"
 import "core:math/linalg"
+import gl "vendor:OpenGL"
 
 Vec4 :: [4]f32
 Vec3 :: [3]f32
@@ -214,4 +215,80 @@ return Mat4{
     a.z*b.x - a.x*b.z,
     a.x*b.y - a.y*b.x
   }
+}
+
+
+// math.mod
+// mod_vec4_f32 :: proc(x: Vec4, y: f32) -> Vec4 {return x - y * math.floor_(x/y)}
+// mod :: proc {mod_vec4_f32}
+permute :: proc(x: Vec4) -> Vec4 {return linalg.mod(((x*34.0)+1.0)*x, 289.0)}
+taylorInvSqrt :: proc(r: Vec4) -> Vec4 {return 1.79284291400159 - 0.85373472095314 * r}
+
+
+@(require_results) cpu_snoise :: proc(v: Vec3) -> f32 {
+C := Vec2{1.0/6.0, 1.0/3.0}
+D := Vec4{0.0, 0.5, 1.0, 2.0}
+
+// First corner
+i: Vec3 = linalg.floor(v + linalg.dot(v, C.yyy) );
+x0: Vec3 =   v - i + linalg.dot(i, C.xxx) ;
+
+// Other corners
+g: Vec3 = linalg.step(x0.yzx, x0.xyz);
+l: Vec3 = 1.0 - g;
+i1: Vec3 = linalg.min( g.xyz, l.zxy );
+i2: Vec3 = linalg.max( g.xyz, l.zxy );
+
+  //  x0 = x0 - 0. + 0.0 * C 
+x1: Vec3 = x0 - i1 + 1.0 * C.xxx;
+x2: Vec3 = x0 - i2 + 2.0 * C.xxx;
+x3: Vec3 = x0 - 1. + 3.0 * C.xxx;
+
+// Permutations
+  i = linalg.mod(i, 289.0 ); 
+  p: Vec4 = permute( permute( permute(i.z + Vec4{0.0, i1.z, i2.z, 1.0 }) + i.y + Vec4{0.0, i1.y, i2.y, 1.0 }) + i.x + Vec4{0.0, i1.x, i2.x, 1.0 })
+
+// Gradients
+// ( N*N points uniformly over a square, mapped onto an octahedron.)
+  n_: f32 = 1.0/7.0 // N=7
+  ns: Vec3 = n_ * D.wyz - D.xzx
+
+  j: Vec4 = p - 49.0 * linalg.floor(p * ns.z *ns.z)  //  mod(p,N*N)
+
+  x_: Vec4 = linalg.floor(j * ns.z)
+  y_: Vec4 = linalg.floor(j - 7.0 * x_ )    // mod(j,N)
+
+  x: Vec4 = x_ *ns.x + ns.yyyy
+  y: Vec4 = y_ *ns.x + ns.yyyy
+  h: Vec4 = 1.0 - linalg.abs(x) - linalg.abs(y)
+
+  b0: Vec4 = Vec4{ x.x, x.y, y.x, y.y }
+  b1: Vec4 = Vec4{ x.z, x.w, y.z, y.w }
+
+  s0: Vec4 = linalg.floor(b0)*2.0 + 1.0
+  s1: Vec4 = linalg.floor(b1)*2.0 + 1.0
+  sh: Vec4 = -linalg.step(h, Vec4{0, 0, 0, 0})
+
+  a0: Vec4 = b0.xzyw + s0.xzyw*sh.xxyy 
+  a1: Vec4 = b1.xzyw + s1.xzyw*sh.zzww 
+
+  p0: Vec3 = {a0.x, a0.y, h.x}
+  p1: Vec3 = {a0.z, a0.w, h.y}
+  p2: Vec3 = {a1.x, a1.y, h.z}
+  p3: Vec3 = {a1.z, a1.w, h.w}
+
+//Normalise gradients
+  norm: Vec4 = taylorInvSqrt(
+Vec4{linalg.dot(p0,p0), linalg.dot(p1,p1), linalg.dot(p2, p2), linalg.dot(p3,p3)}
+)
+  p0 *= norm.x
+  p1 *= norm.y
+  p2 *= norm.z
+  p3 *= norm.w
+
+// Mix final noise value
+  m: Vec4 = linalg.max(0.6 - Vec4{linalg.dot(x0,x0), linalg.dot(x1,x1), linalg.dot(x2,x2), linalg.dot(x3,x3)}, 0.0);
+  m = m * m;
+  return 42.0 * linalg.dot( m*m, Vec4{ linalg.dot(p0,x0), linalg.dot(p1,x1), 
+                                linalg.dot(p2,x2), linalg.dot(p3,x3) } );
 }
