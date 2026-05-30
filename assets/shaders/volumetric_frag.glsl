@@ -1,7 +1,8 @@
 #version 330 core
 
 in vec2 frag_uv;
-out vec4 frag_color;
+layout (location = 0) out vec4 frag_color;
+layout (location = 1) out vec2 motion_vector;
 
 uniform sampler2D screen_texture;
 uniform sampler2D depth_texture;
@@ -12,10 +13,14 @@ uniform sampler2D blue_noise_texture;
 uniform sampler3D base_cloud_noise;
 uniform sampler3D detail_cloud_noise;
 
+uniform mat4 prev_projection_matrix;
+uniform mat4 prev_view_matrix;
 uniform mat4 projection_matrix;
 uniform mat4 view_matrix;
+
 uniform mat4 inv_projection_matrix;
 uniform mat4 inv_view_matrix;
+
 uniform mat4 shadowmap_matrix;
 uniform mat4 macroshadowmap_matrix;
 
@@ -38,7 +43,7 @@ const float cloud_minimum_height = -3500;
 #define STEPS_CLOUDS_LIGHTING 5
 #define CLOUD_DENSITY 1.0//0.5
 #define CLOUD_LIGHT_DENSITY 0.8
-#define CLOUD_STEP_LENGTH 10//265.5
+#define CLOUD_STEP_LENGTH 265.5
 #define CLOUD_LIGHT_STEP_LENGTH 30.6
 #define MIN_DENSITY 0.01
 #define SUN_INTENSITY 7//0
@@ -210,7 +215,7 @@ float Ei( float z )
 #define CLOUD_DRIFT_SPEED 0.6
 
 float sample_cloud_density_cheap(vec3 p) {
-  p.x += float(frame_number) * CLOUD_DRIFT_SPEED;
+  // p.x += float(frame_number) * CLOUD_DRIFT_SPEED;
   return snoise(p * 0.00015 * 0.06) * 0.1;
 }
 
@@ -241,21 +246,20 @@ float sample_cloud_density(vec3 p) {
   float bottom_fade_height = 150;
   float bottom_fade = clamp((dc - actual_cloud_height_base) / bottom_fade_height, 0, 1);
   
-  // p += vec3(float(frame_number) * 0.1, 0, 0);
-  p.x += float(frame_number) * CLOUD_DRIFT_SPEED;
+  // p.x += float(frame_number) * CLOUD_DRIFT_SPEED;
   float m = 
       snoise(p * 0.00015 * 0.06) * 0.1 * (1-percentage_to_apex);
   m -= dnoise(p * 0.00015) * 0.018;//clamp((1-m) * 0.1, 0, 1);
   m -= dnoise(p * 0.00029) * 0.008;//clamp((1-m) * 0.1, 0, 1);
 
-  p.x += float(frame_number) * CLOUD_DRIFT_SPEED;
+  // p.x += float(frame_number) * CLOUD_DRIFT_SPEED;
   m -= dnoise(p * 0.00069) * 0.006;//clamp((1-m) * 0.1, 0, 1);
   m -= dnoise(p * 0.0019) * 0.002;//clamp((1-m) * 0.1, 0, 1);
   m -= dnoise(p * 0.0029) * 0.001;//clamp((1-m) * 0.1, 0, 1);
 
   m *= bottom_fade;
-  // m -= dnoise(p * 0.001) * 0.004;//clamp((1-m) * 0.1, 0, 1);
-  // m -= dnoise(p * 0.002) * 0.002;//clamp((1-m) * 0.1, 0, 1);
+  // m -= (1-dnoise(p * 0.002)) * 0.001 * height_factor; // Whispy shapes
+
   return CLOUD_DENSITY * clamp(m, 0, 1);
 
   vec3 uv = p * 0.00015;
@@ -446,6 +450,8 @@ vec4 calculate_volumetrics() {
     //     current_pos += step_vector;
     // }
     // volumetric_light /= STEPS_LIGHT;
+    bool hit_cloud_surface = false;
+    vec3 world_space_surface = world_space_pixel;
 
     float extinction = 1.0;
     vec3 scattering = vec3(0);
@@ -456,59 +462,64 @@ vec4 calculate_volumetrics() {
     float t_in = -1.0;
     float t_out = -1.0;
 
-if (A.y >= 0.0) { 
-    
-    if (B.x < 0.0 && B.y < 0.0) {
+    if (A.y >= 0.0) { 
+
+      if (B.x < 0.0 && B.y < 0.0) {
         t_in = max(0.0, A.x);
         t_out = A.y;
-    } else {
+      } else {
         if (B.x > 0.0) {
-            t_in = max(0.0, A.x);
-            t_out = B.x;
+          t_in = max(0.0, A.x);
+          t_out = B.x;
         } else if (A.y > 0.0) {
-            t_in = max(0.0, B.y);
-            t_out = A.y;
+          t_in = max(0.0, B.y);
+          t_out = A.y;
         }
+      }
     }
-}
 
-      if (t_in >= 0 && t_out > 0.0) {
-        t_in = max(t_in, 0.0);
+    if (t_in >= 0 && t_out > 0.0) {
+      t_in = max(t_in, 0.0);
 
-        // if (ray_length > 1000) ray_length = 1e6;
-        t_out = min(t_out, ray_length);
+      // if (ray_length > 1000) ray_length = 1e6;
+      t_out = min(t_out, ray_length);
 
-        if (t_in < t_out) {
+      if (t_in < t_out) {
 
-          float cloud_march_length = t_out - t_in;
+        float cloud_march_length = t_out - t_in;
 
-          vec3 start_pos = camera_world_pos + ray_dir * t_in;
+        vec3 start_pos = camera_world_pos + ray_dir * t_in;
 
-          vec3 current_pos = start_pos;
+        vec3 current_pos = start_pos;
 
-          float distance_travelled = rand(frag_uv) * CLOUD_STEP_LENGTH;
-          float step_length = CLOUD_STEP_LENGTH;
-          float current_step_length = step_length;
+        float jitter = rand(frag_uv) * CLOUD_STEP_LENGTH;
+        float distance_travelled = jitter;
+        float step_length = CLOUD_STEP_LENGTH;
+        float current_step_length = step_length;
 
-          bool fine_step = false;
-          int steps_taken_with_zero_density = 0;
+        bool fine_step = true;
+        int steps_taken_with_zero_density = 0;
 
-          for (int i = 0; i < STEPS_CLOUDS; i++) {
-            if (extinction < 0.01) { extinction = 0; break; }
-            if (distance_travelled >= cloud_march_length || current_pos.y < cloud_minimum_height) break;
+        for (int i = 0; i < STEPS_CLOUDS; i++) {
+          if (extinction < 0.01) { extinction = 0; break; }
+          if (distance_travelled >= cloud_march_length || current_pos.y < cloud_minimum_height) break;
 
-            current_pos = start_pos + ray_dir * distance_travelled;
-            float current_density = (fine_step) ? sample_cloud_density(current_pos) :
-              sample_cloud_density_cheap(current_pos);
+          current_pos = start_pos + ray_dir * distance_travelled;
+          float current_density = (fine_step) ? sample_cloud_density(current_pos) :
+            sample_cloud_density_cheap(current_pos);
 
 
-            if (current_density >= MIN_DENSITY) {
-              if (fine_step == false) {
-                current_step_length = CLOUD_STEP_LENGTH;
-                fine_step = true;
-                continue;
+          if (current_density >= MIN_DENSITY) {
+            steps_taken_with_zero_density = 0;
+            if (fine_step == false) {
+              distance_travelled -= current_step_length;
+              current_step_length = CLOUD_STEP_LENGTH;
+              fine_step = true;
+            } else {
+              if (!hit_cloud_surface) {
+                world_space_surface = start_pos + ray_dir * (distance_travelled);
+                hit_cloud_surface = true;
               }
-              steps_taken_with_zero_density = 0;
               float scattering_coefficient = SCATTERING_FACTOR * current_density;
               float extinction_coefficient = EXTINCTION_FACTOR * current_density;
 
@@ -553,22 +564,41 @@ if (A.y >= 0.0) {
 
               extinction *= transmittance;
 
-            } else {
-              steps_taken_with_zero_density++;
-              if (steps_taken_with_zero_density > 5) {
-                fine_step = false;
-                current_step_length = CLOUD_STEP_LENGTH * 1;
-              }
             }
-
-            distance_travelled += current_step_length;
+          } else {
+            steps_taken_with_zero_density++;
+            if (steps_taken_with_zero_density > 10 && fine_step) {
+              // fine_step = false;
+              current_step_length = CLOUD_STEP_LENGTH * 1;
+            }
           }
-          // scattering = vec3(1);
-          // extinction = exp(-0.05 * cloud_march_length);
 
-
+          distance_travelled += current_step_length;
         }
+        // scattering = vec3(1);
+        // extinction = exp(-0.05 * cloud_march_length);
+
+
       }
+    }
+
+    // vec4 projected = prev_projection_matrix * prev_view_matrix * vec4(world_space_surface, 1);
+    // projected.xyz /= projected.w;
+    // vec2 prev_uv = projected.xy * 0.5 + 0.5;
+    // motion_vector = (frag_uv - prev_uv) * 100;
+
+    // Calculate current NDC position
+    vec4 current_clip = projection_matrix * view_matrix * vec4(world_space_surface, 1.0);
+    vec2 current_ndc = current_clip.xy / current_clip.w;
+    vec2 current_uv = current_ndc * 0.5 + 0.5;
+
+    // Calculate previous NDC position
+    vec4 prev_clip = prev_projection_matrix * prev_view_matrix * vec4(world_space_surface, 1.0);
+    vec2 prev_ndc = prev_clip.xy / prev_clip.w;
+    vec2 prev_uv = prev_ndc * 0.5 + 0.5;
+
+    // Output velocity
+    motion_vector = current_uv - prev_uv;
 
     return vec4(
         scattering, extinction

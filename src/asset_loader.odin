@@ -24,7 +24,7 @@ asset_loader_material :: proc(
 ) -> Material {
   frag_path, vert_path :=
   fmt.aprintf("./assets/shaders/%s_frag.glsl", shader_name),
-  (shader_type == .TWO_DIMENTIONAL) ? "./assets/shaders/quad_vert.glsl" :
+  (shader_type == .TWO_DIMENSIONAL) ? "./assets/shaders/quad_vert.glsl" :
   fmt.aprintf("./assets/shaders/%s_vert.glsl", shader_name)
 
 

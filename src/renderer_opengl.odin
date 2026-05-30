@@ -12,7 +12,7 @@ UniformLocation :: i32
 
 ShaderType :: enum {
   THREE_DIMENSIONAL, // Signifies that the shader should receive 3D related uniforms
-  TWO_DIMENTIONAL,   // TODO
+  TWO_DIMENSIONAL,   // TODO
   SHADOWMAP
 }
 
@@ -28,6 +28,8 @@ ShaderParameters :: struct {
   blur_texture_location,
   blur_amount_location,
   volumetrics_texture_location,
+  volumetric_history_texture_location,
+  volumetric_motion_vectors_texture_location,
   base_cloud_noise_texture_location,
   detail_cloud_noise_texture_location,
   depth_texture_location,
@@ -46,17 +48,21 @@ ShaderParameters :: struct {
   tint_location,
   light_position_location,
   camera_position_location,
-  view_matrix_location,
   inv_view_matrix_location,
   inv_projection_matrix_location,
+  prev_view_matrix_location,
+  prev_projection_matrix_location,
+  view_matrix_location,
   projection_matrix_location,
   model_matrix_location: UniformLocation,
 
   shadowmap_matrix,
   macroshadowmap_matrix,
-  view_matrix,
   inv_view_matrix,
   inv_projection_matrix,
+  prev_view_matrix,
+  prev_projection_matrix,
+  view_matrix,
   projection_matrix: Mat4,
   sun_position,
   camera_position: Vec3,
@@ -113,7 +119,9 @@ Renderer :: struct {
 
   ssao_framebuffer: Framebuffer,
   volumetrics_taa_frames: i32,
-  volumetrics_framebuffers: Framebuffer,
+  volumetric_framebuffer: Framebuffer,
+  volumetric_history_framebuffer: Framebuffer,
+  accumulated_volumetric_framebuffer: Framebuffer,
   blur_framebuffer: Framebuffer,
   shadowmap_framebuffer: Framebuffer,
   macroshadowmap_framebuffer: Framebuffer,
@@ -162,12 +170,12 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   framebuffer_init(&renderer.shadowmap_framebuffer, {4096, 4096}, {.DEPTH}, "shadowmap", .SHADOWMAP)
   framebuffer_init(&renderer.macroshadowmap_framebuffer, {4096, 4096}, {.DEPTH}, "shadowmap", .SHADOWMAP)
 
-  effects_resolution_factor: f32 = 1.0/1.8
+  effects_resolution_factor: f32 = 1.0/2
   effects_resolution := Vec2{WINDOW_WIDTH, WINDOW_HEIGHT} * effects_resolution_factor
   effects_resolution_int := IVec2{i32(effects_resolution.x), i32(effects_resolution.y)}
   fmt.printfln("Effects resolution %d (1/%d)", effects_resolution_int, i32(1 / effects_resolution_factor))
-  framebuffer_init(&renderer.ssao_framebuffer, effects_resolution_int, {.RED}, "ssao", .TWO_DIMENTIONAL)
-  framebuffer_init(&renderer.blur_framebuffer, effects_resolution_int, {.COLOR}, "blur", .TWO_DIMENTIONAL)
+  framebuffer_init(&renderer.ssao_framebuffer, effects_resolution_int, {.RED}, "ssao", .TWO_DIMENSIONAL)
+  framebuffer_init(&renderer.blur_framebuffer, effects_resolution_int, {.COLOR}, "blur", .TWO_DIMENSIONAL)
   framebuffer_init(&renderer.downscaled_depth_framebuffer, effects_resolution_int, {.REVERSED_Z, .DEPTH}, "", .THREE_DIMENSIONAL)
 
   renderer.cloud_settings.cloud_dome_radius = 800000
@@ -177,10 +185,12 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
     load_from_file = true
   }
   renderer.cloud_settings.cloud_noise = bake_cloud_noise(load_from_file)
-  renderer.volumetrics_taa_frames = 6
-  framebuffer_init(&renderer.volumetrics_framebuffers, effects_resolution_int, {.TEMPORAL_COLOR}, "volumetric", .TWO_DIMENTIONAL, false, 0, renderer.volumetrics_taa_frames)
+  renderer.volumetrics_taa_frames = 32
+  framebuffer_init(&renderer.volumetric_framebuffer, effects_resolution_int, {.COLOR, .MOTION_VECTOR}, "volumetric", .TWO_DIMENSIONAL)
+  framebuffer_init(&renderer.volumetric_history_framebuffer, effects_resolution_int, {.COLOR}, "", .TWO_DIMENSIONAL)
+  framebuffer_init(&renderer.accumulated_volumetric_framebuffer, effects_resolution_int, {.COLOR}, "clouds_taa", .TWO_DIMENSIONAL)
 
-  renderer.final_pass_material = asset_loader_material(0, 0, "post_process", .TWO_DIMENTIONAL)
+  renderer.final_pass_material = asset_loader_material(0, 0, "post_process", .TWO_DIMENSIONAL)
 
   renderer.post_process_quad = mesh_make_quad(renderer.final_pass_material)
 
@@ -282,20 +292,36 @@ renderer_render :: proc(renderer: ^Renderer) {
   // Volumetrics pass
   gl.ActiveTexture(gl.TEXTURE5)
   gl.BindTexture(gl.TEXTURE_3D, renderer.cloud_settings.cloud_noise.base_shape)
-
   gl.ActiveTexture(gl.TEXTURE6)
   gl.BindTexture(gl.TEXTURE_3D, renderer.cloud_settings.cloud_noise.detail_worley)
-  renderer_bind_and_clear_framebuffer(renderer, renderer.volumetrics_framebuffers)
-  render_mesh(renderer, &renderer.post_process_quad, &renderer.volumetrics_framebuffers.material)
+  gl.ActiveTexture(gl.TEXTURE8)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.scene.resources.blue_noise_texture)
 
+  renderer_bind_and_clear_framebuffer(renderer, renderer.volumetric_framebuffer)
+  render_mesh(renderer, &renderer.post_process_quad, &renderer.volumetric_framebuffer.material)
+
+  // Volumetrics blur pass
   // gl.ActiveTexture(gl.TEXTURE5)
-  // gl.BindTexture(gl.TEXTURE_2D, renderer.volumetrics_framebuffers.color_texture)
+  // gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_framebuffer.color_texture)
   //
-  // // Volumetrics blur pass
   // renderer.blur_framebuffer.material.shader.parameters.blur_amount = 1
   // renderer_bind_and_clear_framebuffer(renderer, renderer.blur_framebuffer)
   // render_mesh(renderer, &renderer.post_process_quad, &renderer.blur_framebuffer.material)
-  // framebuffer_blit(renderer.blur_framebuffer, renderer.volumetrics_framebuffers)
+  // framebuffer_blit(renderer.blur_framebuffer, renderer.volumetric_framebuffer)
+
+  // Volumetrics taa pass
+  gl.ActiveTexture(gl.TEXTURE6)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_framebuffer.color_texture)
+  gl.ActiveTexture(gl.TEXTURE7)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_history_framebuffer.color_texture)
+  gl.ActiveTexture(gl.TEXTURE8)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_framebuffer.vector_texture)
+
+  renderer_bind_and_clear_framebuffer(renderer, renderer.accumulated_volumetric_framebuffer)
+  render_mesh(renderer, &renderer.post_process_quad, &renderer.accumulated_volumetric_framebuffer.material)
+
+  framebuffer_blit(renderer.accumulated_volumetric_framebuffer, renderer.volumetric_history_framebuffer)
+
 
   // SSAO
   gl.ActiveTexture(gl.TEXTURE5)
@@ -314,7 +340,7 @@ renderer_render :: proc(renderer: ^Renderer) {
 
   // Final combination pass
   gl.ActiveTexture(gl.TEXTURE6)
-  gl.BindTexture(gl.TEXTURE_2D_ARRAY, renderer.volumetrics_framebuffers.color_texturearray)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.accumulated_volumetric_framebuffer.color_texture)
 
 
   renderer.default_framebuffer.size = {FrameBuffer.w, FrameBuffer.h}
@@ -335,10 +361,7 @@ renderer_bind_and_clear_framebuffer :: proc(renderer: ^Renderer, framebuffer: Fr
     framebuffer.size.x,
     framebuffer.size.y
   )
-  if .TEMPORAL_COLOR in framebuffer.type {
-    current_layer := i32(renderer.scene.frame_number % renderer.volumetrics_taa_frames)
-    gl.FramebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, framebuffer.color_texturearray, 0, current_layer)
-  }
+
   reversed_z := (.REVERSED_Z in framebuffer.type)
   if reversed_z {
     gl.DepthFunc(gl.GREATER)
@@ -387,6 +410,8 @@ render_mesh :: proc(renderer: ^Renderer, mesh: ^Mesh, material_override: ^Materi
   shader_parameters := &mesh_material.shader.parameters
   shader_parameters.macroshadowmap_matrix = renderer.macroshadowmap_matrix
   shader_parameters.shadowmap_matrix = renderer.shadowmap_matrix
+  shader_parameters.prev_view_matrix = renderer.scene.camera.prev_view_matrix
+  shader_parameters.prev_projection_matrix = renderer.scene.camera.prev_projection_matrix
   shader_parameters.view_matrix = renderer.scene.camera.view_matrix
   shader_parameters.projection_matrix = renderer.scene.camera.projection_matrix
   shader_parameters.inv_projection_matrix = renderer.scene.camera.inv_projection_matrix
@@ -398,8 +423,6 @@ render_mesh :: proc(renderer: ^Renderer, mesh: ^Mesh, material_override: ^Materi
 
   shader_parameters.cloud_dome_radius = renderer.cloud_settings.cloud_dome_radius
 
-  gl.ActiveTexture(gl.TEXTURE8)
-  gl.BindTexture(gl.TEXTURE_2D, renderer.scene.resources.blue_noise_texture)
 
   mesh_draw(mesh^, material_override)
 }
@@ -496,7 +519,7 @@ mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}) {
 
   gl.Uniform1i(shader.parameters.frame_number_location, shader.parameters.frame_number)
 
-  if material.shader.type == .TWO_DIMENTIONAL {
+  if material.shader.type == .TWO_DIMENSIONAL {
     gl.BindVertexArray(mesh.vao)
     gl.Uniform1i(shader.parameters.screen_texture_location, 2)
     gl.Uniform1i(shader.parameters.depth_texture_location, 3)
@@ -506,10 +529,17 @@ mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}) {
     gl.Uniform1i(shader.parameters.base_cloud_noise_texture_location, 5)
     gl.Uniform1i(shader.parameters.detail_cloud_noise_texture_location, 6)
     gl.Uniform1i(shader.parameters.volumetrics_texture_location, 6)
+    gl.Uniform1i(shader.parameters.volumetric_history_texture_location, 7)
+    gl.Uniform1i(shader.parameters.volumetric_motion_vectors_texture_location, 8)
     gl.Uniform1i(shader.parameters.blue_noise_texture_location, 8)
     gl.Uniform1i(shader.parameters.blur_amount_location, i32(shader.parameters.blur_amount))
     gl.Uniform1i(shader.parameters.volumetrics_taa_frames_location, shader.parameters.volumetrics_taa_frames)
+
     gl.Uniform1f(shader.parameters.cloud_dome_radius_location, shader.parameters.cloud_dome_radius)
+
+    gl.UniformMatrix4fv(shader.parameters.prev_view_matrix_location, 1, gl.FALSE, &shader.parameters.prev_view_matrix[0,0])
+    gl.UniformMatrix4fv(shader.parameters.prev_projection_matrix_location, 1, gl.FALSE, &shader.parameters.prev_projection_matrix[0,0])
+
     gl.DrawElements(gl.TRIANGLE_STRIP, 4, gl.UNSIGNED_INT, cast(rawptr)(cast(uintptr)0))
   } else {
     gl.Uniform3fv(shader.parameters.camera_position_location, 1, &shader.parameters.camera_position[0])
@@ -612,9 +642,18 @@ shader_init :: proc(shader: ^Shader) {
   shader.parameters.shadowmap_matrix_location = gl.GetUniformLocation(shader.program, "shadowmap_matrix")
   shader.parameters.macroshadowmap_texture_location = gl.GetUniformLocation(shader.program, "macroshadowmap_texture")
   shader.parameters.macroshadowmap_matrix_location = gl.GetUniformLocation(shader.program, "macroshadowmap_matrix")
+
   shader.parameters.inv_view_matrix_location = gl.GetUniformLocation(shader.program, "inv_view_matrix")
   shader.parameters.inv_projection_matrix_location = gl.GetUniformLocation(shader.program, "inv_projection_matrix")
+
+  shader.parameters.prev_projection_matrix_location = gl.GetUniformLocation(shader.program, "prev_projection_matrix")
+  shader.parameters.prev_view_matrix_location = gl.GetUniformLocation(shader.program, "prev_view_matrix")
+
   shader.parameters.projection_matrix_location = gl.GetUniformLocation(shader.program, "projection_matrix")
+  shader.parameters.view_matrix_location = gl.GetUniformLocation(shader.program, "view_matrix")
+
+  shader.parameters.model_matrix_location = gl.GetUniformLocation(shader.program, "model_matrix")
+
   shader.parameters.frame_number_location = gl.GetUniformLocation(shader.program, "frame_number")
   // switch shader.type {
   //   case .THREE_DIMENSIONAL:
@@ -629,7 +668,7 @@ shader_init :: proc(shader: ^Shader) {
       shader.parameters.roughness_texture_location = gl.GetUniformLocation(shader.program, "roughness_texture")
       shader.parameters.roughness_strength_location = gl.GetUniformLocation(shader.program, "roughness_strength")
       shader.parameters.metallic_strength_location = gl.GetUniformLocation(shader.program, "metallic_strength")
-    // case .TWO_DIMENTIONAL:
+    // case .TWO_DIMENSIONAL:
       shader.parameters.blue_noise_texture_location = gl.GetUniformLocation(shader.program, "blue_noise_texture")
       shader.parameters.volumetrics_texture_location = gl.GetUniformLocation(shader.program, "volumetrics_texture")
       shader.parameters.screen_texture_location = gl.GetUniformLocation(shader.program, "screen_texture")
@@ -642,10 +681,9 @@ shader_init :: proc(shader: ^Shader) {
       shader.parameters.cloud_dome_radius_location = gl.GetUniformLocation(shader.program, "cloud_dome_radius")
       shader.parameters.base_cloud_noise_texture_location = gl.GetUniformLocation(shader.program, "base_cloud_noise")
       shader.parameters.detail_cloud_noise_texture_location = gl.GetUniformLocation(shader.program, "detail_cloud_noise")
+      shader.parameters.volumetric_history_texture_location = gl.GetUniformLocation(shader.program, "volumetric_history_texture")
+      shader.parameters.volumetric_motion_vectors_texture_location = gl.GetUniformLocation(shader.program, "volumetric_motion_vectors_texture")
     // case .SHADOWMAP:
-      shader.parameters.model_matrix_location = gl.GetUniformLocation(shader.program, "model_matrix")
-      shader.parameters.view_matrix_location = gl.GetUniformLocation(shader.program, "view_matrix")
-      shader.parameters.projection_matrix_location = gl.GetUniformLocation(shader.program, "projection_matrix")
   // }
 }
 
@@ -716,6 +754,7 @@ Framebuffer :: struct {
   depth_texture,
   normal_texture,
   red_texture,
+  vector_texture,
   framebuffer: GpuID,
   material: Material,
   size: IVec2,
@@ -725,11 +764,13 @@ Framebuffer :: struct {
 
 FramebufferType :: enum {
   COLOR,
+  COLOR_ARRAY,
   NORMAL,
   DEPTH,
   RED,
   REVERSED_Z,
-  TEMPORAL_COLOR
+  TEMPORAL_COLOR,
+  MOTION_VECTOR
 }
 
 framebuffer_init :: proc(
@@ -855,7 +896,7 @@ framebuffer_init :: proc(
     gl.DrawBuffers(2, &draw_attachments[0])
   }
 
-  if .TEMPORAL_COLOR in type {
+  if .COLOR_ARRAY in type {
     gl.GenTextures(1, &framebuffer.color_texturearray)
     gl.BindTexture(gl.TEXTURE_2D_ARRAY, framebuffer.color_texturearray)
 
@@ -868,6 +909,33 @@ framebuffer_init :: proc(
     gl.TexParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
 
     gl.FramebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, framebuffer.color_texturearray, 0, 0)
+  }
+
+  if .MOTION_VECTOR in type && !(.NORMAL in type) {
+    gl.GenTextures(1, &framebuffer.vector_texture)
+    gl.BindTexture(gl.TEXTURE_2D, framebuffer.vector_texture)
+
+    gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RG16F, size.x, size.y, 0, gl.RG, gl.HALF_FLOAT, nil)
+
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
+
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+
+    gl.FramebufferTexture2D(
+      gl.FRAMEBUFFER,
+      gl.COLOR_ATTACHMENT1,
+      gl.TEXTURE_2D,
+      framebuffer.vector_texture,
+      0
+    )
+
+    draw_attachments := []u32 {
+      gl.COLOR_ATTACHMENT0,
+      gl.COLOR_ATTACHMENT1
+    }
+    gl.DrawBuffers(2, &draw_attachments[0])
   }
 
   if gl.CheckFramebufferStatus(gl.FRAMEBUFFER) != gl.FRAMEBUFFER_COMPLETE {

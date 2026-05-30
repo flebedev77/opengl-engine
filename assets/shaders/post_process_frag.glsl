@@ -8,7 +8,7 @@ out vec3 frag_color;
 uniform sampler2D screen_texture;
 uniform sampler2D ssao_texture;
 uniform sampler2D depth_texture;
-uniform sampler2DArray volumetrics_texture;
+uniform sampler2D volumetrics_texture;
 uniform int volumetrics_taa_frames;
 uniform int frame_number;
 
@@ -38,12 +38,12 @@ vec3 ACES_ToneMap(vec3 color) {
 void main() {
   float depth = texture(depth_texture, frag_uv).r;
   frag_color = texture(screen_texture, frag_uv).rgb;
-  vec4 volumetrics = vec4(0);
-  int current_volumetric_frame = frame_number % volumetrics_taa_frames;
-  float weight = 1 / float(volumetrics_taa_frames);
-  for (int i = 0; i < volumetrics_taa_frames; i++) {
-    volumetrics += texture(volumetrics_texture, vec3(frag_uv, float(i))) * weight;
-  }
+  vec4 volumetrics = texture(volumetrics_texture, frag_uv);
+  // int current_volumetric_frame = frame_number % volumetrics_taa_frames;
+  // float weight = 1 / float(volumetrics_taa_frames);
+  // for (int i = 0; i < volumetrics_taa_frames; i++) {
+  //   volumetrics += texture(volumetrics_texture, vec3(frag_uv, float(i))) * weight;
+  // }
   // volumetrics.a = texture(volumetrics_texture, vec3(frag_uv, current_volumetric_frame)).a;
 
   // frag_color *= 1-volumetrics.a;

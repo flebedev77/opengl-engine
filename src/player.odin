@@ -321,13 +321,6 @@ player_render :: proc(scene: ^Scene, player: ^Player, material_override: ^Materi
     return
   }
 
-  forward_rotation := Vec3{
-    math.cos(player.yaw) * math.cos(player.pitch),
-    math.sin(player.pitch),
-    math.sin(player.yaw) * math.cos(player.pitch)
-  }
-
-
   scale := f32(0.01)
   player.mesh.model_matrix = identity_matrix() 
   player.mesh.model_matrix *= translation_matrix(player.position)

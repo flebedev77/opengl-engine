@@ -277,7 +277,7 @@ mesh_make_3d_quad :: proc(material: Material) -> Mesh {
 mesh_make_quad :: proc(material: Material) -> Mesh {
   assert(material.is_valid)
   mesh: Mesh
-  if material.shader.type == .TWO_DIMENTIONAL {
+  if material.shader.type == .TWO_DIMENSIONAL {
     mesh_init(&mesh, {}, {}, {}, {}, {0, 1, 2, 3}, material)
   } else {
     mesh = mesh_make_3d_quad(material)

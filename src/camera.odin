@@ -6,12 +6,17 @@ Camera :: struct {
   view_matrix,
   inv_view_matrix,
   inv_projection_matrix,
-  projection_matrix: Mat4,
+  projection_matrix,
+  prev_view_matrix,
+  prev_projection_matrix: Mat4,
   position: Vec3
 }
 
 camera_update :: proc(camera: ^Camera) {
     // If near or far planes get changed, change in post process shader
+    camera.prev_view_matrix = camera.view_matrix
+    camera.prev_projection_matrix = camera.projection_matrix
+
     camera.projection_matrix = mat4_perspective(
       80 * math.PI / 180, 
       f32(FrameBuffer.w) / f32(FrameBuffer.h), 
