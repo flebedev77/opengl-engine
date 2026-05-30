@@ -29,6 +29,7 @@ ShaderParameters :: struct {
   blur_amount_location,
   volumetrics_texture_location,
   base_cloud_noise_texture_location,
+  detail_cloud_noise_texture_location,
   depth_texture_location,
   normal_texture_location,
   albedo_texture_location,
@@ -161,7 +162,7 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   framebuffer_init(&renderer.shadowmap_framebuffer, {4096, 4096}, {.DEPTH}, "shadowmap", .SHADOWMAP)
   framebuffer_init(&renderer.macroshadowmap_framebuffer, {4096, 4096}, {.DEPTH}, "shadowmap", .SHADOWMAP)
 
-  effects_resolution_factor: f32 = 1.0/2
+  effects_resolution_factor: f32 = 1.0/1.8
   effects_resolution := Vec2{WINDOW_WIDTH, WINDOW_HEIGHT} * effects_resolution_factor
   effects_resolution_int := IVec2{i32(effects_resolution.x), i32(effects_resolution.y)}
   fmt.printfln("Effects resolution %d (1/%d)", effects_resolution_int, i32(1 / effects_resolution_factor))
@@ -169,9 +170,14 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   framebuffer_init(&renderer.blur_framebuffer, effects_resolution_int, {.COLOR}, "blur", .TWO_DIMENTIONAL)
   framebuffer_init(&renderer.downscaled_depth_framebuffer, effects_resolution_int, {.REVERSED_Z, .DEPTH}, "", .THREE_DIMENSIONAL)
 
-  renderer.cloud_settings.cloud_dome_radius = 400000
-  renderer.cloud_settings.cloud_noise = bake_cloud_noise(load_from_file = true)
-  renderer.volumetrics_taa_frames = 8
+  renderer.cloud_settings.cloud_dome_radius = 800000
+
+  load_from_file := false
+  when #exists("../cloud_noise") {
+    load_from_file = true
+  }
+  renderer.cloud_settings.cloud_noise = bake_cloud_noise(load_from_file)
+  renderer.volumetrics_taa_frames = 6
   framebuffer_init(&renderer.volumetrics_framebuffers, effects_resolution_int, {.TEMPORAL_COLOR}, "volumetric", .TWO_DIMENTIONAL, false, 0, renderer.volumetrics_taa_frames)
 
   renderer.final_pass_material = asset_loader_material(0, 0, "post_process", .TWO_DIMENTIONAL)
@@ -272,12 +278,13 @@ renderer_render :: proc(renderer: ^Renderer) {
   gl.BindTexture(gl.TEXTURE_2D, renderer.downscaled_depth_framebuffer.depth_texture)
   gl.ActiveTexture(gl.TEXTURE4)
   gl.BindTexture(gl.TEXTURE_2D, renderer.prepass_framebuffer.normal_texture)
-  gl.ActiveTexture(gl.TEXTURE6)
-  gl.BindTexture(gl.TEXTURE_2D_ARRAY, renderer.volumetrics_framebuffers.color_texturearray)
 
   // Volumetrics pass
   gl.ActiveTexture(gl.TEXTURE5)
   gl.BindTexture(gl.TEXTURE_3D, renderer.cloud_settings.cloud_noise.base_shape)
+
+  gl.ActiveTexture(gl.TEXTURE6)
+  gl.BindTexture(gl.TEXTURE_3D, renderer.cloud_settings.cloud_noise.detail_worley)
   renderer_bind_and_clear_framebuffer(renderer, renderer.volumetrics_framebuffers)
   render_mesh(renderer, &renderer.post_process_quad, &renderer.volumetrics_framebuffers.material)
 
@@ -306,6 +313,10 @@ renderer_render :: proc(renderer: ^Renderer) {
   
 
   // Final combination pass
+  gl.ActiveTexture(gl.TEXTURE6)
+  gl.BindTexture(gl.TEXTURE_2D_ARRAY, renderer.volumetrics_framebuffers.color_texturearray)
+
+
   renderer.default_framebuffer.size = {FrameBuffer.w, FrameBuffer.h}
   renderer_bind_and_clear_framebuffer(renderer, renderer.default_framebuffer)
   render_mesh(renderer, &renderer.post_process_quad) 
@@ -493,6 +504,7 @@ mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}) {
     gl.Uniform1i(shader.parameters.ssao_texture_location, 5)
     gl.Uniform1i(shader.parameters.blur_texture_location, 5)
     gl.Uniform1i(shader.parameters.base_cloud_noise_texture_location, 5)
+    gl.Uniform1i(shader.parameters.detail_cloud_noise_texture_location, 6)
     gl.Uniform1i(shader.parameters.volumetrics_texture_location, 6)
     gl.Uniform1i(shader.parameters.blue_noise_texture_location, 8)
     gl.Uniform1i(shader.parameters.blur_amount_location, i32(shader.parameters.blur_amount))
@@ -629,6 +641,7 @@ shader_init :: proc(shader: ^Shader) {
       shader.parameters.volumetrics_taa_frames_location = gl.GetUniformLocation(shader.program, "volumetrics_taa_frames")
       shader.parameters.cloud_dome_radius_location = gl.GetUniformLocation(shader.program, "cloud_dome_radius")
       shader.parameters.base_cloud_noise_texture_location = gl.GetUniformLocation(shader.program, "base_cloud_noise")
+      shader.parameters.detail_cloud_noise_texture_location = gl.GetUniformLocation(shader.program, "detail_cloud_noise")
     // case .SHADOWMAP:
       shader.parameters.model_matrix_location = gl.GetUniformLocation(shader.program, "model_matrix")
       shader.parameters.view_matrix_location = gl.GetUniformLocation(shader.program, "view_matrix")

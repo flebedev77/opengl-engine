@@ -224,6 +224,17 @@ return Mat4{
 permute :: proc(x: Vec4) -> Vec4 {return linalg.mod(((x*34.0)+1.0)*x, 289.0)}
 taylorInvSqrt :: proc(r: Vec4) -> Vec4 {return 1.79284291400159 - 0.85373472095314 * r}
 
+hash :: proc(p: Vec3) -> Vec3 {
+  return linalg.fract(
+      linalg.sin(
+        Vec3{
+          linalg.dot(p, Vec3{1.0, 57.0, 113.0}),
+          linalg.dot(p, Vec3{57.0, 113.0, 1.0}),
+          linalg.dot(p, Vec3{113.0, 1.0, 57.0})
+        }) *
+      43758.5453);
+}
+
 
 @(require_results) cpu_snoise :: proc(v: Vec3) -> f32 {
 C := Vec2{1.0/6.0, 1.0/3.0}
@@ -292,3 +303,39 @@ Vec4{linalg.dot(p0,p0), linalg.dot(p1,p1), linalg.dot(p2, p2), linalg.dot(p3,p3)
   return 42.0 * linalg.dot( m*m, Vec4{ linalg.dot(p0,x0), linalg.dot(p1,x1), 
                                 linalg.dot(p2,x2), linalg.dot(p3,x3) } );
 }
+
+@(require_results) cpu_voronoi3d :: proc(x: Vec3) -> Vec3 {
+  p := linalg.floor(x)
+  f := linalg.fract(x)
+
+  id : f32 = 0
+  res := Vec2{100, 100}
+  for k := -1; k <= 1; k += 1 {
+    for j := -1; j <= 1; j += 1 {
+      for i := -1; i <= 1; i += 1 {
+        b := Vec3{f32(i), f32(j), f32(k)}
+        r := Vec3(b) - f + hash(p + b)
+        d := linalg.dot(r, r)
+
+        cond := max(linalg.sign(res.x - d), 0.0)
+        nCond := 1.0 - cond
+
+        cond2 := nCond * max(linalg.sign(res.y - d), 0.0)
+        nCond2 := 1.0 - cond2
+
+        id = (linalg.dot(p + b, Vec3{1.0, 57.0, 113.0}) * cond) + (id * nCond)
+        res = Vec2{d, res.x} * cond + res * nCond
+
+        res.y = cond2 * d + nCond2 * res.y
+      }
+    }
+  }
+
+  res = linalg.sqrt(res)
+  return Vec3{res.x, res.y, abs(id)}
+}
+
+remap_range_f32 :: proc(x, from_min, from_max, to_min, to_max: f32) -> f32 {
+  return to_min + (x - from_min) / (from_max - from_min) * (to_max - to_min)
+}
+remap_range :: proc{remap_range_f32}

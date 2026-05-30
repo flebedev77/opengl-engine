@@ -27,7 +27,7 @@ Player :: struct {
 
 player_init :: proc(scene: ^Scene, player: ^Player) {
   // player.position = {0, 0.3, 0}
-  player.position = {0, 5200, 0}
+  player.position = {0, 3200, 0}
   player.walk_speed = PLAYER_WALK_SPEED
   player.look_sensitivity = PLAYER_LOOK_SENSITIVITY
   player.is_flying = false
@@ -162,7 +162,7 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
   basis_draw_scale := f32(1)
 
   if player.is_flying { 
-    player.position += player.velocity * scene.delta_time * 0.2
+    player.position += player.velocity * scene.delta_time * 1.2
     thrust_force := ((local_forward * 2.98) / player.mass) * scene.delta_time
     player.velocity += thrust_force
     player.velocity += -GLOBAL_UP * 0.0001 * scene.delta_time
