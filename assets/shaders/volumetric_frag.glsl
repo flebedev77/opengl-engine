@@ -43,7 +43,7 @@ const float cloud_minimum_height = -3500;
 #define STEPS_CLOUDS_LIGHTING 5
 #define CLOUD_DENSITY 1.0//0.5
 #define CLOUD_LIGHT_DENSITY 0.8
-#define CLOUD_STEP_LENGTH 265.5
+#define CLOUD_STEP_LENGTH 100//265.5
 #define CLOUD_LIGHT_STEP_LENGTH 30.6
 #define MIN_DENSITY 0.01
 #define SUN_INTENSITY 7//0
@@ -516,8 +516,8 @@ vec4 calculate_volumetrics() {
               current_step_length = CLOUD_STEP_LENGTH;
               fine_step = true;
             } else {
-              if (!hit_cloud_surface) {
-                world_space_surface = start_pos + ray_dir * (distance_travelled);
+              if (!hit_cloud_surface && current_density > 0.1) {
+                world_space_surface = start_pos + ray_dir * (distance_travelled - jitter);
                 hit_cloud_surface = true;
               }
               float scattering_coefficient = SCATTERING_FACTOR * current_density;
@@ -587,18 +587,23 @@ vec4 calculate_volumetrics() {
     // vec2 prev_uv = projected.xy * 0.5 + 0.5;
     // motion_vector = (frag_uv - prev_uv) * 100;
 
-    // Calculate current NDC position
-    vec4 current_clip = projection_matrix * view_matrix * vec4(world_space_surface, 1.0);
-    vec2 current_ndc = current_clip.xy / current_clip.w;
-    vec2 current_uv = current_ndc * 0.5 + 0.5;
-
     // Calculate previous NDC position
     vec4 prev_clip = prev_projection_matrix * prev_view_matrix * vec4(world_space_surface, 1.0);
-    vec2 prev_ndc = prev_clip.xy / prev_clip.w;
-    vec2 prev_uv = prev_ndc * 0.5 + 0.5;
+    if (prev_clip.w < 0) {
+      motion_vector = vec2(999);
+    } else {
+      vec2 prev_ndc = prev_clip.xy / prev_clip.w;
+      vec2 prev_uv = prev_ndc * 0.5 + 0.5;
 
-    // Output velocity
-    motion_vector = current_uv - prev_uv;
+      // Calculate current NDC position
+      vec4 current_clip = projection_matrix * view_matrix * vec4(world_space_surface, 1.0);
+      vec2 current_ndc = current_clip.xy / current_clip.w;
+      vec2 current_uv = current_ndc * 0.5 + 0.5;
+
+
+      // Output velocity
+      motion_vector = current_uv - prev_uv;
+    }
 
     return vec4(
         scattering, extinction
@@ -607,4 +612,5 @@ vec4 calculate_volumetrics() {
 
 void main() {
     frag_color = calculate_volumetrics();
+    // frag_color = vec4(motion_vector.xy, 1, 0.5);
 }

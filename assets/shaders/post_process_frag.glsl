@@ -38,18 +38,11 @@ vec3 ACES_ToneMap(vec3 color) {
 void main() {
   float depth = texture(depth_texture, frag_uv).r;
   frag_color = texture(screen_texture, frag_uv).rgb;
-  vec4 volumetrics = texture(volumetrics_texture, frag_uv);
-  // int current_volumetric_frame = frame_number % volumetrics_taa_frames;
-  // float weight = 1 / float(volumetrics_taa_frames);
-  // for (int i = 0; i < volumetrics_taa_frames; i++) {
-  //   volumetrics += texture(volumetrics_texture, vec3(frag_uv, float(i))) * weight;
-  // }
-  // volumetrics.a = texture(volumetrics_texture, vec3(frag_uv, current_volumetric_frame)).a;
-
-  // frag_color *= 1-volumetrics.a;
-  // frag_color += vec4(volumetrics.rgb, 0);
+  
   frag_color *= 1-texture(ssao_texture, frag_uv).r;
-  // frag_color = mix(frag_color, vec4(volumetrics.rgb, 0), volumetrics.a);
+
+  vec4 volumetrics = texture(volumetrics_texture, frag_uv);
+  // Could do a lanczos or bicubic filter here
   frag_color = volumetrics.rgb + frag_color * volumetrics.a;
 
   // frag_color += volumetrics;

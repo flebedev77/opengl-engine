@@ -185,7 +185,7 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
     load_from_file = true
   }
   renderer.cloud_settings.cloud_noise = bake_cloud_noise(load_from_file)
-  renderer.volumetrics_taa_frames = 32
+  renderer.volumetrics_taa_frames = 8
   framebuffer_init(&renderer.volumetric_framebuffer, effects_resolution_int, {.COLOR, .MOTION_VECTOR}, "volumetric", .TWO_DIMENSIONAL)
   framebuffer_init(&renderer.volumetric_history_framebuffer, effects_resolution_int, {.COLOR}, "", .TWO_DIMENSIONAL)
   framebuffer_init(&renderer.accumulated_volumetric_framebuffer, effects_resolution_int, {.COLOR}, "clouds_taa", .TWO_DIMENSIONAL)
@@ -826,6 +826,8 @@ framebuffer_init :: proc(
       gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
       gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
 
+      gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+      gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
     }
 
     gl.FramebufferTexture2D(
@@ -856,6 +858,8 @@ framebuffer_init :: proc(
 
       gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
       gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+      gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+      gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
     }
 
     gl.FramebufferTexture2D(
@@ -879,6 +883,8 @@ framebuffer_init :: proc(
 
       gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
       gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+      gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+      gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
     }
 
     gl.FramebufferTexture2D(
