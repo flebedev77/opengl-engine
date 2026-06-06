@@ -10,8 +10,12 @@ uniform sampler2D shadowmap_texture;
 uniform sampler2D macroshadowmap_texture;
 uniform sampler2D blue_noise_texture;
 
+uniform sampler2D volumetric_history_texture;
+
 uniform sampler3D base_cloud_noise;
 uniform sampler3D detail_cloud_noise;
+
+uniform vec2 resolution;
 
 uniform mat4 prev_projection_matrix;
 uniform mat4 prev_view_matrix;
@@ -44,7 +48,7 @@ const float cloud_minimum_height = -3500;
 #define CLOUD_DENSITY 1.0//0.5
 #define CLOUD_LIGHT_DENSITY 0.8
 #define CLOUD_STEP_LENGTH 100//265.5
-#define CLOUD_LARGE_STEP_LENGTH 2600//265.5
+#define CLOUD_LARGE_STEP_LENGTH 1000//265.5
 #define CLOUD_LIGHT_STEP_LENGTH 30.6
 #define MIN_DENSITY 0.01
 #define SUN_INTENSITY 7//0
@@ -124,7 +128,7 @@ float rand(vec2 co){
   frame_offset = fract(float(frame_number) * golden_ratio); 
 // #endif
   co.x *= aspect;
-  return fract(texture(blue_noise_texture, co * 3).r * 6 + frame_offset);
+  return fract(texture(blue_noise_texture, co * 0.3327486).r * 100 + frame_offset);
 }
 
 float Ei( float z )
@@ -320,6 +324,13 @@ vec2 ray_sphere(vec3 ro, vec3 rd, float sr, vec3 sp) {
 }
 
 vec4 calculate_volumetrics() {
+  // if (fract(rand(gl_FragCoord.xy * 0.0010 + vec2(float(frame_number) * 0.345)) * 1000) < 0.8)
+    motion_vector = vec2(0);
+    ivec2 pixel = ivec2(gl_FragCoord.x - 0.5, gl_FragCoord.y - 0.5);
+    int pi = pixel.x + pixel.y * int(textureSize(depth_texture, 0).x + 1);
+    if (pi % 4 == 0)//int(frame_number * 0.0) % 2)
+      return vec4(-1);//texture(volumetric_history_texture, frag_uv);
+    // if (pixel.x 
   // return vec4(vec3(1), rand(frag_uv));
     float depth = texture(depth_texture, frag_uv).r;
 
@@ -343,7 +354,7 @@ vec4 calculate_volumetrics() {
 
     float g = 0.85; // Forward scattering (0.0 to 0.99)
     float cos_theta = dot(ray_dir, normalize(light_pos));
-    float hg_phase = HG(g, cos_theta);//calculate_phase();
+    // float hg_phase = HG(g, cos_theta);//calculate_phase();
 
     //SUN RAYS
     
@@ -451,6 +462,11 @@ vec4 calculate_volumetrics() {
         float step_length = CLOUD_STEP_LENGTH;
         float current_step_length = step_length;
 
+        if (t_in > 1000) {
+          step_length = CLOUD_LARGE_STEP_LENGTH * 0.5;
+          distance_travelled = random * step_length;
+        }
+
         bool fine_step = true;
         int steps_taken_with_zero_density = 0;
 
@@ -467,7 +483,7 @@ vec4 calculate_volumetrics() {
             steps_taken_with_zero_density = 0;
             if (fine_step == false) {
               distance_travelled -= current_step_length;
-              current_step_length = CLOUD_STEP_LENGTH;
+              current_step_length = step_length;
               fine_step = true;
 
               float refine_step = CLOUD_LARGE_STEP_LENGTH;

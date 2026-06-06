@@ -31,11 +31,18 @@ void main() {
   vec2 velocity = texture(volumetric_motion_vectors_texture, frag_uv).xy;
   // if (length(velocity) > 0.05) weight = 1;
 
+  vec4 current_sample = texture(volumetrics_texture, frag_uv);
+  // if (current_sample.r < 0) current_sample += vec4(1);
+  // frag_color = current_sample;
+  // return;
+  if (current_sample.r < 0) weight = 0;
+
   vec2 history_uv = frag_uv - velocity;
 
-  if (history_uv.x <= 0 || history_uv.x >= 1 ||
-      history_uv.y <= 0 || history_uv.y >= 1) {
-    frag_color = texture(volumetrics_texture, frag_uv);
+  if (current_sample.r >= 0 && 
+      (history_uv.x <= 0 || history_uv.x >= 1 ||
+      history_uv.y <= 0 || history_uv.y >= 1)) {
+    frag_color = current_sample;
   } else {
     vec2 texel_size = 1.0 / vec2(textureSize(volumetrics_texture, 0));
     vec4 min_color = vec4(9999.0);
@@ -46,6 +53,7 @@ void main() {
       for (int y = -1; y <= 1; ++y) {
         vec2 offset = vec2(x, y) * texel_size;
         vec4 neighbor = texture(volumetrics_texture, frag_uv + offset);
+        if (neighbor.r < 0) continue;
         min_color = min(min_color, neighbor);
         max_color = max(max_color, neighbor);
       }

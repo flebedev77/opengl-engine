@@ -48,6 +48,7 @@ ShaderParameters :: struct {
   tint_location,
   light_position_location,
   camera_position_location,
+  resolution_location,
   inv_view_matrix_location,
   inv_projection_matrix_location,
   prev_view_matrix_location,
@@ -56,6 +57,7 @@ ShaderParameters :: struct {
   projection_matrix_location,
   model_matrix_location: UniformLocation,
 
+  resolution: Vec2,
   shadowmap_matrix,
   macroshadowmap_matrix,
   inv_view_matrix,
@@ -145,7 +147,7 @@ CloudSettings :: struct {
 }
 
 renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
-  renderer.sun_position = {1, 10, 1}
+  renderer.sun_position = {1, -0.5, 1}//10, 1}
 
   gl.LineWidth(5.0)
   gl.Enable(gl.DEPTH_TEST)
@@ -178,14 +180,14 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   framebuffer_init(&renderer.blur_framebuffer, effects_resolution_int, {.COLOR}, "blur", .TWO_DIMENSIONAL)
   framebuffer_init(&renderer.downscaled_depth_framebuffer, effects_resolution_int, {.REVERSED_Z, .DEPTH}, "", .THREE_DIMENSIONAL)
 
-  renderer.cloud_settings.cloud_dome_radius = 800000
+  renderer.cloud_settings.cloud_dome_radius = 8000000
 
   load_from_file := false
   when #exists("../cloud_noise") {
     load_from_file = true
   }
   renderer.cloud_settings.cloud_noise = bake_cloud_noise(load_from_file)
-  renderer.volumetrics_taa_frames = 8
+  renderer.volumetrics_taa_frames = 64//8
   framebuffer_init(&renderer.volumetric_framebuffer, effects_resolution_int, {.COLOR, .MOTION_VECTOR}, "volumetric", .TWO_DIMENSIONAL)
   framebuffer_init(&renderer.volumetric_history_framebuffer, effects_resolution_int, {.COLOR}, "", .TWO_DIMENSIONAL)
   framebuffer_init(&renderer.accumulated_volumetric_framebuffer, effects_resolution_int, {.COLOR}, "clouds_taa", .TWO_DIMENSIONAL)
@@ -296,6 +298,8 @@ renderer_render :: proc(renderer: ^Renderer) {
   gl.BindTexture(gl.TEXTURE_3D, renderer.cloud_settings.cloud_noise.detail_worley)
   gl.ActiveTexture(gl.TEXTURE8)
   gl.BindTexture(gl.TEXTURE_2D, renderer.scene.resources.blue_noise_texture)
+  gl.ActiveTexture(gl.TEXTURE7)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_history_framebuffer.color_texture)
 
   renderer_bind_and_clear_framebuffer(renderer, renderer.volumetric_framebuffer)
   render_mesh(renderer, &renderer.post_process_quad, &renderer.volumetric_framebuffer.material)
@@ -312,8 +316,6 @@ renderer_render :: proc(renderer: ^Renderer) {
   // Volumetrics taa pass
   gl.ActiveTexture(gl.TEXTURE6)
   gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_framebuffer.color_texture)
-  gl.ActiveTexture(gl.TEXTURE7)
-  gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_history_framebuffer.color_texture)
   gl.ActiveTexture(gl.TEXTURE8)
   gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_framebuffer.vector_texture)
 
@@ -352,6 +354,9 @@ renderer_render :: proc(renderer: ^Renderer) {
   debugrenderer_draw(&renderer.debug_renderer)
   renderer.reload_shaders = false
   free_all(context.temp_allocator)
+
+  θ := f32(renderer.scene.frame_number) * 0.0001 + math.PI * 0.5
+  renderer.sun_position = {0, math.sin(θ), math.cos(θ)}
 }
 
 renderer_bind_and_clear_framebuffer :: proc(renderer: ^Renderer, framebuffer: Framebuffer) {
@@ -420,6 +425,7 @@ render_mesh :: proc(renderer: ^Renderer, mesh: ^Mesh, material_override: ^Materi
   shader_parameters.sun_position = renderer.sun_position
   shader_parameters.frame_number = renderer.scene.frame_number
   shader_parameters.volumetrics_taa_frames = renderer.volumetrics_taa_frames
+  shader_parameters.resolution = {WINDOW_WIDTH, WINDOW_HEIGHT}
 
   shader_parameters.cloud_dome_radius = renderer.cloud_settings.cloud_dome_radius
 
@@ -536,6 +542,8 @@ mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}) {
     gl.Uniform1i(shader.parameters.volumetrics_taa_frames_location, shader.parameters.volumetrics_taa_frames)
 
     gl.Uniform1f(shader.parameters.cloud_dome_radius_location, shader.parameters.cloud_dome_radius)
+
+    gl.Uniform2fv(shader.parameters.resolution_location, 1, &shader.parameters.resolution[0])
 
     gl.UniformMatrix4fv(shader.parameters.prev_view_matrix_location, 1, gl.FALSE, &shader.parameters.prev_view_matrix[0,0])
     gl.UniformMatrix4fv(shader.parameters.prev_projection_matrix_location, 1, gl.FALSE, &shader.parameters.prev_projection_matrix[0,0])
@@ -669,6 +677,7 @@ shader_init :: proc(shader: ^Shader) {
       shader.parameters.roughness_strength_location = gl.GetUniformLocation(shader.program, "roughness_strength")
       shader.parameters.metallic_strength_location = gl.GetUniformLocation(shader.program, "metallic_strength")
     // case .TWO_DIMENSIONAL:
+      shader.parameters.resolution_location = gl.GetUniformLocation(shader.program, "resolution")
       shader.parameters.blue_noise_texture_location = gl.GetUniformLocation(shader.program, "blue_noise_texture")
       shader.parameters.volumetrics_texture_location = gl.GetUniformLocation(shader.program, "volumetrics_texture")
       shader.parameters.screen_texture_location = gl.GetUniformLocation(shader.program, "screen_texture")
