@@ -39,12 +39,12 @@ float actual_cloud_height_base = cloud_dome_radius;
 float actual_cloud_height_apex = cloud_dome_radius + cloud_layer_thickness;
 const float cloud_minimum_height = -3500;
 
-#define STEPS_CLOUDS 100
+#define STEPS_CLOUDS 128
 #define STEPS_CLOUDS_LIGHTING 5
 #define CLOUD_DENSITY 1.0//0.5
 #define CLOUD_LIGHT_DENSITY 0.8
-#define CLOUD_STEP_LENGTH 80//265.5
-#define CLOUD_LARGE_STEP_LENGTH 1100//265.5
+#define CLOUD_STEP_LENGTH 100//265.5
+#define CLOUD_LARGE_STEP_LENGTH 2600//265.5
 #define CLOUD_LIGHT_STEP_LENGTH 30.6
 #define MIN_DENSITY 0.01
 #define SUN_INTENSITY 7//0
@@ -111,76 +111,7 @@ float noisetwod(vec2 p) {
 	return v * 0.5 + 0.5;
 }
 
-float snoise(vec3 v){ 
-  return texture(base_cloud_noise, v).r;
-  const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
-  const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
-
-// First corner
-  vec3 i  = floor(v + dot(v, C.yyy) );
-  vec3 x0 =   v - i + dot(i, C.xxx) ;
-
-// Other corners
-  vec3 g = step(x0.yzx, x0.xyz);
-  vec3 l = 1.0 - g;
-  vec3 i1 = min( g.xyz, l.zxy );
-  vec3 i2 = max( g.xyz, l.zxy );
-
-  //  x0 = x0 - 0. + 0.0 * C 
-  vec3 x1 = x0 - i1 + 1.0 * C.xxx;
-  vec3 x2 = x0 - i2 + 2.0 * C.xxx;
-  vec3 x3 = x0 - 1. + 3.0 * C.xxx;
-
-// Permutations
-  i = mod(i, 289.0 ); 
-  vec4 p = permute( permute( permute( 
-             i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
-           + i.y + vec4(0.0, i1.y, i2.y, 1.0 )) 
-           + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
-
-// Gradients
-// ( N*N points uniformly over a square, mapped onto an octahedron.)
-  float n_ = 1.0/7.0; // N=7
-  vec3  ns = n_ * D.wyz - D.xzx;
-
-  vec4 j = p - 49.0 * floor(p * ns.z *ns.z);  //  mod(p,N*N)
-
-  vec4 x_ = floor(j * ns.z);
-  vec4 y_ = floor(j - 7.0 * x_ );    // mod(j,N)
-
-  vec4 x = x_ *ns.x + ns.yyyy;
-  vec4 y = y_ *ns.x + ns.yyyy;
-  vec4 h = 1.0 - abs(x) - abs(y);
-
-  vec4 b0 = vec4( x.xy, y.xy );
-  vec4 b1 = vec4( x.zw, y.zw );
-
-  vec4 s0 = floor(b0)*2.0 + 1.0;
-  vec4 s1 = floor(b1)*2.0 + 1.0;
-  vec4 sh = -step(h, vec4(0.0));
-
-  vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
-  vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
-
-  vec3 p0 = vec3(a0.xy,h.x);
-  vec3 p1 = vec3(a0.zw,h.y);
-  vec3 p2 = vec3(a1.xy,h.z);
-  vec3 p3 = vec3(a1.zw,h.w);
-
-//Normalise gradients
-  vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
-  p0 *= norm.x;
-  p1 *= norm.y;
-  p2 *= norm.z;
-  p3 *= norm.w;
-
-// Mix final noise value
-  vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
-  m = m * m;
-  return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), 
-                                dot(p2,x2), dot(p3,x3) ) );
-}
-
+float snoise(vec3 v){ return texture(base_cloud_noise, v).r; }
 float dnoise(vec3 p) { return texture(detail_cloud_noise, p).r; }
 
 const float golden_ratio = 1.61803398875;
@@ -193,7 +124,7 @@ float rand(vec2 co){
   frame_offset = fract(float(frame_number) * golden_ratio); 
 // #endif
   co.x *= aspect;
-  return fract(texture(blue_noise_texture, co * 5).r * 4 + frame_offset);
+  return fract(texture(blue_noise_texture, co * 3).r * 6 + frame_offset);
 }
 
 float Ei( float z )
@@ -216,8 +147,29 @@ float Ei( float z )
 #define CLOUD_DRIFT_SPEED 0.6
 
 float sample_cloud_density_cheap(vec3 p) {
+  float coverage = max(noisetwod(p.xz * 0.0004), 0);
+
+  float dc = length(p-cloud_dome_position);
+  float percentage_to_apex = (dc - actual_cloud_height_base) / (actual_cloud_height_apex - actual_cloud_height_base);
+  percentage_to_apex = pow(percentage_to_apex, 
+      coverage * 3);
+  float height_factor = 1.5-percentage_to_apex;
+  float bottom_fade_height = 150;
+  float bottom_fade = clamp((dc - actual_cloud_height_base) / bottom_fade_height, 0, 1);
+  
   // p.x += float(frame_number) * CLOUD_DRIFT_SPEED;
-  return snoise(p * 0.00015 * 0.06) * 0.1;
+  float m = 
+      snoise(p * 0.00015 * 0.06) * 0.1 * (1-percentage_to_apex);
+  m -= dnoise(p * 0.00015) * 0.018;//clamp((1-m) * 0.1, 0, 1);
+  m -= dnoise(p * 0.00029) * 0.008;//clamp((1-m) * 0.1, 0, 1);
+
+  // p.x += float(frame_number) * CLOUD_DRIFT_SPEED;
+  m -= dnoise(p * 0.00069) * 0.006;//clamp((1-m) * 0.1, 0, 1);
+  // m -= dnoise(p * 0.0019) * 0.002;//clamp((1-m) * 0.1, 0, 1);
+
+  m *= bottom_fade;
+
+  return CLOUD_DENSITY * clamp(m, 0, 1);
 }
 
 float sample_cloud_density(vec3 p) {
@@ -493,7 +445,8 @@ vec4 calculate_volumetrics() {
 
         vec3 current_pos = start_pos;
 
-        float jitter = rand(frag_uv) * CLOUD_STEP_LENGTH;
+        float random = rand(frag_uv);
+        float jitter = random * CLOUD_STEP_LENGTH * 2;
         float distance_travelled = jitter;
         float step_length = CLOUD_STEP_LENGTH;
         float current_step_length = step_length;
@@ -516,10 +469,24 @@ vec4 calculate_volumetrics() {
               distance_travelled -= current_step_length;
               current_step_length = CLOUD_STEP_LENGTH;
               fine_step = true;
+
+              float refine_step = CLOUD_LARGE_STEP_LENGTH;
+              for (int l = 0; l < 4; l++) {
+                vec3 next_pos = start_pos + ray_dir * distance_travelled;
+                float next_density = sample_cloud_density(next_pos);
+                refine_step *= 0.5;
+                if (next_density < MIN_DENSITY) {
+                  distance_travelled += refine_step;
+                } else {
+                  distance_travelled -= refine_step;
+                }
+              }
+
+              // distance_travelled -= jitter;
+              // jitter = random * CLOUD_STEP_LENGTH;
+              // distance_travelled += jitter;
             } else {
 
-              // FIX 2: Eliminate background depth leakage and 100-unit stair-stepping.
-              // Lock onto the exact world position of the first valid density sample.
               if (!hit_cloud_surface) {
                 world_space_surface = current_pos; 
                 hit_cloud_surface = true;
@@ -565,18 +532,15 @@ vec4 calculate_volumetrics() {
             steps_taken_with_zero_density++;
             if (steps_taken_with_zero_density > 10 && fine_step) {
               fine_step = false;
-              float distance_left = cloud_march_length - distance_travelled;
+              current_step_length = CLOUD_LARGE_STEP_LENGTH;
+              // distance_travelled -= jitter;
+              // jitter = random * CLOUD_LARGE_STEP_LENGTH;
+              // distance_travelled += jitter;
               // current_step_length = min(cloud_march_length / 2, CLOUD_LARGE_STEP_LENGTH);
-              if (distance_left <= CLOUD_LARGE_STEP_LENGTH) {
-                current_step_length = 10;
-              } else {
-                current_step_length = CLOUD_LARGE_STEP_LENGTH;
-              }
-
             }
           }
 
-          if (!fine_step && (distance_travelled + current_step_length >= cloud_march_length)) {
+          if (!fine_step && distance_travelled + current_step_length > cloud_march_length * 0.4) {//(distance_travelled + current_step_length * 3.0 >= cloud_march_length)) {
             current_step_length = CLOUD_STEP_LENGTH;
             fine_step = true;
           }
