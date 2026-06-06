@@ -43,7 +43,8 @@ const float cloud_minimum_height = -3500;
 #define STEPS_CLOUDS_LIGHTING 5
 #define CLOUD_DENSITY 1.0//0.5
 #define CLOUD_LIGHT_DENSITY 0.8
-#define CLOUD_STEP_LENGTH 100//265.5
+#define CLOUD_STEP_LENGTH 80//265.5
+#define CLOUD_LARGE_STEP_LENGTH 1100//265.5
 #define CLOUD_LIGHT_STEP_LENGTH 30.6
 #define MIN_DENSITY 0.01
 #define SUN_INTENSITY 7//0
@@ -505,9 +506,9 @@ vec4 calculate_volumetrics() {
           if (distance_travelled >= cloud_march_length || current_pos.y < cloud_minimum_height) break;
 
           current_pos = start_pos + ray_dir * distance_travelled;
-          float current_density = (fine_step) ? sample_cloud_density(current_pos) :
-            sample_cloud_density_cheap(current_pos);
-
+          float current_density = sample_cloud_density(current_pos);
+          // float current_density = (fine_step) ? sample_cloud_density(current_pos) :
+          //   sample_cloud_density_cheap(current_pos);
 
           if (current_density >= MIN_DENSITY) {
             steps_taken_with_zero_density = 0;
@@ -516,10 +517,14 @@ vec4 calculate_volumetrics() {
               current_step_length = CLOUD_STEP_LENGTH;
               fine_step = true;
             } else {
-              if (!hit_cloud_surface && current_density > 0.1) {
-                world_space_surface = start_pos + ray_dir * (distance_travelled - jitter);
+
+              // FIX 2: Eliminate background depth leakage and 100-unit stair-stepping.
+              // Lock onto the exact world position of the first valid density sample.
+              if (!hit_cloud_surface) {
+                world_space_surface = current_pos; 
                 hit_cloud_surface = true;
               }
+
               float scattering_coefficient = SCATTERING_FACTOR * current_density;
               float extinction_coefficient = EXTINCTION_FACTOR * current_density;
 
@@ -532,24 +537,16 @@ vec4 calculate_volumetrics() {
 
               for (int j = 0; j < STEPS_CLOUDS_LIGHTING; j++) {
                 if (light_transmittance < 0.01) break;
-                // if (
-                //     light_current_pos.y < cloud_height_base ||
-                //     light_current_pos.y > cloud_height_apex
-                //     ) break;
 
                 float light_current_density = sample_cloud_density(light_current_pos);
                 if (light_current_density > MIN_DENSITY)
                   light_transmittance *= exp(-EXTINCTION_FACTOR * light_current_density * CLOUD_LIGHT_DENSITY * CLOUD_LIGHT_STEP_LENGTH);
 
                 light_current_pos += light_step_vector;
-                // light_distance_travelled += CLOUD_LIGHT_STEP_LENGTH;
               }
-              // light_transmittance = max(light_transmittance, 0.7);
 
               float transmittance = exp(-extinction_coefficient * current_step_length);
-
               float powder = 1.0 - exp(-extinction_coefficient * POWDER_FACTOR);
-
               float occ = exp(-sample_cloud_density(current_pos + vec3(0, AMBIENT_OCCLUSION_DISTANCE, 0)) * AMBIENT_OCCLUSION_STRENGTH);
 
               vec3 sun_light = vec3(SUN_INTENSITY);
@@ -560,23 +557,32 @@ vec4 calculate_volumetrics() {
               float sun_phase = calculate_phase(0.86, cos_theta, extinction_coefficient);
               vec3 scattered = scattering_coefficient * (sun_color * sun_phase + ambient_color * ambient_phase);
               vec3 integrated_light = (scattered - scattered * transmittance) / max(extinction_coefficient, 0.0001);
-              scattering += extinction * integrated_light;// * (scattering_coefficient / max(extinction_coefficient, 0.0001));
+              scattering += extinction * integrated_light;
 
               extinction *= transmittance;
-
             }
           } else {
             steps_taken_with_zero_density++;
             if (steps_taken_with_zero_density > 10 && fine_step) {
-              // fine_step = false;
-              current_step_length = CLOUD_STEP_LENGTH * 1;
+              fine_step = false;
+              float distance_left = cloud_march_length - distance_travelled;
+              // current_step_length = min(cloud_march_length / 2, CLOUD_LARGE_STEP_LENGTH);
+              if (distance_left <= CLOUD_LARGE_STEP_LENGTH) {
+                current_step_length = 10;
+              } else {
+                current_step_length = CLOUD_LARGE_STEP_LENGTH;
+              }
+
             }
+          }
+
+          if (!fine_step && (distance_travelled + current_step_length >= cloud_march_length)) {
+            current_step_length = CLOUD_STEP_LENGTH;
+            fine_step = true;
           }
 
           distance_travelled += current_step_length;
         }
-        // scattering = vec3(1);
-        // extinction = exp(-0.05 * cloud_march_length);
 
 
       }
