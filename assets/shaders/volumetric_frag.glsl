@@ -47,10 +47,10 @@ const float cloud_minimum_height = -3500;
 #define STEPS_CLOUDS_LIGHTING 5
 #define CLOUD_DENSITY 1.0//0.5
 #define CLOUD_LIGHT_DENSITY 0.8
-#define CLOUD_STEP_LENGTH 100//265.5
-#define CLOUD_LARGE_STEP_LENGTH 1000//265.5
+#define CLOUD_STEP_LENGTH 90//265.5
+#define CLOUD_LARGE_STEP_LENGTH 800//265.5
 #define CLOUD_LIGHT_STEP_LENGTH 30.6
-#define MIN_DENSITY 0.01
+#define MIN_DENSITY 0.01//0.01
 #define SUN_INTENSITY 7//0
 
 #define BACKSCATTER_MIN 0.52
@@ -176,6 +176,12 @@ float sample_cloud_density_cheap(vec3 p) {
   return CLOUD_DENSITY * clamp(m, 0, 1);
 }
 
+float get_height_mask(float y, float layerMin, float layerMax, float feather) {
+    float bottomFade = smoothstep(layerMin, layerMin + feather, y);
+    float topFade = 1.0 - smoothstep(layerMax - feather, layerMax, y);
+    return bottomFade * topFade;
+}
+
 float sample_cloud_density(vec3 p) {
   // return clamp(
   //     20 - length(
@@ -215,6 +221,26 @@ float sample_cloud_density(vec3 p) {
   m -= dnoise(p * 0.0029) * 0.001;//clamp((1-m) * 0.1, 0, 1);
 
   m *= bottom_fade;
+
+  float high_mask = get_height_mask(
+      dc,
+      actual_cloud_height_base + cloud_layer_thickness * 0.85,
+      actual_cloud_height_apex,
+      120
+    );
+  if (high_mask > 0) {
+    p.xz *= 2.1;
+    float c = smoothstep(0.1, 0.2, snoise(p * 0.000001) * high_mask) * 0.3;
+    c -= smoothstep(0.1, 0.2, snoise(p * 0.00001) * high_mask) * 0.1;
+    // p.x *= 3;
+    // p.y *= 2;
+    // m -= snoise(p * 0.00001) * 0.3;
+    c *= 0.1;
+    m += clamp(c, 0, 1);
+    // p.y *= 1.1;
+    // m -= dnoise(vec3(p.x, 0, p.y) * 0.000001) * high_mask * 0.4;
+    // m *= 0.08;
+  }
   // m -= (1-dnoise(p * 0.002)) * 0.001 * height_factor; // Whispy shapes
 
   return CLOUD_DENSITY * clamp(m, 0, 1);
@@ -326,10 +352,10 @@ vec2 ray_sphere(vec3 ro, vec3 rd, float sr, vec3 sp) {
 vec4 calculate_volumetrics() {
   // if (fract(rand(gl_FragCoord.xy * 0.0010 + vec2(float(frame_number) * 0.345)) * 1000) < 0.8)
     motion_vector = vec2(0);
-    ivec2 pixel = ivec2(gl_FragCoord.x - 0.5, gl_FragCoord.y - 0.5);
-    int pi = pixel.x + pixel.y * int(textureSize(depth_texture, 0).x + 1);
-    if (pi % 4 == 0)//int(frame_number * 0.0) % 2)
-      return vec4(-1);//texture(volumetric_history_texture, frag_uv);
+    // ivec2 pixel = ivec2(gl_FragCoord.x - 0.5, gl_FragCoord.y - 0.5);
+    // int pi = pixel.x + pixel.y * int(textureSize(depth_texture, 0).x + 1);
+    // if (pi % 4 == int(frame_number * 2.0) % 4)
+    //   return vec4(-1);//texture(volumetric_history_texture, frag_uv);
     // if (pixel.x 
   // return vec4(vec3(1), rand(frag_uv));
     float depth = texture(depth_texture, frag_uv).r;
@@ -462,9 +488,10 @@ vec4 calculate_volumetrics() {
         float step_length = CLOUD_STEP_LENGTH;
         float current_step_length = step_length;
 
-        if (t_in > 1000) {
-          step_length = CLOUD_LARGE_STEP_LENGTH * 0.5;
-          distance_travelled = random * step_length;
+        if (t_in > 10000) {
+          // return vec4(0);
+          // step_length = CLOUD_LARGE_STEP_LENGTH * 7;
+          // distance_travelled = random * step_length;
         }
 
         bool fine_step = true;
@@ -486,17 +513,17 @@ vec4 calculate_volumetrics() {
               current_step_length = step_length;
               fine_step = true;
 
-              float refine_step = CLOUD_LARGE_STEP_LENGTH;
-              for (int l = 0; l < 4; l++) {
-                vec3 next_pos = start_pos + ray_dir * distance_travelled;
-                float next_density = sample_cloud_density(next_pos);
-                refine_step *= 0.5;
-                if (next_density < MIN_DENSITY) {
-                  distance_travelled += refine_step;
-                } else {
-                  distance_travelled -= refine_step;
-                }
-              }
+              // float refine_step = CLOUD_LARGE_STEP_LENGTH;
+              // for (int l = 0; l < 2; l++) {
+              //   vec3 next_pos = start_pos + ray_dir * distance_travelled;
+              //   float next_density = sample_cloud_density(next_pos);
+              //   refine_step *= 0.5;
+              //   if (next_density < MIN_DENSITY) {
+              //     distance_travelled += refine_step;
+              //   } else {
+              //     distance_travelled -= refine_step;
+              //   }
+              // }
 
               // distance_travelled -= jitter;
               // jitter = random * CLOUD_STEP_LENGTH;
@@ -546,7 +573,7 @@ vec4 calculate_volumetrics() {
             }
           } else {
             steps_taken_with_zero_density++;
-            if (steps_taken_with_zero_density > 10 && fine_step) {
+            if (steps_taken_with_zero_density > 5 && fine_step) {
               fine_step = false;
               current_step_length = CLOUD_LARGE_STEP_LENGTH;
               // distance_travelled -= jitter;
@@ -591,6 +618,8 @@ vec4 calculate_volumetrics() {
       motion_vector = current_uv - prev_uv;
     }
 
+    scattering = clamp(scattering, vec3(0), vec3(1));
+    extinction = clamp(extinction, 0, 1);
     return vec4(
         scattering, extinction
     );
