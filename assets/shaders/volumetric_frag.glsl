@@ -34,8 +34,8 @@ uniform int frame_number;
 
 uniform float cloud_dome_radius;
 
-const float cloud_layer_thickness = 2000;//(186-10);
-const float cloud_height_base = 1000;
+const float cloud_layer_thickness = 3000;//(186-10);
+const float cloud_height_base = 900;
 float cloud_height_apex = cloud_height_base+cloud_layer_thickness;
 // const float cloud_dome_radius = 1000000;
 vec3 cloud_dome_position = vec3(0, -(cloud_dome_radius-cloud_height_base), 0);
@@ -204,8 +204,8 @@ float sample_cloud_density(vec3 p) {
   float dc = length(p-cloud_dome_position);
   float percentage_to_apex = (dc - actual_cloud_height_base) / (actual_cloud_height_apex - actual_cloud_height_base);
   percentage_to_apex = pow(percentage_to_apex, 
-      coverage * 3);
-  float height_factor = 1.5-percentage_to_apex;
+      coverage * 3) + 0.05;
+  float height_factor = 0.5-percentage_to_apex;
   float bottom_fade_height = 150;
   float bottom_fade = clamp((dc - actual_cloud_height_base) / bottom_fade_height, 0, 1);
   
@@ -225,13 +225,13 @@ float sample_cloud_density(vec3 p) {
   float high_mask = get_height_mask(
       dc,
       actual_cloud_height_base + cloud_layer_thickness * 0.85,
-      actual_cloud_height_apex,
-      120
+      actual_cloud_height_apex - 50,
+      200
     );
   if (high_mask > 0) {
     p.xz *= 2.1;
     float c = smoothstep(0.1, 0.2, snoise(p * 0.000001) * high_mask) * 0.3;
-    c -= smoothstep(0.1, 0.2, snoise(p * 0.00001) * high_mask) * 0.1;
+    c -= smoothstep(0.1, 0.2, snoise(p * 0.00002) * high_mask) * 0.1;
     // p.x *= 3;
     // p.y *= 2;
     // m -= snoise(p * 0.00001) * 0.3;
@@ -352,10 +352,10 @@ vec2 ray_sphere(vec3 ro, vec3 rd, float sr, vec3 sp) {
 vec4 calculate_volumetrics() {
   // if (fract(rand(gl_FragCoord.xy * 0.0010 + vec2(float(frame_number) * 0.345)) * 1000) < 0.8)
     motion_vector = vec2(0);
-    // ivec2 pixel = ivec2(gl_FragCoord.x - 0.5, gl_FragCoord.y - 0.5);
-    // int pi = pixel.x + pixel.y * int(textureSize(depth_texture, 0).x + 1);
-    // if (pi % 4 == int(frame_number * 2.0) % 4)
-    //   return vec4(-1);//texture(volumetric_history_texture, frag_uv);
+    ivec2 pixel = ivec2(gl_FragCoord.x - 0.5, gl_FragCoord.y - 0.5);
+    int pi = pixel.x + pixel.y * int(textureSize(depth_texture, 0).x + frame_number % 2);
+    if (pi % 4 == int(frame_number * 2.0) % 4)
+      return vec4(-1);//texture(volumetric_history_texture, frag_uv);
     // if (pixel.x 
   // return vec4(vec3(1), rand(frag_uv));
     float depth = texture(depth_texture, frag_uv).r;

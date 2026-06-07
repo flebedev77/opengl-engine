@@ -31,7 +31,7 @@ bake_cloud_noise :: proc(load_from_file := true) -> CloudNoise {
 
   coverage_bias := f32(-0.0)
   worley_perlin_weight := f32(0.6)
-  if !load_from_file {
+  if !load_from_file || len(base_noise) == 0 {
     fmt.printf("Generating 3d noise ")
     profile_begin()
     for z : i32 = 0; z < base_shape_d; z += 1 {
@@ -65,23 +65,36 @@ bake_cloud_noise :: proc(load_from_file := true) -> CloudNoise {
   fmt.printf("Allocating 3d noise ")
   profile_begin()
   detail_w, detail_h, detail_d := i32(32), i32(32), i32(32)
-  detail_noise := make([]f32, detail_w * detail_h * detail_d, context.temp_allocator)
-  profile_end()
-
-
-  fmt.printf("Generating detail 3d noise ")
-  profile_begin()
-  for z : i32 = 0; z < detail_d; z += 1 {
-    for y : i32 = 0; y < detail_h; y += 1 {
-      for x : i32 = 0; x < detail_w; x += 1 {
-        p := Vec3{f32(x), f32(y), f32(z)} * 0.1
-        worley : f32 = cpu_voronoi3d(p * 1.5).r
-        detail_noise[z * (detail_h * detail_d) + y * detail_w + x] =
-          (worley);//, 0, 1)
-      }
-    }
+  detail_noise: []f32
+  when #exists("../cloud_noise_detail") {
+    detail_noise = #load("../cloud_noise_detail")
+  } else {
+    detail_noise = make([]f32, detail_w * detail_h * detail_d, context.temp_allocator)
   }
   profile_end()
+
+
+  if !load_from_file || len(detail_noise) == 0 {
+    fmt.printf("Generating detail 3d noise ")
+    profile_begin()
+    for z : i32 = 0; z < detail_d; z += 1 {
+      for y : i32 = 0; y < detail_h; y += 1 {
+        for x : i32 = 0; x < detail_w; x += 1 {
+          p := Vec3{f32(x), f32(y), f32(z)} * 0.1
+          worley : f32 = cpu_voronoi3d(p * 1.5).r
+          detail_noise[z * (detail_h * detail_d) + y * detail_w + x] =
+          (worley);//, 0, 1)
+        }
+      }
+    }
+
+    profile_end()
+
+    fmt.printf("Saving detail 3d noise ")
+    profile_begin()
+    os.write_entire_file("cloud_noise_detail", mem.slice_data_cast([]u8, detail_noise))
+    profile_end()
+  }
 
   fmt.printf("Uploading 3d noise ")
   profile_begin()

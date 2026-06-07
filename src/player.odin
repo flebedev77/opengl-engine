@@ -162,7 +162,7 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
   basis_draw_scale := f32(1)
 
   if player.is_flying { 
-    player.position += player.velocity * scene.delta_time * 1.2
+    player.position += player.velocity * scene.delta_time * 1.1
     thrust_force := ((local_forward * 2.98) / player.mass) * scene.delta_time
     player.velocity += thrust_force
     player.velocity += -GLOBAL_UP * 0.0001 * scene.delta_time

@@ -183,11 +183,11 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   renderer.cloud_settings.cloud_dome_radius = 1000000
 
   load_from_file := false
-  when #exists("../cloud_noise") {
+  when #exists("../cloud_noise") && #exists("../cloud_noise_detail") {
     load_from_file = true
   }
   renderer.cloud_settings.cloud_noise = bake_cloud_noise(load_from_file)
-  renderer.volumetrics_taa_frames = 16//128
+  renderer.volumetrics_taa_frames = 32//128
   framebuffer_init(&renderer.volumetric_framebuffer, effects_resolution_int, {.COLOR, .MOTION_VECTOR}, "volumetric", .TWO_DIMENSIONAL)
   framebuffer_init(&renderer.volumetric_history_framebuffer, effects_resolution_int, {.COLOR}, "", .TWO_DIMENSIONAL)
   framebuffer_init(&renderer.accumulated_volumetric_framebuffer, effects_resolution_int, {.COLOR}, "clouds_taa", .TWO_DIMENSIONAL)
