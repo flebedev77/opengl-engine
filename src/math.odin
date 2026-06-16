@@ -300,8 +300,8 @@ Vec4{linalg.dot(p0,p0), linalg.dot(p1,p1), linalg.dot(p2, p2), linalg.dot(p3,p3)
 // Mix final noise value
   m: Vec4 = linalg.max(0.6 - Vec4{linalg.dot(x0,x0), linalg.dot(x1,x1), linalg.dot(x2,x2), linalg.dot(x3,x3)}, 0.0);
   m = m * m;
-  return 42.0 * linalg.dot( m*m, Vec4{ linalg.dot(p0,x0), linalg.dot(p1,x1), 
-                                linalg.dot(p2,x2), linalg.dot(p3,x3) } );
+  return clamp(42.0 * linalg.dot( m*m, Vec4{ linalg.dot(p0,x0), linalg.dot(p1,x1), 
+                                linalg.dot(p2,x2), linalg.dot(p3,x3) } ), -1, 1)
 }
 
 @(require_results) cpu_voronoi3d :: proc(x: Vec3) -> Vec3 {
