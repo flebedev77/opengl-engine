@@ -175,13 +175,13 @@ float sample_cloud_density(vec3 p) {
       p.z / (cloud_layer_thickness * depth_to_height)
     );
   float n = snoise(base_p);
-  // if (n > 0) {
-  //   float d = dnoise(p * 0.002) * 0.82;
-  //   d += dnoise(p * 0.003) * 0.42;
-  //   n = clamp(n-d * 0.01, 0, 1);
-  //   // n=d;
-  //   // n=1;
-  // }
+  if (n > 0) {
+    float d = dnoise(p * 0.002) * 0.82;
+    d += dnoise(p * 0.003) * 0.42;
+    n = clamp(n-d * 0.01, 0, 1);
+    // n=d;
+    // n=1;
+  }
   return n;
   // p -= normalize(p-cloud_dome_position) * (cloud_height_base + 1300);
   // return clamp(snoise(p * (0.0001)), 0, 1);
