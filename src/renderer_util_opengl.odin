@@ -22,7 +22,9 @@ bake_cloud_noise :: proc() -> CloudNoise {
   fmt.printf("Allocating 3d noise ")
   profile_begin()
   cloud_noise := CloudNoise{}
-  base_shape_w, base_shape_h, base_shape_d := i32(128), i32(16), i32(128)
+  base_shape_w, base_shape_h, base_shape_d := i32(128)*2, i32(16), i32(128)*2
+  // base_shape_w, base_shape_h, base_shape_d := i32(64), i32(64), i32(64)
+  // base_shape_h = 64/4
 
   base_loaded := false
   base_noise: []f32
@@ -31,12 +33,16 @@ bake_cloud_noise :: proc() -> CloudNoise {
     base_loaded = true
     base_noise = #load("../cloud_noise")
   } else {
-    base_noise = make([]f32, base_shape_w * base_shape_h * base_shape_d, context.temp_allocator)
+    base_noise = make(
+      []f32,
+      base_shape_w * base_shape_h * base_shape_d * 2,
+      context.temp_allocator
+    )
   }
   profile_end()
 
-  coverage_bias := f32(0.0)
-  perlin_weight := f32(0.1)
+  coverage_bias := f32(0.2)
+  perlin_weight := f32(0.3)
 
   if !base_loaded {
     fmt.printfln("Generating 3d noise ")
@@ -45,6 +51,7 @@ bake_cloud_noise :: proc() -> CloudNoise {
       for y : i32 = 0; y < base_shape_h; y += 1 {
         for x : i32 = 0; x < base_shape_w; x += 1 {
           index := z * (base_shape_w * base_shape_h) + y * base_shape_w + x
+          index *= 2 // leave space for green channel
           fmt.printf("%0.2f%%           \r", (f32(index)/f32(base_shape_w * base_shape_h * base_shape_d)) * 100)
 
           p := Vec3{f32(x), f32(y), f32(z)} * 0.04
@@ -58,7 +65,7 @@ bake_cloud_noise :: proc() -> CloudNoise {
 
           high_freq_worley := 1 - cpu_voronoi3d(p * 6).r * 0.2
           perlin_worley = remap_range_f32(perlin_worley, 1 - high_freq_worley, 1, 0, 1)
-          perlin_worley *= 0.1
+          perlin_worley *= 2.1
 
           base_noise[index] = clamp(perlin_worley - coverage_bias, 0, 1)
         }
@@ -70,96 +77,6 @@ bake_cloud_noise :: proc() -> CloudNoise {
     fmt.printfln("Computing Signed Distance Field ")
     profile_begin()
     generate_exact_edt_sdf(base_noise, base_shape_w, base_shape_h, base_shape_d)
-//
-//     num_texels := base_shape_w * base_shape_h * base_shape_d
-//     sdf_grid := make([]SdfCell, num_texels, context.temp_allocator)
-//
-//     for z in 0..<base_shape_d {
-//       for y in 0..<base_shape_h {
-//         for x in 0..<base_shape_w {
-//           idx := z * (base_shape_w * base_shape_h) + y * base_shape_w + x
-//           density := base_noise[idx]
-//
-//           sdf_grid[idx].density = density
-//           if density > 0.0 {
-//             sdf_grid[idx].closest_surface = Vec3i{x, y, z}
-//             sdf_grid[idx].distance_sq = 0.0
-//           } else {
-//             sdf_grid[idx].closest_surface = Vec3i{-1, -1, -1}
-//             sdf_grid[idx].distance_sq = 1e9
-//           }
-//         }
-//       }
-//     }
-//
-// jfa_pass := proc(sdf_grid: []SdfCell, step, w, h, d: int) {
-//         for z in 0..<d {
-//             for y in 0..<h {
-//                 for x in 0..<w {
-//                     curr_idx := z * (w * h) + y * w + x
-//
-//                     for nz in -1..=1 {
-//                         for ny in -1..=1 {
-//                             for nx in -1..=1 {
-//                                 sample_x := (x + nx * step) % w
-//                                 if sample_x < 0 do sample_x += w
-//
-//                                 sample_z := (z + nz * step) % d
-//                                 if sample_z < 0 do sample_z += d
-//
-//                                 sample_y := y + ny * step
-//                                 if sample_y < 0 || sample_y >= h do continue
-//
-//                                 s_idx := sample_z * (w * h) + sample_y * w + sample_x
-//                                 neighbor_surf := sdf_grid[s_idx].closest_surface
-//
-//                                 if neighbor_surf.x != -1 {
-//                                     dx := f32(x - int(neighbor_surf.x))
-//                                     if dx > f32(w / 2)  do dx -= f32(w)
-//                                     if dx < f32(-w / 2) do dx += f32(w)
-//
-//                                     dz := f32(z - int(neighbor_surf.z))
-//                                     if dz > f32(d / 2)  do dz -= f32(d)
-//                                     if dz < f32(-d / 2) do dz += f32(d)
-//
-//                                     dy := f32(y - int(neighbor_surf.y))
-//
-//                                     dist_sq := dx*dx + dy*dy + dz*dz
-//                                     if dist_sq < sdf_grid[curr_idx].distance_sq {
-//                                         sdf_grid[curr_idx].distance_sq = dist_sq
-//                                         sdf_grid[curr_idx].closest_surface = neighbor_surf
-//                                     }
-//                                 }
-//                             }
-//                         }
-//                     }
-//                 }
-//             }
-//         }
-//     }
-//
-//     // 2. Main Jump Flooding Loop (Logarithmic steps)
-//     max_dim := int(max(base_shape_w, max(base_shape_h, base_shape_d)))
-//     step := max_dim / 2
-//     for step > 0 {
-//         jfa_pass(sdf_grid, step, int(base_shape_w), int(base_shape_h), int(base_shape_d))
-//         step /= 2
-//     }
-//
-//     // 3. JFA+2 Refinement Passes (Fixes empty space discontinuities)
-//     jfa_pass(sdf_grid, 2, int(base_shape_w), int(base_shape_h), int(base_shape_d))
-//     jfa_pass(sdf_grid, 1, int(base_shape_w), int(base_shape_h), int(base_shape_d))
-//
-//     max_possible_dist := math.sqrt(f32(base_shape_w*base_shape_w + base_shape_h*base_shape_h + base_shape_d*base_shape_d))
-//     for i in 0..<num_texels {
-//       if sdf_grid[i].density > 0.0 {
-//         base_noise[i] = sdf_grid[i].density
-//       } else {
-//         true_dist := math.sqrt(sdf_grid[i].distance_sq)
-//         normalized_dist := true_dist / max_possible_dist
-//         base_noise[i] = -normalized_dist
-//       }
-//     }
     profile_end()
 
     fmt.printf("Saving 3d noise ")
@@ -170,7 +87,13 @@ bake_cloud_noise :: proc() -> CloudNoise {
 
   fmt.printf("Uploading 3d noise ")
   profile_begin()
-  cloud_noise.base_shape = upload_noise(base_shape_w, base_shape_h, base_shape_d, &base_noise[0])
+  cloud_noise.base_shape = upload_noise(
+    base_shape_w,
+    base_shape_h,
+    base_shape_d,
+    &base_noise[0],
+    .SDF_DENSITY
+  )
   profile_end()
 
   fmt.printf("Allocating 3d detail noise ")
@@ -211,17 +134,31 @@ bake_cloud_noise :: proc() -> CloudNoise {
 
   fmt.printf("Uploading 3d detail noise ")
   profile_begin()
-  cloud_noise.detail_worley = upload_noise(detail_w, detail_h, detail_d, &detail_noise[0])
+  cloud_noise.detail_worley = upload_noise(detail_w,
+    detail_h,
+    detail_d,
+    &detail_noise[0],
+    .DENSITY
+  )
   profile_end()
 
   return cloud_noise
 }
 
-upload_noise :: proc(w, h, d: i32, data: rawptr) -> GpuID {
+NoiseType :: enum {
+  SDF_DENSITY,
+  DENSITY
+}
+
+upload_noise :: proc(w, h, d: i32, data: rawptr, type: NoiseType) -> GpuID {
   shape: GpuID
   gl.GenTextures(1, &shape)
   gl.BindTexture(gl.TEXTURE_3D, shape)
-  gl.TexImage3D(gl.TEXTURE_3D, 0, gl.R32F, w, h, d, 0, gl.RED, gl.FLOAT, data)
+  if (type == .SDF_DENSITY) {
+    gl.TexImage3D(gl.TEXTURE_3D, 0, gl.RG32F, w, h, d, 0, gl.RG, gl.FLOAT, data)
+  } else if (type == .DENSITY) {
+    gl.TexImage3D(gl.TEXTURE_3D, 0, gl.R32F, w, h, d, 0, gl.RED, gl.FLOAT, data)
+  }
 
   gl.TexParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
   gl.TexParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
@@ -234,7 +171,7 @@ upload_noise :: proc(w, h, d: i32, data: rawptr) -> GpuID {
   gl.TexParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_BORDER)
 
   gl.TexParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.REPEAT)
-  gl.TexParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.REPEAT)
+  // gl.TexParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.REPEAT)
   gl.TexParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.REPEAT)
   return shape
 }
@@ -248,7 +185,7 @@ generate_exact_edt_sdf :: proc(base_noise: []f32, base_shape_w, base_shape_h, ba
 
     // 1. Initialization: Inside features are 0, outside is infinity (1e9)
     for i in 0..<num_texels {
-        grid_a[i] = base_noise[i] > 0 ? 0.0 : 1e9
+        grid_a[i] = base_noise[i * 2] > 0.0 ? 0.0 : 1e9
     }
 
     // Allocate 1D scratchpads (X and Z require 3x space to calculate wrapping seamlessly)
@@ -350,10 +287,12 @@ generate_exact_edt_sdf :: proc(base_noise: []f32, base_shape_w, base_shape_h, ba
 
     max_possible_dist := math.sqrt(f32(base_shape_w*base_shape_w + base_shape_h*base_shape_h + base_shape_d*base_shape_d))
     for i in 0..<num_texels {
-        if base_noise[i] <= 0.0 {
+        if base_noise[i * 2] <= 0.0 {
             true_dist := math.sqrt(grid_b[i]) // grid_b stores squared distances
             normalized_dist := true_dist / max_possible_dist
-            base_noise[i] = -normalized_dist
+            base_noise[i * 2 + 1] = normalized_dist
+        } else {
+          base_noise[i * 2 + 1] = 0
         }
     }
 

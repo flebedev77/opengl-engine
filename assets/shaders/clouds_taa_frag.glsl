@@ -27,7 +27,7 @@ vec3 reconstruct_position(vec2 uv, float non_linear_depth) {
 }
 
 void main() {
-  float weight = 1/float(volumetrics_taa_frames);
+  float weight = 1;//1/float(volumetrics_taa_frames);
   vec2 velocity = texture(volumetric_motion_vectors_texture, frag_uv).xy;
   // frag_color = vec4(velocity.xy, 0, 0);
   // return;
