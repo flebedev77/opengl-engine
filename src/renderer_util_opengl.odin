@@ -22,7 +22,7 @@ bake_cloud_noise :: proc() -> CloudNoise {
   fmt.printf("Allocating 3d noise ")
   profile_begin()
   cloud_noise := CloudNoise{}
-  base_shape_w, base_shape_h, base_shape_d := i32(128)*2, i32(16), i32(128)*2
+  base_shape_w, base_shape_h, base_shape_d := i32(128)*6, i32(16), i32(128)*6
   // base_shape_w, base_shape_h, base_shape_d := i32(64), i32(64), i32(64)
   // base_shape_h = 64/4
 
@@ -45,14 +45,14 @@ bake_cloud_noise :: proc() -> CloudNoise {
   perlin_weight := f32(0.3)
 
   if !base_loaded {
-    fmt.printfln("Generating 3d noise ")
+    fmt.printfln("Generating 3d noise %dx%dx%d ", base_shape_w, base_shape_h, base_shape_d)
     profile_begin()
     for z : i32 = 0; z < base_shape_d; z += 1 {
       for y : i32 = 0; y < base_shape_h; y += 1 {
         for x : i32 = 0; x < base_shape_w; x += 1 {
           index := z * (base_shape_w * base_shape_h) + y * base_shape_w + x
-          index *= 2 // leave space for green channel
           fmt.printf("%0.2f%%           \r", (f32(index)/f32(base_shape_w * base_shape_h * base_shape_d)) * 100)
+          index *= 2 // leave space for green channel
 
           p := Vec3{f32(x), f32(y), f32(z)} * 0.04
           percentage_to_apex := f32(y) / f32(base_shape_h)

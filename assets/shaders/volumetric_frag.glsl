@@ -43,7 +43,7 @@ float actual_cloud_height_base = cloud_dome_radius;
 float actual_cloud_height_apex = cloud_dome_radius + cloud_layer_thickness;
 const float cloud_minimum_height = -3500;
 
-ivec3 base_cloud_noise_size = ivec3(128*2, 16, 128*2);
+ivec3 base_cloud_noise_size = ivec3(128*6, 16, 128*6);
 // ivec3 base_cloud_noise_size = ivec3(64);
 
 #define STEPS_CLOUDS 64
@@ -52,9 +52,9 @@ ivec3 base_cloud_noise_size = ivec3(128*2, 16, 128*2);
 #define CLOUD_LIGHT_DENSITY 0.8
 #define CLOUD_STEP_LENGTH 45.5
 #define CLOUD_LARGE_STEP_LENGTH 800//265.5
-#define CLOUD_LIGHT_STEP_LENGTH 80.6
+#define CLOUD_LIGHT_STEP_LENGTH 180.6
 #define MIN_DENSITY 0//0.012//0.01
-#define SUN_INTENSITY 6//0
+#define SUN_INTENSITY 2.8//0
 
 #define BACKSCATTER_MIN 0.52
 #define BACKSCATTER_MAX 0.55
@@ -62,8 +62,8 @@ ivec3 base_cloud_noise_size = ivec3(128*2, 16, 128*2);
 #define EXTINCTION_FACTOR 0.9
 #define SCATTERING_FACTOR (EXTINCTION_FACTOR-0.001)
 
-#define POWDER_FACTOR 152.2
-#define POWDER_STRENGTH 1.0
+#define POWDER_FACTOR 102.2
+#define POWDER_STRENGTH 0.8
 
 #define TEMPORAL_ACCUMULATION_ENABLED true
 
@@ -192,9 +192,13 @@ vec2 sample_cloud_density(vec3 p) {
   if (n.r > 0) {
     p += vec3(cloud_drift, -cloud_drift * 0.3, cloud_drift);
     float d = dnoise(p * 0.002) * 0.92;
+    d += dnoise(p * 0.0022) * 0.82;
+    d += dnoise(p * 0.0026) * 0.42;
     d += dnoise(p * 0.003) * 0.32;
+    // d += dnoise(p * 0.006) * 0.32;
 
-    n.r = clamp(n.r-d*0.1, 0, 1);
+    n.r = clamp(n.r-d*0.14, 0, 1);
+    // n.r *= 0.18;
     n.r *= 0.08;
   }
 
@@ -204,15 +208,15 @@ vec2 sample_cloud_density(vec3 p) {
 #define AMBIENT_COEFFICIENT 4//5//12.0
 #define AMBIENT_TOP_COEFFICIENT 0//0.87
 #define AMBIENT_TOP_COLOR vec3(0.9)
-#define AMBIENT_BOTTOM_COEFFICIENT 7.2
+#define AMBIENT_BOTTOM_COEFFICIENT 0.2
 #define AMBIENT_BOTTOM_COLOR vec3(0.35, 0.35, 0.35)
-#define AMBIENT_CONSTANT_COEFFICIENT 3.2
-#define AMBIENT_CONSTANT_COLOR vec3(0.3, 0.3, 0.3)//vec3(0.260, 0.325, 0.489)
+#define AMBIENT_CONSTANT_COEFFICIENT 1.0
+#define AMBIENT_CONSTANT_COLOR vec3(1., 1., 1.2)//vec3(0.260, 0.325, 0.489)
 #define AMBIENT_OCCLUSION_DISTANCE 2
 #define AMBIENT_OCCLUSION_STRENGTH 2.5
 
 vec3 calculate_ambient_color(vec3 p, float extinction_coefficient) {
-  return AMBIENT_CONSTANT_COLOR * AMBIENT_CONSTANT_COEFFICIENT;
+  // return AMBIENT_CONSTANT_COLOR * AMBIENT_CONSTANT_COEFFICIENT;
   float dc = length(p-cloud_dome_position);
   float distance_top = (cloud_height_apex - dc);
   float a = -extinction_coefficient * distance_top;
@@ -480,7 +484,7 @@ vec4 calculate_volumetrics() {
             float occ = exp(-sample_cloud_density(current_pos + vec3(0, AMBIENT_OCCLUSION_DISTANCE, 0)).r * AMBIENT_OCCLUSION_STRENGTH);
 
             vec3 sun_light = vec3(SUN_INTENSITY);
-            sun_light *= vec3(1, 1, 1);
+            sun_light *= vec3(1, 1, 1.1);
             vec3 sun_color = mix(1, powder, POWDER_STRENGTH) * light_transmittance * sun_light;
             vec3 ambient_color = occ * calculate_ambient_color(current_pos, extinction_coefficient);
             float ambient_phase = 1 / (4 * PI);
