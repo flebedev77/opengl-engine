@@ -91,7 +91,8 @@ Material :: struct {
   uv: Vec4,
   shader: Shader,
   roughness_strength,
-  metallic_strength: f32
+  metallic_strength: f32,
+  is_transparent: bool
 }
 
 Mesh :: struct {
@@ -104,7 +105,7 @@ Mesh :: struct {
   triangle_count,
   indice_count: i32,
   material: Material,
-  model_matrix: Mat4 
+  model_matrix: Mat4,
 }
 
 Renderer :: struct {
@@ -135,6 +136,7 @@ Renderer :: struct {
   default_shader: Shader,
   sun_position: Vec3,
 
+  transparent_mesh_queue: [dynamic]^Mesh,
 
   cloud_settings: CloudSettings,
 
@@ -183,10 +185,10 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   renderer.cloud_settings.cloud_dome_radius = 1e6
 
   renderer.cloud_settings.cloud_noise = bake_cloud_noise()
-  renderer.volumetrics_taa_frames = 128
+  // renderer.volumetrics_taa_frames = 128
   framebuffer_init(&renderer.volumetric_framebuffer, effects_resolution_int, {.COLOR, .MOTION_VECTOR}, "volumetric", .TWO_DIMENSIONAL)
-  framebuffer_init(&renderer.volumetric_history_framebuffer, effects_resolution_int, {.COLOR}, "", .TWO_DIMENSIONAL)
-  framebuffer_init(&renderer.accumulated_volumetric_framebuffer, effects_resolution_int, {.COLOR}, "clouds_taa", .TWO_DIMENSIONAL)
+  // framebuffer_init(&renderer.volumetric_history_framebuffer, effects_resolution_int, {.COLOR}, "", .TWO_DIMENSIONAL)
+  // framebuffer_init(&renderer.accumulated_volumetric_framebuffer, effects_resolution_int, {.COLOR}, "clouds_taa", .TWO_DIMENSIONAL)
 
   renderer.final_pass_material = asset_loader_material(0, 0, "post_process", .TWO_DIMENSIONAL)
 
@@ -202,7 +204,18 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
 }
 
 renderer_delete :: proc(renderer: ^Renderer) {
+  fmt.printfln("CLEANING")
+  delete(renderer.transparent_mesh_queue)
   gl.DeleteProgram(renderer.default_shader.program)
+  fbs := []u32{
+    renderer.prepass_framebuffer.framebuffer,
+    renderer.downscaled_depth_framebuffer.framebuffer,
+    renderer.msaa_back_framebuffer.framebuffer,
+    renderer.back_framebuffer.framebuffer,
+    renderer.ssao_framebuffer.framebuffer,
+    renderer.volumetric_framebuffer.framebuffer,
+  }
+  gl.DeleteFramebuffers(i32(len(fbs)), &fbs[0])
 }
 
 renderer_draw_meshes :: proc(renderer: ^Renderer, material_override: ^Material = {}) {
@@ -270,6 +283,7 @@ renderer_render :: proc(renderer: ^Renderer) {
   render_mesh(renderer, &renderer.scene.sky_mesh)
   renderer_draw_meshes(renderer)
 
+
   renderer.debug_renderer.shader.parameters.view_matrix = renderer.scene.camera.view_matrix
   renderer.debug_renderer.shader.parameters.projection_matrix = renderer.scene.camera.projection_matrix
   // debugrenderer_draw(&renderer.debug_renderer)
@@ -310,15 +324,15 @@ renderer_render :: proc(renderer: ^Renderer) {
   // framebuffer_blit(renderer.blur_framebuffer, renderer.volumetric_framebuffer)
 
   // Volumetrics taa pass
-  gl.ActiveTexture(gl.TEXTURE6)
-  gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_framebuffer.color_texture)
-  gl.ActiveTexture(gl.TEXTURE8)
-  gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_framebuffer.vector_texture)
-
-  renderer_bind_and_clear_framebuffer(renderer, renderer.accumulated_volumetric_framebuffer)
-  render_mesh(renderer, &renderer.post_process_quad, &renderer.accumulated_volumetric_framebuffer.material)
-
-  framebuffer_blit(renderer.accumulated_volumetric_framebuffer, renderer.volumetric_history_framebuffer)
+  // gl.ActiveTexture(gl.TEXTURE6)
+  // gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_framebuffer.color_texture)
+  // gl.ActiveTexture(gl.TEXTURE8)
+  // gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_framebuffer.vector_texture)
+  //
+  // renderer_bind_and_clear_framebuffer(renderer, renderer.accumulated_volumetric_framebuffer)
+  // render_mesh(renderer, &renderer.post_process_quad, &renderer.accumulated_volumetric_framebuffer.material)
+  //
+  // framebuffer_blit(renderer.accumulated_volumetric_framebuffer, renderer.volumetric_history_framebuffer)
 
 
   // SSAO
@@ -338,13 +352,21 @@ renderer_render :: proc(renderer: ^Renderer) {
 
   // Final combination pass
   gl.ActiveTexture(gl.TEXTURE6)
-  gl.BindTexture(gl.TEXTURE_2D, renderer.accumulated_volumetric_framebuffer.color_texture)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_framebuffer.color_texture)
 
 
   renderer.default_framebuffer.size = {FrameBuffer.w, FrameBuffer.h}
   renderer_bind_and_clear_framebuffer(renderer, renderer.default_framebuffer)
   render_mesh(renderer, &renderer.post_process_quad) 
 
+  gl.ActiveTexture(gl.TEXTURE2)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.back_framebuffer.color_texture)
+  gl.ActiveTexture(gl.TEXTURE3)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.prepass_framebuffer.depth_texture)
+  for &mesh in renderer.transparent_mesh_queue {
+    render_mesh(renderer, mesh)
+  }
+  clear(&renderer.transparent_mesh_queue)
   // renderer.debug_renderer.shader.parameters.view_matrix = renderer.scene.camera.view_matrix
   // renderer.debug_renderer.shader.parameters.projection_matrix = renderer.scene.camera.projection_matrix
   debugrenderer_draw(&renderer.debug_renderer)
@@ -374,6 +396,10 @@ renderer_bind_and_clear_framebuffer :: proc(renderer: ^Renderer, framebuffer: Fr
   // gl.DepthFunc(reversed_z ? gl.GREATER : gl.LESS)
   // gl.ClearDepth(reversed_z ? 0 : 1);
   gl.Clear(gl.DEPTH_BUFFER_BIT | gl.COLOR_BUFFER_BIT)
+}
+
+renderer_add_to_transparent_queue :: proc(renderer: ^Renderer, mesh: ^Mesh) {
+  append(&renderer.transparent_mesh_queue, mesh)
 }
 
 render_mesh :: proc(renderer: ^Renderer, mesh: ^Mesh, material_override: ^Material = {}) {
@@ -521,10 +547,13 @@ mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}) {
 
   gl.Uniform1i(shader.parameters.frame_number_location, shader.parameters.frame_number)
 
-  if material.shader.type == .TWO_DIMENSIONAL {
-    gl.BindVertexArray(mesh.vao)
+  if material.shader.type == .TWO_DIMENSIONAL ||
+     material.is_transparent {
     gl.Uniform1i(shader.parameters.screen_texture_location, 2)
     gl.Uniform1i(shader.parameters.depth_texture_location, 3)
+  }
+  if material.shader.type == .TWO_DIMENSIONAL {
+    gl.BindVertexArray(mesh.vao)
     gl.Uniform1i(shader.parameters.normal_texture_location, 4)
     gl.Uniform1i(shader.parameters.ssao_texture_location, 5)
     gl.Uniform1i(shader.parameters.blur_texture_location, 5)
@@ -558,10 +587,14 @@ mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}) {
     }
     gl.Uniform4fv(shader.parameters.uv_location, 1, &material.uv[0]);
 
-    gl.ActiveTexture(gl.TEXTURE0)
-    gl.BindTexture(gl.TEXTURE_2D, material.albedo_texture)
-    gl.ActiveTexture(gl.TEXTURE2)
-    gl.BindTexture(gl.TEXTURE_2D, material.roughness_texture)
+    if material.albedo_texture != 0 {
+      gl.ActiveTexture(gl.TEXTURE0)
+      gl.BindTexture(gl.TEXTURE_2D, material.albedo_texture)
+    }
+    if material.roughness_texture != 0 {
+      gl.ActiveTexture(gl.TEXTURE2)
+      gl.BindTexture(gl.TEXTURE_2D, material.roughness_texture)
+    }
 
     gl.Uniform1i(shader.parameters.albedo_texture_location, 0)
     gl.Uniform1i(shader.parameters.roughness_texture_location, 2)

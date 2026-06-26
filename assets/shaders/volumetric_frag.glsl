@@ -167,44 +167,9 @@ float get_height_mask(float y, float layerMin, float layerMax, float feather) {
     return bottomFade * topFade;
 }
 
-// vec2 sample_cloud_density(vec3 p) {
-//     float y = p.y - cloud_height_base;
-//     float width_to_height = base_cloud_noise_size.x / base_cloud_noise_size.y;
-//     float depth_to_height = base_cloud_noise_size.z / base_cloud_noise_size.y;
-//
-//     vec3 base_p = vec3(
-//         p.x / (cloud_layer_thickness * width_to_height),
-//         y / cloud_layer_thickness,
-//         p.z / (cloud_layer_thickness * depth_to_height)
-//     );
-//
-//     // Sample our interleaved 2-channel texture directly
-//     vec2 n = snoise(base_p); 
-//
-//     float density = 0.0;
-//
-//     float max_dist = abs(n.g) * length(vec3(base_cloud_noise_size));
-//     float cell_size = cloud_layer_thickness / float(base_cloud_noise_size.y); 
-//
-//     float sdf = max_dist * cell_size;
-//
-//     // If we are inside the volume boundary, process the detail density
-//     if (sdf >= 0.0) {
-//         density = n.r;
-//         if (density > 0.0) {
-//             float d = dnoise(p * 0.002) * 0.92;
-//             d += dnoise(p * 0.003) * 0.32;
-//             // d *= 0; // Keeping your original modifier setup
-//
-//             density = clamp(density - d * 0.1, 0.0, 1.0);
-//             density *= 0.08;
-//         }
-//     }
-//
-//     return vec2(density, sdf); // X = Density, Y = SDF
-// }
-
 vec2 sample_cloud_density(vec3 p) {
+  float cloud_drift = float(frame_number) * 0.2;
+  p.x += cloud_drift;
   float y = p.y - cloud_height_base;// - 100;
   float width_to_height = base_cloud_noise_size.x / base_cloud_noise_size.y;
   float depth_to_height = base_cloud_noise_size.z / base_cloud_noise_size.y;
@@ -216,22 +181,23 @@ vec2 sample_cloud_density(vec3 p) {
 
   vec2 n = snoise(base_p);
 
-  float max_dist = n.g * length(vec3(base_cloud_noise_size));
-  float cell_size = cloud_layer_thickness / float(base_cloud_noise_size.y); 
+  float sdf_step_length = 0;
 
-  float sdf_step_length = max_dist * cell_size;
+  if (n.g > 0) {
+    float max_dist = abs(n.g) * length(vec3(base_cloud_noise_size));
+    float cell_size = cloud_layer_thickness / float(base_cloud_noise_size.y); 
 
+    sdf_step_length = max_dist * cell_size;
+  }
   if (n.r > 0) {
+    p += vec3(cloud_drift, -cloud_drift * 0.3, cloud_drift);
     float d = dnoise(p * 0.002) * 0.92;
     d += dnoise(p * 0.003) * 0.32;
-    // d *= 0;
-    // n = clamp(n-d * 0.01, 0, 1);
+
     n.r = clamp(n.r-d*0.1, 0, 1);
-    // n *= 2;
-    // n=d;
-    // n=0.018;
     n.r *= 0.08;
   }
+
   return vec2(n.r, sdf_step_length);
 }
 
@@ -435,6 +401,7 @@ vec4 calculate_volumetrics() {
         float distance_travelled = 0;
         float step_length = CLOUD_STEP_LENGTH;
         float current_step_length = step_length;
+        float sdf_skip_outside = -1;
 
         for (int i = 0; i < STEPS_CLOUDS; i++) {
           if (extinction < 0.01) { extinction = 0; break; }
@@ -442,10 +409,42 @@ vec4 calculate_volumetrics() {
 
           current_pos = start_pos + ray_dir * distance_travelled;
           vec2 current_cloud_data = sample_cloud_density(current_pos);
-          float current_density = current_cloud_data.r;
-          float current_sdf = current_cloud_data.g;
+          float current_density = current_cloud_data.x;
+          float current_sdf = current_cloud_data.y;
 
-          if (current_density >= MIN_DENSITY) {
+          float cell_size = cloud_layer_thickness / float(base_cloud_noise_size.y);
+
+          float k = 22;
+          if (current_sdf > k && current_density <= 0.0) {
+            sdf_skip_outside = distance_travelled;
+            distance_travelled += current_sdf;
+            continue;
+          } 
+
+          if (current_density > MIN_DENSITY && sdf_skip_outside > 0.0) {
+            float left = sdf_skip_outside;
+            float right = distance_travelled;
+
+            for (int s = 0; s < 4; s++) {
+              float m = (left + right) * 0.5;
+              vec2 cd_refine = sample_cloud_density(start_pos + ray_dir * m);
+
+              if (cd_refine.r > MIN_DENSITY) {
+                right = m;
+              } else {
+                left = m;
+              }
+            }
+
+            distance_travelled = right;
+            sdf_skip_outside = -1.0; 
+
+            distance_travelled += jitter; 
+            continue;
+          }
+
+          current_step_length = CLOUD_STEP_LENGTH;
+          if (current_density > MIN_DENSITY) {
             if (!hit_cloud_surface) {
               world_space_surface = current_pos; 
               hit_cloud_surface = true;
@@ -465,12 +464,12 @@ vec4 calculate_volumetrics() {
               if (light_transmittance < 0.01) break;
 
               vec2 light_current_data = sample_cloud_density(light_current_pos);
-              float light_current_density = light_current_data.r;
+              float light_current_density = light_current_data.x;
               if (light_current_density > MIN_DENSITY)
                 light_transmittance *= exp(-EXTINCTION_FACTOR * light_current_density * CLOUD_LIGHT_DENSITY * CLOUD_LIGHT_STEP_LENGTH);
 
 
-              float light_step_length = -(light_current_data.g);
+              float light_step_length = light_current_data.y;
               if (light_step_length < CLOUD_LIGHT_STEP_LENGTH) light_step_length = CLOUD_LIGHT_STEP_LENGTH;
 
               light_current_pos += light_dir * light_step_length;
@@ -493,17 +492,14 @@ vec4 calculate_volumetrics() {
             extinction *= transmittance;
           }
 
-          float cell_size = cloud_layer_thickness / float(base_cloud_noise_size.y); 
-          cell_size *= 0;
-          if (current_sdf > CLOUD_STEP_LENGTH + cell_size) {
-            current_step_length = current_sdf - cell_size;
-            current_step_length = max(current_step_length, CLOUD_STEP_LENGTH);
-
-            if (current_step_length > cloud_march_length)
-              return vec4(1, 0, 0, 1);
-          } else {
-            current_step_length = CLOUD_STEP_LENGTH;
-          }
+          // if (current_sdf > CLOUD_STEP_LENGTH) {
+          //   current_step_length = current_sdf;
+          //
+          //   // if (current_step_length > cloud_march_length)
+          //   //   return vec4(1, 0, 0, 1);
+          // } else {
+          //   current_step_length = CLOUD_STEP_LENGTH;
+          // }
 
           distance_travelled += current_step_length;
         }

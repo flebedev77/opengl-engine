@@ -4,6 +4,12 @@ import "core:math/linalg"
 
 import "vendor:glfw"
 
+PlayerVisual :: struct {
+  scene: ^Scene,
+  mesh: Mesh,
+  canopy_mesh: Mesh
+}
+
 Player :: struct {
   viewmatrix: matrix[4,4]f32,
   camera_yaw, camera_pitch: f32,
@@ -19,10 +25,9 @@ Player :: struct {
   is_onground: bool,
   is_flying: bool,
   debug_movement: bool,
-  mesh: Mesh,
   basis_matrix: Mat4,
   aerodynamics_triangle: [3]Vec4,
-  scene: ^Scene
+  visual: PlayerVisual
 }
 
 player_init :: proc(scene: ^Scene, player: ^Player) {
@@ -57,7 +62,10 @@ player_init :: proc(scene: ^Scene, player: ^Player) {
     metallic_strength = 1,
     roughness_strength = 1,
   }
-  player.mesh = asset_loader_obj_mesh("assets/models/mig/mig.obj", player_material)
+  refractive_material := asset_loader_material(0, 0, "refractive", .THREE_DIMENSIONAL)
+  refractive_material.is_transparent = true;
+  player.visual.mesh = asset_loader_obj_mesh("assets/models/mig/mig.obj", player_material)
+  player.visual.canopy_mesh = asset_loader_obj_mesh("assets/models/mig/mig_canopy.obj", refractive_material)
 }
 
 player_update :: proc(scene: ^Scene, player: ^Player) {
@@ -322,10 +330,19 @@ player_render :: proc(scene: ^Scene, player: ^Player, material_override: ^Materi
   }
 
   scale := f32(0.01)
-  player.mesh.model_matrix = identity_matrix() 
-  player.mesh.model_matrix *= translation_matrix(player.position)
-  player.mesh.model_matrix *= scale_matrix({scale, scale, scale})
-  player.mesh.model_matrix *= player.basis_matrix
-  player.mesh.model_matrix *= linalg.matrix4_from_euler_angle_y_f32(math.PI/2)
-  render_mesh(scene.renderer, &player.mesh, material_override)
+  player.visual.mesh.model_matrix = identity_matrix() 
+  player.visual.mesh.model_matrix *= translation_matrix(player.position)
+  player.visual.mesh.model_matrix *= scale_matrix({scale, scale, scale})
+  player.visual.mesh.model_matrix *= player.basis_matrix
+  player.visual.mesh.model_matrix *= linalg.matrix4_from_euler_angle_y_f32(math.PI/2)
+  render_mesh(scene.renderer, &player.visual.mesh, material_override)
+  player.visual.canopy_mesh.model_matrix = player.visual.mesh.model_matrix
+
+  if material_override == {} {
+    renderer_add_to_transparent_queue(
+      scene.renderer,
+      &player.visual.canopy_mesh
+    )
+  }
+
 }

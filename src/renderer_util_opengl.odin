@@ -171,8 +171,8 @@ upload_noise :: proc(w, h, d: i32, data: rawptr, type: NoiseType) -> GpuID {
   gl.TexParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_BORDER)
 
   gl.TexParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.REPEAT)
-  // gl.TexParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.REPEAT)
   gl.TexParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.REPEAT)
+  if (type == .DENSITY) do gl.TexParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.REPEAT)
   return shape
 }
 
@@ -288,7 +288,7 @@ generate_exact_edt_sdf :: proc(base_noise: []f32, base_shape_w, base_shape_h, ba
     max_possible_dist := math.sqrt(f32(base_shape_w*base_shape_w + base_shape_h*base_shape_h + base_shape_d*base_shape_d))
     for i in 0..<num_texels {
         if base_noise[i * 2] <= 0.0 {
-            true_dist := math.sqrt(grid_b[i]) // grid_b stores squared distances
+            true_dist := math.sqrt(grid_b[i]) // add padding to make sure sdf overshoots
             normalized_dist := true_dist / max_possible_dist
             base_noise[i * 2 + 1] = normalized_dist
         } else {

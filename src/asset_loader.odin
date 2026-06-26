@@ -23,12 +23,16 @@ asset_loader_material :: proc(
   albedo_texture,
   roughness_texture: GpuID,
   shader_name: string,
-  shader_type: ShaderType
+  shader_type: ShaderType,
+  vertex_shader_override := ""
 ) -> Material {
   frag_path, vert_path :=
   fmt.aprintf("./assets/shaders/%s_frag.glsl", shader_name),
   (shader_type == .TWO_DIMENSIONAL) ? "./assets/shaders/quad_vert.glsl" :
   fmt.aprintf("./assets/shaders/%s_vert.glsl", shader_name)
+
+  if vertex_shader_override != "" do vert_path = 
+    fmt.aprintf("./assets/shaders/%s", vertex_shader_override)
 
 
   frag_contents, frag_success := os.read_entire_file_from_filename(frag_path, context.temp_allocator)
