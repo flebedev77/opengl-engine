@@ -3,11 +3,11 @@ layout (location = 0) out vec4 out_frag_color;
 layout (location = 1) out vec4 out_frag_normal;
 
 in vec2 frag_uv;
-in vec3 frag_pos;
 in vec3 frag_normal;
-in vec4 frag_pos_lightspace;
 in vec3 frag_vert_color;
-in vec3 frag_ndc_pos;
+in vec4 frag_pos_viewspace;
+in vec3 frag_pos_ndc;
+
 
 uniform sampler2D albedo_texture;
 uniform sampler2D roughness_texture;
@@ -16,6 +16,7 @@ uniform sampler2D macroshadowmap_texture;
 
 uniform sampler2D screen_texture;
 uniform sampler2D depth_texture;
+uniform sampler2D volumetrics_texture;
 
 uniform vec3 tint;
 uniform vec3 camera_pos;
@@ -31,10 +32,6 @@ uniform vec4 uv;
 
 const float PI = 3.141592653589793;
 
-const float shadow_pcf_border_exponent = 10; // Helps make the transition between nonshadow and shadow more natural and non linear
-const float shadow_pcf_noisiness = 1.0;
-const int shadow_pcf_samples = 5;
-const float ambient_light_intensity = 0.2;
 
 float rand(vec2 co) {
     return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
@@ -77,10 +74,38 @@ vec3 fresnelschlick(float costheta, vec3 f0) {
     return f0 + (1.0 - f0) * pow(clamp(1.0 - costheta, 0.0, 1.0), 5.0);
 }
 
-void main() {
-  // out_frag_normal = texture(depth_texture, frag_uv);
-  // out_frag_color = texture(screen_texture, (frag_ndc_pos.xy * 0.5) + vec2(0.5));
+vec3 project_vec(vec3 v) {
+  vec4 o = projection_matrix * vec4(v, 1);
+  o.xyz /= o.w;
+  return o.xyz;
+}
 
-  // vec3 view_vec = 
+vec2 ndc_to_uv(vec3 n) {
+  return n.xy * 0.5 + vec2(0.5);
+}
+
+const float IOR_air = 1;
+const float IOR_glass = 1.013; // Not real IOR of glass, it is small because of lacking exit refraction
+
+void main() {
+  vec3 view_normal = normalize((view_matrix * vec4(frag_normal, 0)).xyz);
+  vec3 view_vec = normalize(frag_pos_viewspace.xyz);
+  vec3 refracted_vec = refract(view_vec, view_normal, IOR_air/IOR_glass); 
+  refracted_vec = (
+      project_vec(frag_pos_viewspace.xyz + refracted_vec) - frag_pos_ndc.xyz
+      ); 
+  vec3 step_location = frag_pos_ndc;
+  // for (int i = 0; i < 1; i++) {
+    step_location += refracted_vec;
+  //   break;
+  //   if (abs(step_location.x) > 1 || abs(step_location.y) > 1 || abs(step_location.z) > 1) break;
+  //   float depth = texture(depth_texture, ndc_to_uv(step_location)).r;
+  //   if (depth < step_location.z) break;
+  // }
+
+  vec2 uv = ndc_to_uv(step_location);
+  out_frag_color = texture(screen_texture, uv);
+  vec4 volumetrics = texture(volumetrics_texture, uv);
+  out_frag_color = vec4(volumetrics.rgb, 0) + out_frag_color * volumetrics.a;
   return;
 }
