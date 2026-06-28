@@ -85,7 +85,7 @@ vec2 ndc_to_uv(vec3 n) {
 }
 
 const float IOR_air = 1;
-const float IOR_glass = 1.013; // Not real IOR of glass, it is small because of lacking exit refraction
+const float IOR_glass = 1.027; // Not real IOR of glass, it is small because of lacking exit refraction
 const float F0_glass = 0.001;
 
 const vec4 sky_color = vec4(0.494, 0.545, 0.729, 1);

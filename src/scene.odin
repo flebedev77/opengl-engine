@@ -3,6 +3,10 @@ import "core:fmt"
 import "vendor:glfw"
 import gl "vendor:OpenGL"
 
+SceneFlags :: enum {
+  DEBUG_OVERLAY
+}
+
 Scene :: struct {
   camera: Camera,
   player: Player,
@@ -12,7 +16,8 @@ Scene :: struct {
   renderer: ^Renderer,
   resources: Resources,
   delta_time: f32,
-  frame_number: i32
+  frame_number: i32,
+  flags: bit_set[SceneFlags]
 }
 
 scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {

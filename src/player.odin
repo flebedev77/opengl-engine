@@ -27,20 +27,23 @@ Player :: struct {
   debug_movement: bool,
   basis_matrix: Mat4,
   aerodynamics_triangle: [3]Vec4,
-  visual: PlayerVisual
+  visual: PlayerVisual,
+  thrust: f32
 }
 
 player_init :: proc(scene: ^Scene, player: ^Player) {
   // player.position = {0, 0.3, 0}
-  player.position = {0, 10, 0}
+  // player.position = {0, -502.12, 0}
+  player.position = {0, 5502.12, 0}
   player.walk_speed = PLAYER_WALK_SPEED
   player.look_sensitivity = PLAYER_LOOK_SENSITIVITY
   player.is_flying = false
   player.debug_movement = false
   player.camera_pitch = math.PI * 3/2
   player.zoom = 1.2
-  player.mass = 11000
-  player.wing_area = 38
+  player.mass = 110
+  player.wing_area = 100038
+  player.thrust = 1
   player.body_crossectional_area = 2
 
   // player.aerodynamics_triangle[0] = {-1, 0, 0, 1}
@@ -73,9 +76,13 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
     player.is_flying = true
     player.debug_movement = true
   }
-  if glfw.GetKey(GlfwWindow, glfw.KEY_LEFT_CONTROL) > 0 {
+  if glfw.GetKey(GlfwWindow, glfw.KEY_RIGHT_ALT) > 0 {
     player.is_flying = false
     player.debug_movement = false
+  }
+
+  if glfw.GetKey(GlfwWindow, glfw.KEY_LEFT_ALT) > 0 {
+    scene.flags ~= {.DEBUG_OVERLAY}
   }
   
   if glfw.GetKey(GlfwWindow, glfw.KEY_F7) > 0 {
@@ -145,6 +152,15 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
     player.is_flying = !player.is_flying
   }
 
+  if glfw.GetKey(GlfwWindow, glfw.KEY_LEFT_SHIFT) > 0 {
+    player.thrust += 0.01 * scene.delta_time
+  }
+  if glfw.GetKey(GlfwWindow, glfw.KEY_LEFT_CONTROL) > 0 {
+    player.thrust -= 0.01 * scene.delta_time
+  }
+  player.thrust = clamp(player.thrust, 0, 100)
+
+
   player.basis_matrix *= linalg.matrix4_rotate_f32(delta_pitch, {1, 0, 0})
   player.basis_matrix *= linalg.matrix4_rotate_f32(delta_yaw, {0, 1, 0})
   player.basis_matrix *= linalg.matrix4_rotate_f32(delta_roll, {0, 0, 1})
@@ -169,77 +185,47 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
   }
   basis_draw_scale := f32(1)
 
-  if player.is_flying { 
-    player.position += player.velocity * scene.delta_time * 1.1
-    thrust_force := ((local_forward * 2.98) / player.mass) * scene.delta_time
-    player.velocity += thrust_force
-    player.velocity += -GLOBAL_UP * 0.0001 * scene.delta_time
+  if player.is_flying || true { 
+    // thrust_force := ((local_forward * 1.98) / player.mass) * scene.delta_time
+    // player.velocity += thrust_force
+    // player.velocity += -GLOBAL_UP * 0.0001 * scene.delta_time
+    force: Vec3
 
-    debugrenderer_linebatch(
-      &scene.renderer.debug_renderer,
-      player.position,
-      player.position + thrust_force * 6000,
-      {0, 1, 0}
-    )
+    thrust_force := player.mass * local_forward * player.thrust
+    drag_force, lift_force := player_calculate_aero_forces(scene, player)
+    gravity_force := player.mass * Vec3{0, -9.81, 0}
 
+    force += thrust_force + gravity_force + drag_force + lift_force
+    force *= 0.000001
 
-    // DRAG
-    speed_sq := linalg.length2(player.velocity)
-    if (speed_sq < 0.000001) do player.velocity = {0, 0, 0}
-    else {
-      velocity_dir := linalg.normalize(player.velocity)
-      air_density := f32(1.225)
-      Cd := f32(4.4)
+    acceleration := force / player.mass
 
-      aerodynamics_triangle_area := f32(0)
-      { // CROSS SECTION CALCULATIONS
-        wind_view_matrix := linalg.matrix4_look_at_f32(player.velocity, {0, 0, 0}, GLOBAL_UP + {0.00001,0,0})
-        A := wind_view_matrix * player.basis_matrix * player.aerodynamics_triangle[0]
-        B := wind_view_matrix * player.basis_matrix * player.aerodynamics_triangle[1]
-        C := wind_view_matrix * player.basis_matrix * player.aerodynamics_triangle[2]
+    player.velocity += acceleration * scene.delta_time
+    player.position += player.velocity * scene.delta_time
 
-        aerodynamics_triangle_area = abs(linalg.cross((B-A).xy, (C-A).xy) / 2)
-        // Test wing cross section detection
-        // debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position, player.position + GLOBAL_UP * aerodynamics_triangle_area, {1, 0, 0})
-        aerodynamics_triangle_area *= player.wing_area
-      }
+    GROUND_PLANE_Y: f32 : -502.22
+    if player.position.y < GROUND_PLANE_Y {
+      player.position.y = GROUND_PLANE_Y
+      player.velocity.y = 0
+      acceleration.y = 0
+    }
 
-      cross_sectional_area := max(player.body_crossectional_area, aerodynamics_triangle_area)
-      drag := 0.5 * air_density * speed_sq * Cd * cross_sectional_area
-      drag_force := ((-velocity_dir * drag) / player.mass) * scene.delta_time
-      player.velocity += drag_force
-
+    if .DEBUG_OVERLAY in scene.flags {
       debugrenderer_linebatch(
         &scene.renderer.debug_renderer,
         player.position,
-        player.position + drag_force * 6000,
-        {1, 0, 0}
-      )
-
-      // LIFT
-      flight_angle := linalg.dot(velocity_dir, local_forward) 
-      stall_factor := math.min(math.max(0.8-math.abs(local_forward.y) + 0.3, 0), 1)
-      lift_dir := linalg.normalize(linalg.cross(-local_right, velocity_dir))
-
-      lift_coefficient := 0.7 * max(0.0, flight_angle) * stall_factor
-      lift := 0.5 * air_density * speed_sq * player.wing_area * lift_coefficient
-      lift_force := lift_dir * lift / player.mass * scene.delta_time
-      player.velocity += lift_force
-
-
-      debugrenderer_linebatch(
-        &scene.renderer.debug_renderer,
-        player.position,
-        player.position + lift_force * 6000,
-        {0, 1, 1}
+        player.position + thrust_force * 6000,
+        {0, 1, 0}
       )
     }
 
   }
 
-  // debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position, player.position + local_forward * basis_draw_scale, {0, 0, 1})
-  // debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position, player.position + local_up * basis_draw_scale, {0, 1, 0})
-  // debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position, player.position + local_right * basis_draw_scale, {1, 0, 0})
+  if .DEBUG_OVERLAY in scene.flags {
+    debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position, player.position + local_forward * basis_draw_scale, {0, 0, 1})
+    debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position, player.position + local_up * basis_draw_scale, {0, 1, 0})
+    debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position, player.position + local_right * basis_draw_scale, {1, 0, 0})
+  }
 }
 
 player_debug_update :: proc(scene: ^Scene, player: ^Player) {
@@ -345,4 +331,100 @@ player_render :: proc(scene: ^Scene, player: ^Player, material_override: ^Materi
     )
   }
 
+}
+
+player_calculate_drag_coefficient :: proc(player: ^Player) -> f32 {
+  return 2
+}
+
+player_calculate_aero_forces :: proc(scene: ^Scene, player: ^Player) -> (Vec3, Vec3) {
+  speed_sq := linalg.length2(player.velocity)
+  if speed_sq < EPSILON do return {0, 0, 0}, {0, 0, 0}
+
+  velocity_direction := player.velocity / math.sqrt(speed_sq)
+
+  drag_coefficient := #force_inline player_calculate_drag_coefficient(player)
+
+  local_forward := Vec3{
+    player.basis_matrix[2][0],
+    player.basis_matrix[2][1],
+    player.basis_matrix[2][2]
+  }
+  local_up := Vec3{
+    player.basis_matrix[1][0],
+    player.basis_matrix[1][1],
+    player.basis_matrix[1][2]
+  }
+  local_right := Vec3{
+    player.basis_matrix[0][0],
+    player.basis_matrix[0][1],
+    player.basis_matrix[0][2]
+  }
+  wind_view_matrix := linalg.matrix4_look_at_f32({0, 0, 0}, player.velocity, local_forward)
+  A := wind_view_matrix * player.basis_matrix * player.aerodynamics_triangle[0]
+  B := wind_view_matrix * player.basis_matrix * player.aerodynamics_triangle[1]
+  C := wind_view_matrix * player.basis_matrix * player.aerodynamics_triangle[2]
+  area := abs(linalg.cross((B-A).xy, (C-A).xy))/2
+  area *= player.wing_area
+
+  drag_force := -velocity_direction * (0.5 * drag_coefficient * SIMULATION_AIR_DENSITY * speed_sq * area)
+
+  forward_speed := linalg.dot(player.velocity, local_forward)
+  upward_speed  := linalg.dot(player.velocity, local_up)
+
+  angle_of_attack := math.atan2(-upward_speed, forward_speed)
+
+  MAX_LIFT_ANGLE :: 0.26 // ~15 degrees
+  STALL_ANGLE    :: 0.35 // ~20 degrees
+  MAX_CL         :: 1.2  // Typical max lift coefficient for a small plane
+
+  abs_aoa := math.abs(angle_of_attack)
+  lift_coefficient : f32 = 0.0
+
+  if abs_aoa < MAX_LIFT_ANGLE {
+    // Linear lift generation phase
+    lift_coefficient = (abs_aoa / MAX_LIFT_ANGLE) * MAX_CL
+  } else if abs_aoa < STALL_ANGLE {
+    // Post-peak stall drop-off phase
+    t := (abs_aoa - MAX_LIFT_ANGLE) / (STALL_ANGLE - MAX_LIFT_ANGLE)
+    lift_coefficient = math.max(0.2, (1.0 - t) * MAX_CL) // Drops to 0.2 at full stall
+  } else {
+    // Completely stalled wing (flat plate behavior)
+    lift_coefficient = 0.2 
+  }
+
+  if angle_of_attack < 0.0 {
+    lift_coefficient = -lift_coefficient
+  }
+
+  lift_dir := linalg.normalize(linalg.cross(velocity_direction, local_right))
+  if linalg.dot(lift_dir, local_up) < 0.0 {
+    lift_dir = -lift_dir
+  }
+
+  lift_force := lift_dir * (0.5 * SIMULATION_AIR_DENSITY * speed_sq * player.wing_area * lift_coefficient)
+
+  if .DEBUG_OVERLAY in scene.flags {
+    // TODO: Draw this in screen space
+  debugrenderer_linebatch(
+    &scene.renderer.debug_renderer,
+    player.position + local_right * 2,
+    player.position + GLOBAL_UP * area + local_right * 2, {0, 0, 1})
+
+
+  debugrenderer_linebatch(
+    &scene.renderer.debug_renderer,
+    player.position,
+    player.position + drag_force * -velocity_direction, {1, 0, 0})
+
+
+  debugrenderer_linebatch(
+    &scene.renderer.debug_renderer,
+    player.position,
+    player.position + lift_force * lift_dir, {0, 1, 1})
+  }
+
+
+
+  return drag_force, lift_force
 }

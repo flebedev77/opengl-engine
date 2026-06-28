@@ -149,7 +149,7 @@ CloudSettings :: struct {
 }
 
 renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
-  renderer.sun_position = {1, -0.5, 1}//10, 1}
+  renderer.sun_position = {1, 10, 1}//10, 1}
 
   gl.LineWidth(5.0)
   gl.Enable(gl.DEPTH_TEST)
@@ -373,8 +373,8 @@ renderer_render :: proc(renderer: ^Renderer) {
   renderer.reload_shaders = false
   free_all(context.temp_allocator)
 
-  θ := f32(renderer.scene.frame_number) * 0.0001 + math.PI * 0.5
-  renderer.sun_position = {0, math.sin(θ), math.cos(θ)}
+  // θ := f32(renderer.scene.frame_number) * 0.0001 + math.PI * 0.5
+  // renderer.sun_position = {0, math.sin(θ), math.cos(θ)}
 }
 
 renderer_bind_and_clear_framebuffer :: proc(renderer: ^Renderer, framebuffer: Framebuffer) {
@@ -551,6 +551,7 @@ mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}) {
      material.is_transparent {
     gl.Uniform1i(shader.parameters.screen_texture_location, 2)
     gl.Uniform1i(shader.parameters.depth_texture_location, 3)
+    gl.Uniform1i(shader.parameters.volumetrics_texture_location, 6)
   }
   if material.shader.type == .TWO_DIMENSIONAL {
     gl.BindVertexArray(mesh.vao)
@@ -559,7 +560,6 @@ mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}) {
     gl.Uniform1i(shader.parameters.blur_texture_location, 5)
     gl.Uniform1i(shader.parameters.base_cloud_noise_texture_location, 5)
     gl.Uniform1i(shader.parameters.detail_cloud_noise_texture_location, 6)
-    gl.Uniform1i(shader.parameters.volumetrics_texture_location, 6)
     gl.Uniform1i(shader.parameters.volumetric_history_texture_location, 7)
     gl.Uniform1i(shader.parameters.volumetric_motion_vectors_texture_location, 8)
     gl.Uniform1i(shader.parameters.blue_noise_texture_location, 8)

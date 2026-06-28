@@ -21,6 +21,9 @@ GL_VERSION_MINOR :: 5
 PLAYER_WALK_SPEED :: 0.006
 PLAYER_LOOK_SENSITIVITY :: Vec2{0.0001, 0.0002}
 
+EPSILON : f32 : 0.000001
+SIMULATION_AIR_DENSITY : f32 : 1.225
+
 VAO :: distinct u32
 VBO :: distinct u32
 
@@ -117,11 +120,12 @@ main :: proc() {
     is_valid = true,
     shader = sky_shader
   }
+  uvf := f32(16)
   ground_material := Material{
     is_valid = true,
     albedo_texture = grass_texture,
     roughness_texture = black_texture,
-    uv = {0, 0, 2600, 2600},
+    uv = {0, 0, uvf*2600, uvf*2600},
     shader = renderer.default_shader,
     roughness_strength = 0,
     metallic_strength = 0

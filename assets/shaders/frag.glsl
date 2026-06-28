@@ -249,6 +249,8 @@ float calculate_shadow(vec3 proj_coords, sampler2D shadowmap) {
 
 void main() {
   out_frag_normal = vec4(frag_normal, 0);
+  // out_frag_color = vec4(frag_normal, 0);
+  // return;
 
   vec4 textureSample = texture(albedo_texture, (frag_uv + uv.xy) * uv.zw);
   vec3 albedo = textureSample.rgb * tint * frag_vert_color;

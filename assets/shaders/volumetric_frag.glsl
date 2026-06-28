@@ -34,8 +34,8 @@ uniform int frame_number;
 
 uniform float cloud_dome_radius;
 
-const float cloud_layer_thickness = 1000;//(186-10);
-const float cloud_height_base = 10;
+const float cloud_layer_thickness = 1500;//(186-10);
+const float cloud_height_base = 100;
 float cloud_height_apex = cloud_height_base+cloud_layer_thickness;
 // const float cloud_dome_radius = 1000000;
 vec3 cloud_dome_position = vec3(0, -(cloud_dome_radius-cloud_height_base), 0);
@@ -46,7 +46,7 @@ const float cloud_minimum_height = -3500;
 ivec3 base_cloud_noise_size = ivec3(128*6, 16, 128*6);
 // ivec3 base_cloud_noise_size = ivec3(64);
 
-#define STEPS_CLOUDS 64
+#define STEPS_CLOUDS 128//64
 #define STEPS_CLOUDS_LIGHTING 5
 #define CLOUD_DENSITY 1.0//0.5
 #define CLOUD_LIGHT_DENSITY 0.8
@@ -54,13 +54,13 @@ ivec3 base_cloud_noise_size = ivec3(128*6, 16, 128*6);
 #define CLOUD_LARGE_STEP_LENGTH 800//265.5
 #define CLOUD_LIGHT_STEP_LENGTH 180.6
 #define MIN_DENSITY 0//0.012//0.01
-#define SUN_INTENSITY 2.8//0
+#define SUN_INTENSITY 6.3//0
 
 #define BACKSCATTER_MIN 0.52
 #define BACKSCATTER_MAX 0.55
 
-#define EXTINCTION_FACTOR 0.9
-#define SCATTERING_FACTOR (EXTINCTION_FACTOR-0.001)
+#define EXTINCTION_FACTOR 1.3
+#define SCATTERING_FACTOR (EXTINCTION_FACTOR-0.701)
 
 #define POWDER_FACTOR 102.2
 #define POWDER_STRENGTH 0.8
@@ -131,7 +131,7 @@ float rand(vec2 co){
   frame_offset = fract(float(frame_number) * golden_ratio); 
 // #endif
   co.x *= aspect;
-  return fract(texture(blue_noise_texture, co * 0.3327486).r * 100 + frame_offset);
+  return fract(texture(blue_noise_texture, co * 7.3327486).r * 100 + frame_offset);
 }
 
 vec3 rand_vec_three(vec2 p) {
@@ -190,12 +190,17 @@ vec2 sample_cloud_density(vec3 p) {
     sdf_step_length = max_dist * cell_size;
   }
   if (n.r > 0) {
-    p += vec3(cloud_drift, -cloud_drift * 0.3, cloud_drift);
-    float d = dnoise(p * 0.002) * 0.92;
-    d += dnoise(p * 0.0022) * 0.82;
-    d += dnoise(p * 0.0026) * 0.42;
-    d += dnoise(p * 0.003) * 0.32;
+    vec3 detail_p = p / cloud_layer_thickness;
+    // p += vec3(cloud_drift, -cloud_drift * 0.3, cloud_drift);
+    // float d = dnoise(p * 0.002) * 0.92;
+    // d += dnoise(p * 0.0022) * 0.82;
+    // d += dnoise(p * 0.0026) * 0.42;
+    // d += dnoise(p * 0.003) * 0.32;
     // d += dnoise(p * 0.006) * 0.32;
+    float d = dnoise(detail_p * 0.9) * 0.4;
+    d += dnoise(detail_p * 1.3) * 1.3;
+    d += dnoise(detail_p * 1.7) * 0.8;
+    d += dnoise(detail_p * 2.5) * 0.9;
 
     n.r = clamp(n.r-d*0.14, 0, 1);
     // n.r *= 0.18;
@@ -210,7 +215,7 @@ vec2 sample_cloud_density(vec3 p) {
 #define AMBIENT_TOP_COLOR vec3(0.9)
 #define AMBIENT_BOTTOM_COEFFICIENT 0.2
 #define AMBIENT_BOTTOM_COLOR vec3(0.35, 0.35, 0.35)
-#define AMBIENT_CONSTANT_COEFFICIENT 1.0
+#define AMBIENT_CONSTANT_COEFFICIENT 1.8
 #define AMBIENT_CONSTANT_COLOR vec3(1., 1., 1.2)//vec3(0.260, 0.325, 0.489)
 #define AMBIENT_OCCLUSION_DISTANCE 2
 #define AMBIENT_OCCLUSION_STRENGTH 2.5
