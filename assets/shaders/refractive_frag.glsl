@@ -86,10 +86,20 @@ vec2 ndc_to_uv(vec3 n) {
 
 const float IOR_air = 1;
 const float IOR_glass = 1.013; // Not real IOR of glass, it is small because of lacking exit refraction
+const float F0_glass = 0.001;
+
+const vec4 sky_color = vec4(0.494, 0.545, 0.729, 1);
 
 void main() {
   vec3 view_normal = normalize((view_matrix * vec4(frag_normal, 0)).xyz);
   vec3 view_vec = normalize(frag_pos_viewspace.xyz);
+
+  float fresnel = fresnelschlick(dot(-view_vec, view_normal), vec3(F0_glass)).r;
+  if (fresnel > 0.9) {
+    out_frag_color = sky_color;
+    return;
+  }
+
   vec3 refracted_vec = refract(view_vec, view_normal, IOR_air/IOR_glass); 
   refracted_vec = (
       project_vec(frag_pos_viewspace.xyz + refracted_vec) - frag_pos_ndc.xyz
@@ -107,5 +117,7 @@ void main() {
   out_frag_color = texture(screen_texture, uv);
   vec4 volumetrics = texture(volumetrics_texture, uv);
   out_frag_color = vec4(volumetrics.rgb, 0) + out_frag_color * volumetrics.a;
+
+  out_frag_color = mix(out_frag_color, sky_color, fresnel);
   return;
 }
