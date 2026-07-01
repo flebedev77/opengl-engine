@@ -34,8 +34,8 @@ uniform int frame_number;
 
 uniform float cloud_dome_radius;
 
-const float cloud_layer_thickness = 1500;//(186-10);
-const float cloud_height_base = 100;
+const float cloud_layer_thickness = 1300;//(186-10);
+const float cloud_height_base = 1000;
 float cloud_height_apex = cloud_height_base+cloud_layer_thickness;
 // const float cloud_dome_radius = 1000000;
 vec3 cloud_dome_position = vec3(0, -(cloud_dome_radius-cloud_height_base), 0);
@@ -168,8 +168,9 @@ float get_height_mask(float y, float layerMin, float layerMax, float feather) {
 }
 
 vec2 sample_cloud_density(vec3 p) {
-  float cloud_drift = float(frame_number) * 0.2;
+  float cloud_drift = float(frame_number) * 0.2 + 1e5;
   p.x += cloud_drift;
+  p.z += cloud_drift * 0.32;
   float y = p.y - cloud_height_base;// - 100;
   float width_to_height = base_cloud_noise_size.x / base_cloud_noise_size.y;
   float depth_to_height = base_cloud_noise_size.z / base_cloud_noise_size.y;
@@ -190,13 +191,9 @@ vec2 sample_cloud_density(vec3 p) {
     sdf_step_length = max_dist * cell_size;
   }
   if (n.r > 0) {
-    vec3 detail_p = p / cloud_layer_thickness;
-    // p += vec3(cloud_drift, -cloud_drift * 0.3, cloud_drift);
-    // float d = dnoise(p * 0.002) * 0.92;
-    // d += dnoise(p * 0.0022) * 0.82;
-    // d += dnoise(p * 0.0026) * 0.42;
-    // d += dnoise(p * 0.003) * 0.32;
-    // d += dnoise(p * 0.006) * 0.32;
+    vec3 detail_p = vec3(p.x, y, p.z) / cloud_layer_thickness;
+    detail_p += vec3(cloud_drift, -cloud_drift * 0.3, cloud_drift) * (1/cloud_layer_thickness);
+
     float d = dnoise(detail_p * 0.9) * 0.4;
     d += dnoise(detail_p * 1.3) * 1.3;
     d += dnoise(detail_p * 1.7) * 0.8;

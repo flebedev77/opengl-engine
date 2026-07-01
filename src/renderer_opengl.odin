@@ -1,3 +1,10 @@
+// Mesh Texture locations
+// 0 -> Albedo
+// 1 -> Shadowmap
+// 2 -> Roughness
+// 3 -> Secondary Albedo
+// 7 -> Macro Shadowmap
+
 package main
 import "core:os"
 import "core:fmt"
@@ -35,6 +42,7 @@ ShaderParameters :: struct {
   depth_texture_location,
   normal_texture_location,
   albedo_texture_location,
+  secondary_albedo_texture_location,
   roughness_texture_location,
   shadowmap_texture_location,
   shadowmap_matrix_location,
@@ -85,8 +93,8 @@ Shader :: struct {
 
 Material :: struct {
   is_valid: bool,
-  roughness_texture,
-  albedo_texture: GpuID,
+  roughness_texture: GpuID,
+  albedo_textures: [3]GpuID, //Multiple albedo textures used for terrain
   albedo_tint: Vec3,
   uv: Vec4,
   shader: Shader,
@@ -182,7 +190,7 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   framebuffer_init(&renderer.blur_framebuffer, effects_resolution_int, {.COLOR}, "blur", .TWO_DIMENSIONAL)
   framebuffer_init(&renderer.downscaled_depth_framebuffer, effects_resolution_int, {.REVERSED_Z, .DEPTH}, "", .THREE_DIMENSIONAL)
 
-  renderer.cloud_settings.cloud_dome_radius = 1e6
+  renderer.cloud_settings.cloud_dome_radius = 1e5
 
   renderer.cloud_settings.cloud_noise = bake_cloud_noise()
   // renderer.volumetrics_taa_frames = 128
@@ -587,9 +595,13 @@ mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}) {
     }
     gl.Uniform4fv(shader.parameters.uv_location, 1, &material.uv[0]);
 
-    if material.albedo_texture != 0 {
+    if material.albedo_textures[0] != 0 {
       gl.ActiveTexture(gl.TEXTURE0)
-      gl.BindTexture(gl.TEXTURE_2D, material.albedo_texture)
+      gl.BindTexture(gl.TEXTURE_2D, material.albedo_textures[0])
+    }
+    if material.albedo_textures[1] != 0 {
+      gl.ActiveTexture(gl.TEXTURE3)
+      gl.BindTexture(gl.TEXTURE_2D, material.albedo_textures[1])
     }
     if material.roughness_texture != 0 {
       gl.ActiveTexture(gl.TEXTURE2)
@@ -597,6 +609,7 @@ mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}) {
     }
 
     gl.Uniform1i(shader.parameters.albedo_texture_location, 0)
+    gl.Uniform1i(shader.parameters.secondary_albedo_texture_location, 3)
     gl.Uniform1i(shader.parameters.roughness_texture_location, 2)
 
     gl.Uniform1f(shader.parameters.roughness_strength_location, material.roughness_strength)
@@ -697,6 +710,7 @@ shader_init :: proc(shader: ^Shader) {
       shader.parameters.uv_location = gl.GetUniformLocation(shader.program, "uv");
       shader.parameters.tint_location = gl.GetUniformLocation(shader.program, "tint")
       shader.parameters.albedo_texture_location = gl.GetUniformLocation(shader.program, "albedo_texture")
+      shader.parameters.secondary_albedo_texture_location = gl.GetUniformLocation(shader.program, "secondary_albedo_texture")
       shader.parameters.shadowmap_texture_location = gl.GetUniformLocation(shader.program, "shadowmap_texture")
       shader.parameters.light_position_location = gl.GetUniformLocation(shader.program, "light_pos")
       shader.parameters.camera_position_location = gl.GetUniformLocation(shader.program, "camera_pos")
@@ -784,6 +798,11 @@ texture_load :: proc(filepath: string, srgb := false) -> u32 {
 
 
   return texture
+}
+
+textures_delete :: proc(t: ..GpuID) {
+  t := t
+  gl.DeleteTextures(i32(len(t)), &t[0])
 }
 
 Framebuffer :: struct {

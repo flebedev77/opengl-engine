@@ -52,7 +52,7 @@ asset_loader_material :: proc(
   )
   return Material{
     is_valid = true,
-    albedo_texture = albedo_texture,
+    albedo_textures = albedo_texture,
     roughness_texture = roughness_texture,
     shader = shader 
   }

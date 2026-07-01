@@ -20,7 +20,10 @@ Player :: struct {
   wing_area,
   body_crossectional_area,
   walk_speed: f32,
+  debug_is_fast: bool,
   position,
+  freecam_position,
+  freecam_velocity,
   velocity: Vec3,
   is_onground: bool,
   is_flying: bool,
@@ -32,16 +35,16 @@ Player :: struct {
 }
 
 player_init :: proc(scene: ^Scene, player: ^Player) {
-  // player.position = {0, 0.3, 0}
+  player.position = {0, 0.3, 0}
   // player.position = {0, -502.12, 0}
-  player.position = {0, 5502.12, 0}
+  // player.position = {0, 5502.12, 0}
   player.walk_speed = PLAYER_WALK_SPEED
   player.look_sensitivity = PLAYER_LOOK_SENSITIVITY
   player.is_flying = false
   player.debug_movement = false
   player.camera_pitch = math.PI * 3/2
-  player.zoom = 1.2
-  player.mass = 110
+  player.zoom = 0.3
+  player.mass = 310
   player.wing_area = 100038
   player.thrust = 1
   player.body_crossectional_area = 2
@@ -59,7 +62,7 @@ player_init :: proc(scene: ^Scene, player: ^Player) {
 
   player_material := Material{
     is_valid = true,
-    albedo_texture = texture_load("assets/models/mig/textures/BaseColor.png", true),
+    albedo_textures = texture_load("assets/models/mig/textures/BaseColor.png", true),
     roughness_texture = texture_load("assets/models/mig/textures/metallic.png"),
     shader = scene.renderer.default_shader,
     metallic_strength = 1,
@@ -72,9 +75,61 @@ player_init :: proc(scene: ^Scene, player: ^Player) {
 }
 
 player_update :: proc(scene: ^Scene, player: ^Player) {
+  local_forward := Vec3{
+    player.basis_matrix[2][0],
+    player.basis_matrix[2][1],
+    player.basis_matrix[2][2]
+  }
+  local_up := Vec3{
+    player.basis_matrix[1][0],
+    player.basis_matrix[1][1],
+    player.basis_matrix[1][2]
+  }
+  local_right := Vec3{
+    player.basis_matrix[0][0],
+    player.basis_matrix[0][1],
+    player.basis_matrix[0][2]
+  }
+  basis_draw_scale := f32(0.05)
+
+  if player.is_flying && !player.debug_movement { 
+    force: Vec3
+
+    thrust_force := player.mass * local_forward * player.thrust
+    drag_force, lift_force := player_calculate_aero_forces(scene, player)
+    gravity_force := player.mass * Vec3{0, -9.81, 0}
+
+    force += thrust_force + gravity_force + drag_force + lift_force
+    force *= 0.000001
+
+    acceleration := force / player.mass
+
+    player.velocity += acceleration * scene.delta_time
+    player.position += player.velocity * scene.delta_time
+
+    GROUND_PLANE_Y: f32 : -502.22
+    if player.position.y < GROUND_PLANE_Y {
+      player.position.y = GROUND_PLANE_Y
+      player.velocity.y = 0
+      acceleration.y = 0
+    }
+
+    if .DEBUG_OVERLAY in scene.flags {
+      debugrenderer_linebatch(
+        &scene.renderer.debug_renderer,
+        player.position,
+        player.position + thrust_force * 6000,
+        {0, 1, 0}
+      )
+    }
+
+  }
+
+
   if glfw.GetKey(GlfwWindow, glfw.KEY_TAB) > 0 {
     player.is_flying = true
     player.debug_movement = true
+    player.freecam_position = player.position
   }
   if glfw.GetKey(GlfwWindow, glfw.KEY_RIGHT_ALT) > 0 {
     player.is_flying = false
@@ -83,6 +138,9 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
 
   if glfw.GetKey(GlfwWindow, glfw.KEY_LEFT_ALT) > 0 {
     scene.flags ~= {.DEBUG_OVERLAY}
+  }
+  if glfw.GetKey(GlfwWindow, glfw.KEY_APOSTROPHE) > 0 {
+    player.debug_is_fast = !player.debug_is_fast
   }
   
   if glfw.GetKey(GlfwWindow, glfw.KEY_F7) > 0 {
@@ -117,7 +175,7 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
     player.position,
     {0, 1, 0}
   )
-  player.zoom -= scene.mouse.scroll * 0.1
+  player.zoom -= scene.mouse.scroll * 0.01
 
   moveinput: Vec3
   rotation_speed := f32(0.03) // TODO: Make this variable depending on drag/lift from elevons
@@ -168,58 +226,6 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
   scene.camera.position = player.position + look_direction * player.zoom
   scene.camera.view_matrix = player.viewmatrix
 
-  local_forward := Vec3{
-    player.basis_matrix[2][0],
-    player.basis_matrix[2][1],
-    player.basis_matrix[2][2]
-  }
-  local_up := Vec3{
-    player.basis_matrix[1][0],
-    player.basis_matrix[1][1],
-    player.basis_matrix[1][2]
-  }
-  local_right := Vec3{
-    player.basis_matrix[0][0],
-    player.basis_matrix[0][1],
-    player.basis_matrix[0][2]
-  }
-  basis_draw_scale := f32(1)
-
-  if player.is_flying || true { 
-    // thrust_force := ((local_forward * 1.98) / player.mass) * scene.delta_time
-    // player.velocity += thrust_force
-    // player.velocity += -GLOBAL_UP * 0.0001 * scene.delta_time
-    force: Vec3
-
-    thrust_force := player.mass * local_forward * player.thrust
-    drag_force, lift_force := player_calculate_aero_forces(scene, player)
-    gravity_force := player.mass * Vec3{0, -9.81, 0}
-
-    force += thrust_force + gravity_force + drag_force + lift_force
-    force *= 0.000001
-
-    acceleration := force / player.mass
-
-    player.velocity += acceleration * scene.delta_time
-    player.position += player.velocity * scene.delta_time
-
-    GROUND_PLANE_Y: f32 : -502.22
-    if player.position.y < GROUND_PLANE_Y {
-      player.position.y = GROUND_PLANE_Y
-      player.velocity.y = 0
-      acceleration.y = 0
-    }
-
-    if .DEBUG_OVERLAY in scene.flags {
-      debugrenderer_linebatch(
-        &scene.renderer.debug_renderer,
-        player.position,
-        player.position + thrust_force * 6000,
-        {0, 1, 0}
-      )
-    }
-
-  }
 
   if .DEBUG_OVERLAY in scene.flags {
     debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position, player.position + local_forward * basis_draw_scale, {0, 0, 1})
@@ -248,7 +254,7 @@ player_debug_update :: proc(scene: ^Scene, player: ^Player) {
   }
 
 
-  player.viewmatrix = linalg.matrix4_look_at_f32(player.position, player.position + look_direction, {0, 1, 0})
+  player.viewmatrix = linalg.matrix4_look_at_f32(player.freecam_position, player.freecam_position + look_direction, {0, 1, 0})
 
   forward := linalg.normalize(Vec3{look_direction.x, 0, look_direction.z}) 
 
@@ -276,46 +282,49 @@ player_debug_update :: proc(scene: ^Scene, player: ^Player) {
     moveinput += {0, -1, 0}
   }
 
-  if !player.is_flying && player.position.y + player.velocity.y <= 0.6 {
-    player.position.y = 0.6
-    player.velocity.y = 0.0
+  if !player.is_flying && player.freecam_position.y + player.freecam_velocity.y <= 0.6 {
+    player.freecam_position.y = 0.6
+    player.freecam_velocity.y = 0.0
     player.is_onground = true
   }
 
   if !player.is_flying && glfw.GetKey(GlfwWindow, glfw.KEY_SPACE) > 0 && player.is_onground {
     player.is_onground = false 
-    player.velocity.y = 0.14
+    player.freecam_velocity.y = 0.14
   }
 
 
+  if player.debug_is_fast do player.walk_speed = PLAYER_WALK_SPEED + 1
+  else do player.walk_speed = PLAYER_WALK_SPEED
+
   if linalg.length2(moveinput) > 0 &&
-    linalg.length(player.velocity.xz) < player.walk_speed {
+    linalg.length(player.freecam_velocity.xz) < player.walk_speed {
       moveinput = linalg.normalize(moveinput)
-      if player.is_flying && math.abs(player.velocity.y) > player.walk_speed {
+      if player.is_flying && math.abs(player.freecam_velocity.y) > player.walk_speed {
         moveinput *= 0
       }
 
-      player.velocity += moveinput * player.walk_speed * 0.5
+      player.freecam_velocity += moveinput * player.walk_speed * 0.5
     }
 
 
     if !player.is_flying {
-      player.velocity.y -= 0.004
+      player.freecam_velocity.y -= 0.004
     } else {
-      player.velocity.y *= 0.9
+      player.freecam_velocity.y *= 0.9
     }
-    player.velocity.xz *= 0.9
-    player.position += player.velocity
-    scene.camera.position = player.position
+    player.freecam_velocity.xz *= 0.9
+    player.freecam_position += player.freecam_velocity
+    scene.camera.position = player.freecam_position
     scene.camera.view_matrix = player.viewmatrix
 }
 
 player_render :: proc(scene: ^Scene, player: ^Player, material_override: ^Material = {}) {
-  if player.debug_movement {
-    return
-  }
+  // if player.debug_movement {
+  //   return
+  // }
 
-  scale := f32(0.01)
+  scale := f32(0.001)
   player.visual.mesh.model_matrix = identity_matrix() 
   player.visual.mesh.model_matrix *= translation_matrix(player.position)
   player.visual.mesh.model_matrix *= scale_matrix({scale, scale, scale})
@@ -415,13 +424,13 @@ player_calculate_aero_forces :: proc(scene: ^Scene, player: ^Player) -> (Vec3, V
   debugrenderer_linebatch(
     &scene.renderer.debug_renderer,
     player.position,
-    player.position + drag_force * -velocity_direction, {1, 0, 0})
+    player.position + drag_force, {1, 0, 0})
 
 
   debugrenderer_linebatch(
     &scene.renderer.debug_renderer,
     player.position,
-    player.position + lift_force * lift_dir, {0, 1, 1})
+    player.position + lift_force, {0, 1, 1})
   }
 
 

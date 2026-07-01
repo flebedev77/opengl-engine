@@ -40,6 +40,11 @@ float rand(vec2 co) {
 vec2 randtwo(vec2 co) {
   return vec2(rand(co), rand(co + frag_uv)) * 2 - 1;
 }
+vec3 randthree(vec2 co) {
+  return vec3(
+rand(co), rand(co + frag_uv), rand(co * 43 + vec2(32, 65))
+      ) * 2 - 1;
+}
 
 float distribution_ggx(vec3 n, vec3 h, float roughness) {
     float a = roughness*roughness;
@@ -74,8 +79,8 @@ vec3 fresnelschlick(float costheta, vec3 f0) {
     return f0 + (1.0 - f0) * pow(clamp(1.0 - costheta, 0.0, 1.0), 5.0);
 }
 
-vec3 project_vec(vec3 v) {
-  vec4 o = projection_matrix * vec4(v, 1);
+vec3 project_vec(vec3 v, float movable) {
+  vec4 o = projection_matrix * vec4(v, movable);
   o.xyz /= o.w;
   return o.xyz;
 }
@@ -85,13 +90,13 @@ vec2 ndc_to_uv(vec3 n) {
 }
 
 const float IOR_air = 1;
-const float IOR_glass = 1.027; // Not real IOR of glass, it is small because of lacking exit refraction
+const float IOR_glass = 1.507; // Not real IOR of glass, it is small because of lacking exit refraction
 const float F0_glass = 0.001;
 
 const vec4 sky_color = vec4(0.494, 0.545, 0.729, 1);
 
 void main() {
-  vec3 view_normal = normalize((view_matrix * vec4(frag_normal, 0)).xyz);
+  vec3 view_normal = normalize(mat3(view_matrix) * frag_normal);
   vec3 view_vec = normalize(frag_pos_viewspace.xyz);
 
   float fresnel = fresnelschlick(dot(-view_vec, view_normal), vec3(F0_glass)).r;
@@ -100,24 +105,36 @@ void main() {
     return;
   }
 
-  vec3 refracted_vec = refract(view_vec, view_normal, IOR_air/IOR_glass); 
-  refracted_vec = (
-      project_vec(frag_pos_viewspace.xyz + refracted_vec) - frag_pos_ndc.xyz
-      ); 
-  vec3 step_location = frag_pos_ndc;
-  // for (int i = 0; i < 1; i++) {
-    step_location += refracted_vec;
-  //   break;
-  //   if (abs(step_location.x) > 1 || abs(step_location.y) > 1 || abs(step_location.z) > 1) break;
-  //   float depth = texture(depth_texture, ndc_to_uv(step_location)).r;
-  //   if (depth < step_location.z) break;
-  // }
+  vec3 view_refracted = refract(
+      -view_vec,
+      (view_normal),
+      IOR_air / IOR_glass
+  );
 
-  vec2 uv = ndc_to_uv(step_location);
-  out_frag_color = texture(screen_texture, uv);
-  vec4 volumetrics = texture(volumetrics_texture, uv);
-  out_frag_color = vec4(volumetrics.rgb, 0) + out_frag_color * volumetrics.a;
+  vec3 projected_base = frag_pos_ndc;
+  vec3 projected_refracted = project_vec(frag_pos_viewspace.xyz + view_refracted, 0);
+  projected_refracted = normalize(projected_refracted - projected_base) * 0.0001;// * (2 / 10);
+  vec3 projected_refracted_surface = projected_base;// + projected_refracted * rand(frag_uv) * 0.8;
+  int k = 2;
+  for (int i = 0; i < k; i++) {
+    projected_refracted_surface += projected_refracted;
+
+    vec2 current_uv = ndc_to_uv(projected_refracted_surface);
+    if (current_uv.x < 0 || current_uv.x > 1 || current_uv.y < 0 || current_uv.y > 1) break;
+
+    float depth = texture(depth_texture, current_uv).r;
+    if (projected_refracted_surface.z <= depth) break;
+    
+    // if (i == k-1) {
+    //   out_frag_color = vec4(1, 0, 0, 1);
+    //   return;
+    // }
+  }
+  vec2 refracted_uv = ndc_to_uv(projected_refracted_surface);
+
+  out_frag_color = texture(screen_texture, refracted_uv);
+  vec4 volumetrics = texture(volumetrics_texture, refracted_uv);
+  out_frag_color = vec4(volumetrics.rgb, 0.0) + out_frag_color * volumetrics.a;
 
   out_frag_color = mix(out_frag_color, sky_color, fresnel);
-  return;
 }
