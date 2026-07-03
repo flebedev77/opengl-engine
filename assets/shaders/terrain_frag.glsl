@@ -254,7 +254,7 @@ void main() {
   // out_frag_color = vec4(frag_normal, 0);
   // return;
 
-  vec4 textureSample = (frag_pos_objectspace.y > 0.02) ? texture(albedo_texture, (frag_uv + uv.xy) * uv.zw) :
+  vec4 textureSample = (frag_pos_objectspace.y > 0.04) ? texture(albedo_texture, (frag_uv + uv.xy) * uv.zw) :
     texture(secondary_albedo_texture, (frag_uv + uv.xy) * uv.zw);
   vec3 albedo = textureSample.rgb * tint * frag_vert_color;
 

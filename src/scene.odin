@@ -59,7 +59,7 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
     roughness_strength = 0,
     metallic_strength = 0
   }
-  uvf := f32(0.08)
+  uvf := f32(0.18)
   ground_material := Material{
     is_valid = true,
     albedo_textures = {grass_texture, dirt_texture, 0},

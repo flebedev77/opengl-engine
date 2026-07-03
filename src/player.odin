@@ -1,6 +1,7 @@
 package main
 import "core:math"
 import "core:math/linalg"
+import "core:fmt"
 
 import "vendor:glfw"
 
@@ -35,7 +36,7 @@ Player :: struct {
 }
 
 player_init :: proc(scene: ^Scene, player: ^Player) {
-  player.position = {0, 0.3, 0}
+  player.position = {-150, -2.96, 0}
   // player.position = {0, -502.12, 0}
   // player.position = {0, 5502.12, 0}
   player.walk_speed = PLAYER_WALK_SPEED
@@ -106,12 +107,11 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
 
     player.velocity += acceleration * scene.delta_time
     player.position += player.velocity * scene.delta_time
-
-    GROUND_PLANE_Y: f32 : -502.22
+    GROUND_PLANE_Y: f32 : -2.98
     if player.position.y < GROUND_PLANE_Y {
       player.position.y = GROUND_PLANE_Y
       player.velocity.y = 0
-      acceleration.y = 0
+      // acceleration.y = 0
     }
 
     if .DEBUG_OVERLAY in scene.flags {
