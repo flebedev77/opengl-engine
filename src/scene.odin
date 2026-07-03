@@ -94,6 +94,11 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
   ground_mesh.model_matrix *= scale_matrix({scl, scl, scl})
   
   append(&scene.meshes, ground_mesh)
+
+  macroground_mesh := asset_loader_obj_mesh("assets/models/macroterrain.obj", ground_material)
+  macroground_mesh.model_matrix *= translation_matrix({0, -3, 0})
+  macroground_mesh.model_matrix *= scale_matrix({scl, scl, scl})
+  append(&scene.meshes, macroground_mesh)
 }
 
 scene_update :: proc(scene: ^Scene) {

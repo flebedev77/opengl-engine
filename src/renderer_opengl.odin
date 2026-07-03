@@ -157,7 +157,7 @@ CloudSettings :: struct {
 }
 
 renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
-  renderer.sun_position = {1, 10, 1}//10, 1}
+  renderer.sun_position = {1, 1, 1}//10, 1}
 
   gl.LineWidth(5.0)
   gl.Enable(gl.DEPTH_TEST)
