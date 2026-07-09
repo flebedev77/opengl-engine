@@ -34,7 +34,7 @@ uniform int frame_number;
 
 uniform float cloud_dome_radius;
 
-const float cloud_layer_thickness = 1300;//(186-10);
+const float cloud_layer_thickness = 600;//(186-10);
 const float cloud_height_base = 1000;
 float cloud_height_apex = cloud_height_base+cloud_layer_thickness;
 // const float cloud_dome_radius = 1000000;
@@ -48,22 +48,22 @@ ivec3 base_cloud_noise_size = ivec3(128*6, 16, 128*6);
 
 #define STEPS_CLOUDS 128//64
 #define STEPS_CLOUDS_LIGHTING 5
-#define CLOUD_DENSITY 1.0//0.5
-#define CLOUD_LIGHT_DENSITY 0.8
+#define CLOUD_DENSITY 1.5
+#define CLOUD_LIGHT_DENSITY 0.018
 #define CLOUD_STEP_LENGTH 45.5
 #define CLOUD_LARGE_STEP_LENGTH 800//265.5
-#define CLOUD_LIGHT_STEP_LENGTH 180.6
+#define CLOUD_LIGHT_STEP_LENGTH 100.6
 #define MIN_DENSITY 0//0.012//0.01
-#define SUN_INTENSITY 6.3//0
+#define SUN_INTENSITY 4.6//0
 
-#define BACKSCATTER_MIN 0.52
-#define BACKSCATTER_MAX 0.55
+#define BACKSCATTER_MIN 0.65
+#define BACKSCATTER_MAX 0.65
 
-#define EXTINCTION_FACTOR 1.3
-#define SCATTERING_FACTOR (EXTINCTION_FACTOR-0.701)
+#define EXTINCTION_FACTOR 0.5
+#define SCATTERING_FACTOR (EXTINCTION_FACTOR-0.0001)
 
-#define POWDER_FACTOR 102.2
-#define POWDER_STRENGTH 0.8
+#define POWDER_FACTOR 1.01
+#define POWDER_STRENGTH 0.7
 
 #define TEMPORAL_ACCUMULATION_ENABLED true
 
@@ -168,10 +168,12 @@ float get_height_mask(float y, float layerMin, float layerMax, float feather) {
 }
 
 vec2 sample_cloud_density(vec3 p) {
+  // float y = length(cloud_dome_position-p) - cloud_height_base;
+  float y = p.y - cloud_height_base;// - 100;
+
   float cloud_drift = float(frame_number) * 0.2 + 1e5;
   p.x += cloud_drift;
   p.z += cloud_drift * 0.32;
-  float y = p.y - cloud_height_base;// - 100;
   float width_to_height = base_cloud_noise_size.x / base_cloud_noise_size.y;
   float depth_to_height = base_cloud_noise_size.z / base_cloud_noise_size.y;
   vec3 base_p = vec3(
@@ -188,7 +190,7 @@ vec2 sample_cloud_density(vec3 p) {
     float max_dist = abs(n.g) * length(vec3(base_cloud_noise_size));
     float cell_size = cloud_layer_thickness / float(base_cloud_noise_size.y); 
 
-    sdf_step_length = max_dist * cell_size;
+    sdf_step_length = max(max_dist * cell_size, 0);
   }
   if (n.r > 0) {
     vec3 detail_p = vec3(p.x, y, p.z) / cloud_layer_thickness;
@@ -200,17 +202,19 @@ vec2 sample_cloud_density(vec3 p) {
     d += dnoise(detail_p * 2.5) * 0.9;
 
     n.r = clamp(n.r-d*0.14, 0, 1);
+    n.r *= get_height_mask(y, 0, cloud_layer_thickness, 100);
     // n.r *= 0.18;
-    n.r *= 0.08;
+    // n.r *= 0.08;
+    // n.r += 1.001;
   }
 
-  return vec2(n.r, sdf_step_length);
+  return vec2(n.r * CLOUD_DENSITY, sdf_step_length);
 }
 
-#define AMBIENT_COEFFICIENT 4//5//12.0
+#define AMBIENT_COEFFICIENT 1//5//12.0
 #define AMBIENT_TOP_COEFFICIENT 0//0.87
 #define AMBIENT_TOP_COLOR vec3(0.9)
-#define AMBIENT_BOTTOM_COEFFICIENT 0.2
+#define AMBIENT_BOTTOM_COEFFICIENT 5.2
 #define AMBIENT_BOTTOM_COLOR vec3(0.35, 0.35, 0.35)
 #define AMBIENT_CONSTANT_COEFFICIENT 1.8
 #define AMBIENT_CONSTANT_COLOR vec3(1., 1., 1.2)//vec3(0.260, 0.325, 0.489)
@@ -226,7 +230,7 @@ vec3 calculate_ambient_color(vec3 p, float extinction_coefficient) {
     max(0, exp(a) - a * Ei(a)) * AMBIENT_TOP_COEFFICIENT;
 
 
-  float distance_bottom = (dc - cloud_height_base);
+  float distance_bottom = (dc - cloud_height_base)*0.1;
   a = -extinction_coefficient * distance_bottom;
   vec3 isotropic_scattering_bottom = AMBIENT_BOTTOM_COLOR *
     max(0, exp(a) - a * Ei(a)) * AMBIENT_BOTTOM_COEFFICIENT;
@@ -420,10 +424,14 @@ vec4 calculate_volumetrics() {
 
           float cell_size = cloud_layer_thickness / float(base_cloud_noise_size.y);
 
-          float k = 22;
-          if (current_sdf > k && current_density <= 0.0) {
+          float k = 10.1;
+          if (current_density <= 0.0 && current_sdf >= 0) {
             sdf_skip_outside = distance_travelled;
             distance_travelled += current_sdf;
+            if (current_sdf < k) {
+              distance_travelled += cell_size;//CLOUD_STEP_LENGTH;
+              // distance_travelled += CLOUD_STEP_LENGTH;
+            }
             continue;
           } 
 
@@ -431,21 +439,22 @@ vec4 calculate_volumetrics() {
             float left = sdf_skip_outside;
             float right = distance_travelled;
 
-            for (int s = 0; s < 4; s++) {
+            for (int s = 0; s < 10; s++) {
               float m = (left + right) * 0.5;
               vec2 cd_refine = sample_cloud_density(start_pos + ray_dir * m);
 
-              if (cd_refine.r > MIN_DENSITY) {
+              if (cd_refine.r > 0) { //MIN_DENSITY) {
                 right = m;
               } else {
                 left = m;
               }
             }
 
-            distance_travelled = right;
+            distance_travelled = right;// + fract(texture(blue_noise_texture, frag_uv).r);
             sdf_skip_outside = -1.0; 
 
-            distance_travelled += jitter; 
+            // distance_travelled += jitter; 
+            // distance_travelled += CLOUD_STEP_LENGTH;
             continue;
           }
 
@@ -470,13 +479,14 @@ vec4 calculate_volumetrics() {
               if (light_transmittance < 0.01) break;
 
               vec2 light_current_data = sample_cloud_density(light_current_pos);
-              float light_current_density = light_current_data.x;
-              if (light_current_density > MIN_DENSITY)
-                light_transmittance *= exp(-EXTINCTION_FACTOR * light_current_density * CLOUD_LIGHT_DENSITY * CLOUD_LIGHT_STEP_LENGTH);
-
-
               float light_step_length = light_current_data.y;
               if (light_step_length < CLOUD_LIGHT_STEP_LENGTH) light_step_length = CLOUD_LIGHT_STEP_LENGTH;
+
+              float light_current_density = light_current_data.x;
+              if (light_current_density > MIN_DENSITY)
+                light_transmittance *= exp(-EXTINCTION_FACTOR * light_current_density * CLOUD_LIGHT_DENSITY * light_step_length);
+
+
 
               light_current_pos += light_dir * light_step_length;
             }
@@ -488,7 +498,7 @@ vec4 calculate_volumetrics() {
             vec3 sun_light = vec3(SUN_INTENSITY);
             sun_light *= vec3(1, 1, 1.1);
             vec3 sun_color = mix(1, powder, POWDER_STRENGTH) * light_transmittance * sun_light;
-            vec3 ambient_color = occ * calculate_ambient_color(current_pos, extinction_coefficient);
+            vec3 ambient_color = calculate_ambient_color(current_pos, extinction_coefficient);
             float ambient_phase = 1 / (4 * PI);
             float sun_phase = calculate_phase(0.86, cos_theta, extinction_coefficient);
             vec3 scattered = scattering_coefficient * (sun_color * sun_phase + ambient_color * ambient_phase);
@@ -534,7 +544,7 @@ vec4 calculate_volumetrics() {
       motion_vector = current_uv - prev_uv;
     }
 
-    scattering = clamp(scattering, vec3(0), vec3(1));
+    scattering = clamp(scattering*1.1, vec3(0), vec3(1));
     extinction = clamp(extinction, 0, 1);
     return vec4(
         scattering, extinction

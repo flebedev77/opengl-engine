@@ -41,13 +41,13 @@ player_init :: proc(scene: ^Scene, player: ^Player) {
   // player.position = {0, 5502.12, 0}
   player.walk_speed = PLAYER_WALK_SPEED
   player.look_sensitivity = PLAYER_LOOK_SENSITIVITY
-  player.is_flying = false
+  player.is_flying = true
   player.debug_movement = false
   player.camera_pitch = math.PI * 3/2
   player.zoom = 0.3
-  player.mass = 310
+  player.mass = 10
   player.wing_area = 100038
-  player.thrust = 1
+  player.thrust = 0
   player.body_crossectional_area = 2
 
   // player.aerodynamics_triangle[0] = {-1, 0, 0, 1}
@@ -216,7 +216,7 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
   if glfw.GetKey(GlfwWindow, glfw.KEY_LEFT_CONTROL) > 0 {
     player.thrust -= 0.01 * scene.delta_time
   }
-  player.thrust = clamp(player.thrust, 0, 100)
+  player.thrust = clamp(player.thrust, 0, 10)
 
 
   player.basis_matrix *= linalg.matrix4_rotate_f32(delta_pitch, {1, 0, 0})
@@ -294,7 +294,7 @@ player_debug_update :: proc(scene: ^Scene, player: ^Player) {
   }
 
 
-  if player.debug_is_fast do player.walk_speed = PLAYER_WALK_SPEED + 1
+  if player.debug_is_fast do player.walk_speed = PLAYER_WALK_SPEED + 2
   else do player.walk_speed = PLAYER_WALK_SPEED
 
   if linalg.length2(moveinput) > 0 &&
@@ -324,7 +324,7 @@ player_render :: proc(scene: ^Scene, player: ^Player, material_override: ^Materi
   //   return
   // }
 
-  scale := f32(0.001)
+  scale := f32(1)//0.001)
   player.visual.mesh.model_matrix = identity_matrix() 
   player.visual.mesh.model_matrix *= translation_matrix(player.position)
   player.visual.mesh.model_matrix *= scale_matrix({scale, scale, scale})
