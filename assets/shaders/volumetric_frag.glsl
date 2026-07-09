@@ -44,6 +44,8 @@ float actual_cloud_height_apex = cloud_dome_radius + cloud_layer_thickness;
 const float cloud_minimum_height = -3500;
 
 ivec3 base_cloud_noise_size = ivec3(128*6, 16, 128*6);
+float bb_side = 8000;
+vec3 sky_bounding_box = vec3(bb_side, cloud_height_apex, bb_side);
 // ivec3 base_cloud_noise_size = ivec3(64);
 
 #define STEPS_CLOUDS 128//64
@@ -196,10 +198,10 @@ vec2 sample_cloud_density(vec3 p) {
     vec3 detail_p = vec3(p.x, y, p.z) / cloud_layer_thickness;
     detail_p += vec3(cloud_drift, -cloud_drift * 0.3, cloud_drift) * (1/cloud_layer_thickness);
 
-    float d = dnoise(detail_p * 0.9) * 0.4;
-    d += dnoise(detail_p * 1.3) * 1.3;
-    d += dnoise(detail_p * 1.7) * 0.8;
-    d += dnoise(detail_p * 2.5) * 0.9;
+    float d = pow(dnoise(detail_p * 0.9), 1) * 1.4;
+    d += dnoise(detail_p * 1.5) * 1.6;
+    // d += (dnoise(detail_p * 1.8)) * 2.4;
+    // d += dnoise(detail_p * 3.5) * 0.2;
 
     n.r = clamp(n.r-d*0.14, 0, 1);
     n.r *= get_height_mask(y, 0, cloud_layer_thickness, 100);
@@ -404,6 +406,16 @@ vec4 calculate_volumetrics() {
 
         vec3 start_pos = camera_world_pos + ray_dir * t_in;
 
+        if (!(start_pos.x < sky_bounding_box.x &&
+            start_pos.x > -sky_bounding_box.x &&
+            start_pos.y < sky_bounding_box.y &&
+            start_pos.y > -sky_bounding_box.y &&
+            start_pos.z < sky_bounding_box.z &&
+            start_pos.z > -sky_bounding_box.z)) return vec4(0, 0, 0, 0);
+
+        // if (start_pos.y < cloud_minimum_height || cloud_march_length > 2000) return vec4(0, 0, 0, 0);
+        // return vec4(0, 0, 0, 0);
+
         vec3 current_pos = start_pos;
 
         float random = rand(frag_uv + vec2(float(frame_number)));
@@ -415,7 +427,10 @@ vec4 calculate_volumetrics() {
 
         for (int i = 0; i < STEPS_CLOUDS; i++) {
           if (extinction < 0.01) { extinction = 0; break; }
-          if (distance_travelled >= cloud_march_length || current_pos.y < cloud_minimum_height) break;
+          // if (distance_travelled >= cloud_march_length ||
+          //     current_pos.y < cloud_minimum_height ||
+          //     current_pos.y > cloud_height_apex) break;
+          if (distance_travelled >= cloud_march_length) break;
 
           current_pos = start_pos + ray_dir * distance_travelled;
           vec2 current_cloud_data = sample_cloud_density(current_pos);
