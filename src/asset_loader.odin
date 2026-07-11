@@ -32,7 +32,7 @@ asset_loader_material :: proc(
   fmt.aprintf("./assets/shaders/%s_vert.glsl", shader_name)
 
   if vertex_shader_override != "" do vert_path = 
-    fmt.aprintf("./assets/shaders/%s", vertex_shader_override)
+    fmt.aprintf("./assets/shaders/%s_vert.glsl", vertex_shader_override)
 
 
   frag_contents, frag_success := os.read_entire_file_from_filename(frag_path, context.temp_allocator)

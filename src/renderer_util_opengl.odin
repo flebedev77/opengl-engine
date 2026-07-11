@@ -173,8 +173,8 @@ upload_noise :: proc(w, h, d: i32, data: rawptr, type: NoiseType) -> GpuID {
   gl.TexParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.REPEAT)
   gl.TexParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.REPEAT)
   if (type == .DENSITY) {
+    gl.TexParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.REPEAT)
   }
-  gl.TexParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.REPEAT)
   return shape
 }
 

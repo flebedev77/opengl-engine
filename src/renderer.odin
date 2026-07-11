@@ -1,4 +1,7 @@
 package main
+import "core:unicode/utf8"
+import "core:fmt"
+import "core:strings"
 
 @(deprecated = "Broken UVs and normals")
 mesh_make_cube_unlit :: proc(material: Material) -> Mesh {
@@ -283,4 +286,52 @@ mesh_make_quad :: proc(material: Material) -> Mesh {
     mesh = mesh_make_3d_quad(material)
   }
   return mesh
+}
+
+generate_ui :: proc(renderer: ^Renderer) {
+  clear(&renderer.scene.quads) 
+
+  append(&renderer.scene.quads, Quad{
+    position = {-1, -1},
+    color = {0.057, 0.057, 0.057, 1},
+    width = 0.25,
+    height = 0.25
+  })
+  
+  // append(&renderer.scene.quads, Quad{
+  //   position = {-1 + 0.025, -1 + 0.025},
+  //   color = {0, 1, 1, 1},
+  //   width = 0.2,
+  //   height = 0.2
+  // })
+
+  draw_text(renderer, Vec2{0, 0}, "A", 66)
+}
+
+draw_text :: proc(renderer: ^Renderer, position: Vec2, text: string, font_size: f32) {
+  remaining := text
+  for len(remaining) > 0 {
+    r, width := utf8.decode_rune_in_string(remaining)
+    remaining = remaining[width:]
+    if strings.contains_rune(renderer.scene.resources.font_msdf_charset, r) {
+      d : MsdfCharData = renderer.scene.resources.font_msdf_data[r]
+      append(&renderer.scene.quads, Quad{
+        position = {position.x, position.y},
+        color = {0.92, 0.92, 0.92, 1},
+        width = font_size / WINDOW_WIDTH,
+        height = font_size / WINDOW_HEIGHT,
+        is_char = true,
+        char_weight = 0.5,
+        uv = {
+          d.x,
+          d.y,
+          d.width,
+          d.height
+        }
+      })
+    } else {
+      fmt.printfln("Tried printing invalid character %r", r)
+    }
+
+  }
 }

@@ -28,6 +28,12 @@ ShaderFlags :: enum {
 }
 
 ShaderParameters :: struct {
+  quad_position_location,
+  quad_size_location,
+  quad_color_location,
+  quad_is_char_location,
+  quad_msdf_texture_location,
+  quad_char_weight_location,
   metallic_strength_location,
   roughness_strength_location,
   screen_texture_location,
@@ -116,6 +122,16 @@ Mesh :: struct {
   model_matrix: Mat4,
 }
 
+Quad :: struct {
+  position: Vec2,
+  color: Vec4,
+  width,
+  height,
+  char_weight: f32,
+  is_char: bool,
+  uv: Vec4
+}
+
 Renderer :: struct {
   debug_renderer: DebugRenderer,
   scene: ^Scene,
@@ -138,6 +154,7 @@ Renderer :: struct {
   macroshadowmap_framebuffer: Framebuffer,
 
   final_pass_material: Material,
+  ui_quad_material: Material,
   post_process_quad: Mesh,
   shadowmap_matrix: Mat4,
   macroshadowmap_matrix: Mat4,
@@ -167,6 +184,7 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   gl.CullFace(gl.BACK)
   gl.FrontFace(gl.CCW)
   gl.ClipControl(gl.LOWER_LEFT, gl.ZERO_TO_ONE)
+  gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
 
 
   debugrenderer_init(&renderer.debug_renderer)
@@ -199,6 +217,7 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   // framebuffer_init(&renderer.accumulated_volumetric_framebuffer, effects_resolution_int, {.COLOR}, "clouds_taa", .TWO_DIMENSIONAL)
 
   renderer.final_pass_material = asset_loader_material(0, 0, "post_process", .TWO_DIMENSIONAL)
+  renderer.ui_quad_material = asset_loader_material(0, 0, "ui_quad", .TWO_DIMENSIONAL, "ui_quad")
 
   renderer.post_process_quad = mesh_make_quad(renderer.final_pass_material)
 
@@ -237,6 +256,8 @@ renderer_render :: proc(renderer: ^Renderer) {
   // gl.PolygonMode(gl.FRONT_AND_BACK, gl.LINE)// : GL_FILL); 
 
   // Shadowmap pass
+
+  gl.Disable(gl.BLEND)
 
   light_viewmatrix := linalg.matrix4_look_at_f32(
     renderer.scene.camera.position + linalg.normalize(renderer.sun_position) * 1000, 
@@ -379,6 +400,16 @@ renderer_render :: proc(renderer: ^Renderer) {
   // renderer.debug_renderer.shader.parameters.projection_matrix = renderer.scene.camera.projection_matrix
   debugrenderer_draw(&renderer.debug_renderer)
   renderer.reload_shaders = false
+
+  // UI pass
+  gl.ActiveTexture(gl.TEXTURE0)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.scene.resources.font_msdf)
+  gl.Enable(gl.BLEND)
+  generate_ui(renderer)
+  for &quad in renderer.scene.quads {
+    render_uiquad(renderer, &quad)
+  }
+
   free_all(context.temp_allocator)
 
   // θ := f32(renderer.scene.frame_number) * 0.0001 + math.PI * 0.5
@@ -419,7 +450,7 @@ render_mesh :: proc(renderer: ^Renderer, mesh: ^Mesh, material_override: ^Materi
   }
 
   // Has the benefit of loading only the shaders required,
-  // but may reload the same shader MULTIPLE times fix later
+  // but may reload the same shader MULTIPLE times (once for every mesh using it) fix later
   if renderer.reload_shaders {
     fragment_filename := mesh_material.shader.fragment_source_path
     vertex_filename := mesh_material.shader.vertex_source_path
@@ -461,6 +492,21 @@ render_mesh :: proc(renderer: ^Renderer, mesh: ^Mesh, material_override: ^Materi
 
 
   mesh_draw(mesh^, material_override)
+}
+
+render_uiquad :: proc(renderer: ^Renderer, quad: ^Quad) {
+  // TODO: Batch / instanced rendering
+  gl.BindVertexArray(renderer.post_process_quad.vao)
+  gl.UseProgram(renderer.ui_quad_material.shader.program)
+  gl.Uniform1i(renderer.ui_quad_material.shader.parameters.quad_msdf_texture_location, 0)
+  gl.Uniform1i(renderer.ui_quad_material.shader.parameters.quad_is_char_location, i32(quad.is_char))
+  gl.Uniform1f(renderer.ui_quad_material.shader.parameters.quad_char_weight_location, quad.char_weight)
+  gl.Uniform2f(renderer.ui_quad_material.shader.parameters.quad_size_location, quad.width, quad.height)
+  gl.Uniform2fv(renderer.ui_quad_material.shader.parameters.quad_position_location, 1, &quad.position[0])
+  gl.Uniform4fv(renderer.ui_quad_material.shader.parameters.quad_color_location, 1, &quad.color[0])
+  gl.Uniform4fv(renderer.ui_quad_material.shader.parameters.uv_location, 1, &quad.uv[0])
+
+  gl.DrawElements(gl.TRIANGLE_STRIP, 4, gl.UNSIGNED_INT, cast(rawptr)nil)
 }
 
 mesh_init :: proc(
@@ -555,6 +601,7 @@ mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}) {
 
   gl.Uniform1i(shader.parameters.frame_number_location, shader.parameters.frame_number)
 
+  gl.BindVertexArray(mesh.vao)
   if material.shader.type == .TWO_DIMENSIONAL ||
      material.is_transparent {
     gl.Uniform1i(shader.parameters.screen_texture_location, 2)
@@ -562,7 +609,6 @@ mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}) {
     gl.Uniform1i(shader.parameters.volumetrics_texture_location, 6)
   }
   if material.shader.type == .TWO_DIMENSIONAL {
-    gl.BindVertexArray(mesh.vao)
     gl.Uniform1i(shader.parameters.normal_texture_location, 4)
     gl.Uniform1i(shader.parameters.ssao_texture_location, 5)
     gl.Uniform1i(shader.parameters.blur_texture_location, 5)
@@ -619,8 +665,6 @@ mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}) {
     // gl.UniformMatrix4fv(shader.parameters.projection_matrix_location, 1, gl.FALSE, &shader.parameters.projection_matrix[0,0])
     // gl.UniformMatrix4fv(shader.parameters.view_matrix_location, 1, gl.FALSE, &shader.parameters.view_matrix[0,0])
     // gl.UniformMatrix4fv(shader.parameters.shadowmap_matrix_location, 1, gl.FALSE, &shader.parameters.shadowmap_matrix[0,0])
-
-    gl.BindVertexArray(mesh.vao)
 
     gl.DrawElements(gl.TRIANGLES, mesh.triangle_count * 3, gl.UNSIGNED_INT, cast(rawptr)(cast(uintptr)0))
   }
@@ -735,6 +779,12 @@ shader_init :: proc(shader: ^Shader) {
       shader.parameters.detail_cloud_noise_texture_location = gl.GetUniformLocation(shader.program, "detail_cloud_noise")
       shader.parameters.volumetric_history_texture_location = gl.GetUniformLocation(shader.program, "volumetric_history_texture")
       shader.parameters.volumetric_motion_vectors_texture_location = gl.GetUniformLocation(shader.program, "volumetric_motion_vectors_texture")
+      shader.parameters.quad_position_location = gl.GetUniformLocation(shader.program, "quad_position")
+      shader.parameters.quad_size_location = gl.GetUniformLocation(shader.program, "quad_size")
+      shader.parameters.quad_color_location = gl.GetUniformLocation(shader.program, "quad_color")
+      shader.parameters.quad_is_char_location = gl.GetUniformLocation(shader.program, "is_char")
+      shader.parameters.quad_msdf_texture_location = gl.GetUniformLocation(shader.program, "msdf_font_texture")
+      shader.parameters.quad_char_weight_location = gl.GetUniformLocation(shader.program, "quad_char_weight")
     // case .SHADOWMAP:
   // }
 }

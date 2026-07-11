@@ -1,7 +1,6 @@
 package main
 import "core:math"
 import "core:math/linalg"
-import gl "vendor:OpenGL"
 
 Vec4 :: [4]f32
 Vec3 :: [3]f32

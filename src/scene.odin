@@ -13,6 +13,7 @@ Scene :: struct {
   sky_mesh: Mesh,
   mouse: Mouse,
   meshes: [dynamic]Mesh,
+  quads: [dynamic]Quad,
   renderer: ^Renderer,
   resources: Resources,
   delta_time: f32,
