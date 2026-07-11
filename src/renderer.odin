@@ -305,21 +305,36 @@ generate_ui :: proc(renderer: ^Renderer) {
   //   height = 0.2
   // })
 
-  draw_text(renderer, Vec2{0, 0}, "A", 66)
+  draw_text(renderer, Vec2{0, 0}, "The Lorem Ipsum Dolor sit amet", 66)
 }
 
-draw_text :: proc(renderer: ^Renderer, position: Vec2, text: string, font_size: f32) {
+draw_text :: proc(renderer: ^Renderer, position: Vec2, text: string, font_size: f32, color: Vec4 = {0.9, 0.9, 0.9, 1}) {
+  position := position
   remaining := text
   for len(remaining) > 0 {
     r, width := utf8.decode_rune_in_string(remaining)
     remaining = remaining[width:]
+    if r == ' ' {
+      position.x += font_size / WINDOW_WIDTH
+      continue;
+    }
     if strings.contains_rune(renderer.scene.resources.font_msdf_charset, r) {
       d : MsdfCharData = renderer.scene.resources.font_msdf_data[r]
+      msdf_resx, msdf_resy :=
+        f32(renderer.scene.resources.font_msdf_resolution.x),
+        f32(renderer.scene.resources.font_msdf_resolution.y)
+      // fmt.printfln("W = %f, H = %f", msdf_resx, msdf_resy)
+
+      k: f32 = font_size / (msdf_resy * d.height)
+
       append(&renderer.scene.quads, Quad{
-        position = {position.x, position.y},
-        color = {0.92, 0.92, 0.92, 1},
-        width = font_size / WINDOW_WIDTH,
-        height = font_size / WINDOW_HEIGHT,
+        position = {
+          position.x + d.xoffset * msdf_resx * k / WINDOW_WIDTH, 
+          position.y - (d.yoffset) * msdf_resy * k / WINDOW_HEIGHT
+        },
+        color = color,
+        width = d.width * msdf_resx * k / WINDOW_WIDTH,//font_size / WINDOW_WIDTH,
+        height = font_size / WINDOW_HEIGHT,//font_size / WINDOW_HEIGHT,
         is_char = true,
         char_weight = 0.5,
         uv = {
@@ -329,6 +344,8 @@ draw_text :: proc(renderer: ^Renderer, position: Vec2, text: string, font_size: 
           d.height
         }
       })
+
+      position.x += (d.xadvance * msdf_resx * k) / WINDOW_WIDTH
     } else {
       fmt.printfln("Tried printing invalid character %r", r)
     }

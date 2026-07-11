@@ -16,6 +16,7 @@ MsdfCharData :: struct {
 }
 
 Resources :: struct {
+  font_msdf_resolution: IVec2,
   font_msdf_charset: string,
   font_msdf_data: map[rune]MsdfCharData,
   font_msdf,
@@ -26,11 +27,11 @@ Resources :: struct {
 resources_load :: proc(r: ^Resources) {
   r.black_texture = texture_load("assets/textures/black.png")
   r.blue_noise_texture = texture_load("assets/textures/blue_noise/128_128/HDR_L_0.png")
-  r.font_msdf = texture_load("assets/textures/msdf_fonts/sekuya_512.png")
+  r.font_msdf, r.font_msdf_resolution = texture_load_with_dimensions("assets/textures/msdf_fonts/noto_serif_512.png")
   r.font_msdf_charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!?.,;:'\"()[]{}"
 
   // MSDF generated from https://msdf.zap.works/
-  font_json_data, ok := os.read_entire_file("assets/textures/msdf_fonts/sekuya_data.json")
+  font_json_data, ok := os.read_entire_file("assets/textures/msdf_fonts/noto_data.json")
   defer delete(font_json_data)
   assert(ok, "Failed to load msdf data")
 
@@ -41,7 +42,7 @@ resources_load :: proc(r: ^Resources) {
   root_obj, ok2 := value.(json.Object)
   assert(ok2, "Failed to get root object of msdf json")
 
-  root_obj, ok2 = root_obj["Sekuya Regular"].(json.Object)
+  root_obj, ok2 = root_obj["FONT"].(json.Object)
   assert(ok2, "Failed to find object in msdf json")
 
   root_obj, ok2 = root_obj["400"].(json.Object)
@@ -53,10 +54,7 @@ resources_load :: proc(r: ^Resources) {
   common, ok4 := root_obj["common"].(json.Object)
   assert(ok4, "Failed to find common")
 
-  resolutionx, ok5 := common["scaleW"].(json.Float)
-  assert(ok5, "Failed to get x resolution")
-  resolutiony, ok6 := common["scaleH"].(json.Float)
-  assert(ok6, "Failed to get y resolution")
+  resolutionx, resolutiony := f32(r.font_msdf_resolution.x), f32(r.font_msdf_resolution.y)
 
   fmt.printfln("RESOLUTION ATLAS %f %f", resolutionx, resolutiony)
 

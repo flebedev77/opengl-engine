@@ -61,6 +61,7 @@ player_init :: proc(scene: ^Scene, player: ^Player) {
 
   player.basis_matrix = identity_matrix()
 
+  if !LOAD_WORLD do return
   player_material := Material{
     is_valid = true,
     albedo_textures = texture_load("assets/models/mig/textures/BaseColor.png", true),
@@ -323,6 +324,8 @@ player_render :: proc(scene: ^Scene, player: ^Player, material_override: ^Materi
   // if player.debug_movement {
   //   return
   // }
+
+  if !LOAD_WORLD do return
 
   scale := f32(0.01)//0.001)
   player.visual.mesh.model_matrix = identity_matrix() 

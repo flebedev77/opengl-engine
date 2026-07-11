@@ -811,8 +811,13 @@ renderer_info :: proc() {
   fmt.printfln("OpenGL vendor   : %s", gl.GetString(gl.VENDOR))
 }
 
-texture_load :: proc(filepath: string, srgb := false) -> u32 {
+texture_load :: proc(filepath: string, srgb := false) -> (out: u32) {
+  out, _ = texture_load_with_dimensions(filepath, srgb)
+  return
+}
+texture_load_with_dimensions :: proc(filepath: string, srgb := false) -> (u32, IVec2) {
   contents := os.read_entire_file(filepath) or_else nil
+
   if contents == nil {
     fmt.eprintfln("Failed to read %s image", filepath)
   }
@@ -847,7 +852,7 @@ texture_load :: proc(filepath: string, srgb := false) -> u32 {
   gl.GenerateMipmap(gl.TEXTURE_2D)
 
 
-  return texture
+  return texture, {img_w, img_h}
 }
 
 textures_delete :: proc(t: ..GpuID) {

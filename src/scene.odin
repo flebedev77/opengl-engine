@@ -47,6 +47,8 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
     // defer gl.DeleteProgram(sky_shader.program)
   }
 
+  if !LOAD_WORLD do return
+
   albedo_texture := texture_load("assets/textures/box_placeholder.ppm", true)
   grass_texture := texture_load("assets/textures/whispy-grass-meadow-bl/wispy-grass-meadow_albedo.png", true)
   dirt_texture := texture_load("assets/textures/dirt_albedo.png", true)
@@ -93,7 +95,7 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
   ground_mesh.material.albedo_tint = {0.3, 0.7, 0.3}
   ground_mesh.model_matrix *= translation_matrix({0, -3, 0})
   ground_mesh.model_matrix *= scale_matrix({scl, scl, scl})
-  
+
   append(&scene.meshes, ground_mesh)
 
   macroground_mesh := asset_loader_obj_mesh("assets/models/macroterrain.obj", ground_material)
