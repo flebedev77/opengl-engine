@@ -45,7 +45,7 @@ const float cloud_minimum_height = -3500;
 
 ivec3 base_cloud_noise_size = ivec3(128*6, 16, 128*6);
 float bb_side = 8000;
-vec3 sky_bounding_box = vec3(bb_side, cloud_height_apex, bb_side);
+vec3 sky_bounding_box = vec3(bb_side, cloud_height_apex+100, bb_side);
 // ivec3 base_cloud_noise_size = ivec3(64);
 
 #define STEPS_CLOUDS 128//64
@@ -201,7 +201,7 @@ vec2 sample_cloud_density(vec3 p) {
     float d = pow(dnoise(detail_p * 0.9), 1) * 1.4;
     d += dnoise(detail_p * 1.5) * 1.6;
     // d += (dnoise(detail_p * 1.8)) * 2.4;
-    // d += dnoise(detail_p * 3.5) * 0.2;
+    d += dnoise(detail_p * 3.5) * 0.9;
 
     n.r = clamp(n.r-d*0.14, 0, 1);
     n.r *= get_height_mask(y, 0, cloud_layer_thickness, 100);
@@ -411,7 +411,7 @@ vec4 calculate_volumetrics() {
             start_pos.y < sky_bounding_box.y &&
             start_pos.y > -sky_bounding_box.y &&
             start_pos.z < sky_bounding_box.z &&
-            start_pos.z > -sky_bounding_box.z)) return vec4(0, 0, 0, 0);
+            start_pos.z > -sky_bounding_box.z)) return vec4(0, 0, 0, 1);
 
         // if (start_pos.y < cloud_minimum_height || cloud_march_length > 2000) return vec4(0, 0, 0, 0);
         // return vec4(0, 0, 0, 0);
