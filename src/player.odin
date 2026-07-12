@@ -44,7 +44,7 @@ player_init :: proc(scene: ^Scene, player: ^Player) {
   player.is_flying = true
   player.debug_movement = false
   player.camera_pitch = math.PI * 3/2
-  player.zoom = 0.3
+  player.zoom = 37.3
   player.mass = 10
   player.wing_area = 100038
   player.thrust = 0
@@ -176,7 +176,7 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
     player.position,
     {0, 1, 0}
   )
-  player.zoom -= scene.mouse.scroll * 0.01
+  player.zoom -= scene.mouse.scroll * 1.4
 
   moveinput: Vec3
   rotation_speed := f32(0.03) // TODO: Make this variable depending on drag/lift from elevons
@@ -327,7 +327,7 @@ player_render :: proc(scene: ^Scene, player: ^Player, material_override: ^Materi
 
   if !LOAD_WORLD do return
 
-  scale := f32(0.01)//0.001)
+  scale := f32(0.5)//0.001)
   player.visual.mesh.model_matrix = identity_matrix() 
   player.visual.mesh.model_matrix *= translation_matrix(player.position)
   player.visual.mesh.model_matrix *= scale_matrix({scale, scale, scale})

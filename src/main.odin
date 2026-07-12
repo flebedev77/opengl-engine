@@ -83,14 +83,10 @@ main :: proc() {
   glfw.SetWindowRefreshCallback(GlfwWindow, window_refresh)
 
   for glfw.WindowShouldClose(GlfwWindow) == false {
-    current_time := f64(time.now()._nsec)
-    delta_time := f32((current_time - prev_time) / f64(time.Millisecond))
-    prev_time = current_time
-    time_since_start := f32((current_time - start_time) / f64(time.Millisecond))
 
     // fmt.printfln("DT: %f", delta_time)
+
     scene_update(&scene)
-    // scene.delta_time = delta_time
 
     if glfw.GetKey(GlfwWindow, glfw.KEY_ESCAPE) > 0 {
       break

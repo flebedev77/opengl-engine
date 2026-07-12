@@ -1,5 +1,6 @@
 package main
 import "core:unicode/utf8"
+import "core:math"
 import "core:fmt"
 import "core:strings"
 import "core:math/linalg"
@@ -311,8 +312,20 @@ generate_ui :: proc(renderer: ^Renderer) {
   // xp, _ := glfw.GetCursorPos(GlfwWindow)
   // fmt.printfln("PIXELS %f %f", pixels_to_ndc({0, 20}).xy)
   // draw_text(renderer, Vec2{0, 0}, "AC AVThe Lorem Ipsum Dolor sit amet", f32(xp) / f32(WINDOW_WIDTH))
-  draw_text(renderer, {-1, -1} + pixels_to_ndc({0, 60}), fmt.tprintf("Speed %fkmh", linalg.length(renderer.scene.player.velocity) * renderer.scene.delta_time * 1000 * 3.6 /* meters per second to kmh */), 0.1)
-  draw_text(renderer, pixels_to_ndc({0, WINDOW_HEIGHT - 60}), fmt.tprintf("Altitude %f", renderer.scene.player.position.y), pixels_to_ndc({0, 30}).y)
+  draw_text(renderer, {-1, -1} + pixels_to_ndc({0, 60}),
+    fmt.tprintf("Speed: %fkm/h", 
+      linalg.length(renderer.scene.player.velocity) * 
+      renderer.scene.delta_time * 1000 * 3.6 /* meters per second to kmh */),
+    0.1)
+
+  draw_text(renderer, pixels_to_ndc({-20, WINDOW_HEIGHT - 60}), 
+    fmt.tprintf("Altitude: %06f", renderer.scene.player.position.y),
+    pixels_to_ndc({0, 30}).y
+  )
+
+  // dt_average := math.sum(renderer.scene.delta_time_history[:]) / len(renderer.scene.delta_time_history)
+  draw_text(renderer, {-1, 1} + pixels_to_ndc({10, -80}), 
+    fmt.tprintf("FPS: %0.1f", math.ceil((1000 / renderer.scene.delta_time_ema)*10)/10), pixels_to_ndc({0, 60}).y)
   // draw_text(renderer, {0, 0}, "Hello, World!", 0.2)
   // profile_end()
 }

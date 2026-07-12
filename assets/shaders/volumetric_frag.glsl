@@ -34,7 +34,7 @@ uniform int frame_number;
 
 uniform float cloud_dome_radius;
 
-const float cloud_layer_thickness = 600;//(186-10);
+const float cloud_layer_thickness = 1600;//(186-10);
 const float cloud_height_base = 1000;
 float cloud_height_apex = cloud_height_base+cloud_layer_thickness;
 // const float cloud_dome_radius = 1000000;

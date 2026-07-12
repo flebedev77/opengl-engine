@@ -1,7 +1,7 @@
 package main
 import "core:fmt"
+import "core:time"
 import "vendor:glfw"
-import gl "vendor:OpenGL"
 
 SceneFlags :: enum {
   DEBUG_OVERLAY
@@ -17,6 +17,7 @@ Scene :: struct {
   renderer: ^Renderer,
   resources: Resources,
   delta_time: f32,
+  delta_time_ema: f32,
   frame_number: i32,
   flags: bit_set[SceneFlags]
 }
@@ -27,6 +28,7 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
   renderer_init(renderer, scene)
   player_init(scene, &scene.player)
   scene.delta_time = 16.666;
+  scene.delta_time_ema = 10//scene.delta_time
 
   // scene.post_process_quad = mesh_make_quad()
 
@@ -96,15 +98,39 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
   ground_mesh.model_matrix *= translation_matrix({0, -3, 0})
   ground_mesh.model_matrix *= scale_matrix({scl, scl, scl})
 
-  append(&scene.meshes, ground_mesh)
+  // append(&scene.meshes, ground_mesh)
 
-  macroground_mesh := asset_loader_obj_mesh("assets/models/macroterrain.obj", ground_material)
+  macroground_material := asset_loader_material(
+    texture_load("assets/models/mountain/textures/albedo.jpg"),
+    0,
+    "terrain",
+    .THREE_DIMENSIONAL
+  )
+  scl = f32(180)
+  macroground_mesh := asset_loader_obj_mesh("assets/models/mountain/mountain.obj", macroground_material)
   macroground_mesh.model_matrix *= translation_matrix({0, -3, 0})
   macroground_mesh.model_matrix *= scale_matrix({scl, scl, scl})
   append(&scene.meshes, macroground_mesh)
 }
 
 scene_update :: proc(scene: ^Scene) {
+  current_time := f64(time.now()._nsec)
+  delta_time := f32((current_time - prev_time) / f64(time.Millisecond))
+  prev_time = current_time
+  time_since_start := f32((current_time - start_time) / f64(time.Millisecond))
+
+  scene.delta_time = delta_time
+  dt_ema_fac := f32(0.02)
+  scene.delta_time_ema = 
+    scene.delta_time * dt_ema_fac + 
+    scene.delta_time_ema * (1-dt_ema_fac)
+
+  // copy(
+  //   scene.delta_time_history[1:],
+  //   scene.delta_time_history[0:len(scene.delta_time_history)-1]
+  // )
+  // scene.delta_time_history[0] = delta_time
+
   {
     // TODO: factor out to windowing layer
     mx, my := glfw.GetCursorPos(GlfwWindow)

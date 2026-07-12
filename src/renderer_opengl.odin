@@ -806,6 +806,15 @@ renderer_info :: proc() {
   gl.GetIntegerv(gl.MAX_TEXTURE_UNITS, &max_texture_units)
   fmt.printfln("MAX TEXTURE UNITS %d", max_texture_units)
 
+  max_tex_size: i32
+  gl.GetIntegerv(gl.MAX_TEXTURE_SIZE, &max_tex_size)
+  fmt.printfln("MAX TEXTURE SIZE %dx%d", max_tex_size, max_tex_size)
+
+  max_layers: i32
+  gl.GetIntegerv(gl.MAX_3D_TEXTURE_SIZE, &max_tex_size)
+  gl.GetIntegerv(gl.MAX_ARRAY_TEXTURE_LAYERS, &max_layers)
+  fmt.printfln("MAX 3D TEXTURE SIZE %dx%dx%d", max_tex_size, max_layers, max_tex_size)
+
   fmt.printfln("OpenGL version  : %s", gl.GetString(gl.VERSION))
   fmt.printfln("OpenGL renderer : %s", gl.GetString(gl.RENDERER))
   fmt.printfln("OpenGL vendor   : %s", gl.GetString(gl.VENDOR))
@@ -840,7 +849,6 @@ texture_load_with_dimensions :: proc(filepath: string, srgb := false, mipmaps :=
   gl.BindTexture(gl.TEXTURE_2D, texture)
   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT)
   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT)
-  gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)
   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
   if img_channels == 1 {
     gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RED, img_w, img_h,
@@ -849,7 +857,12 @@ texture_load_with_dimensions :: proc(filepath: string, srgb := false, mipmaps :=
     gl.TexImage2D(gl.TEXTURE_2D, 0, (srgb) ? gl.SRGB : gl.RGB, img_w, img_h,
       0, (img_channels == 3) ? gl.RGB : gl.RGBA, gl.UNSIGNED_BYTE, &img_data[0])
   }
-  if (mipmaps) do gl.GenerateMipmap(gl.TEXTURE_2D)
+  if mipmaps {
+    gl.GenerateMipmap(gl.TEXTURE_2D)
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)
+  } else {
+    gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+  }
 
 
   return texture, {img_w, img_h}

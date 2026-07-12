@@ -41,11 +41,11 @@ Resources :: struct {
 resources_load :: proc(r: ^Resources) {
   r.black_texture = texture_load("assets/textures/black.png")
   r.blue_noise_texture = texture_load("assets/textures/blue_noise/128_128/HDR_L_0.png")
-  r.font_msdf, r.font_msdf_common.resolution = texture_load_with_dimensions("assets/textures/msdf_fonts/yuyu_512.png", false, true) 
+  r.font_msdf, r.font_msdf_common.resolution = texture_load_with_dimensions("assets/textures/msdf_fonts/noto_serif_512.png", false, false) 
   r.font_msdf_common.charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!?.,;:'\"()[]{}-+@#$%^&*=_|<>/`~\\"
 
   // MSDF generated from https://msdf.zap.works/
-  font_json_data, ok := os.read_entire_file("assets/textures/msdf_fonts/yuyu_data.json")
+  font_json_data, ok := os.read_entire_file("assets/textures/msdf_fonts/noto_data.json")
   defer delete(font_json_data)
   assert(ok, "Failed to load msdf data")
 
@@ -103,14 +103,14 @@ resources_load :: proc(r: ^Resources) {
     x, ok7 := object["x"].(json.Float)
     id, ok8 := object["id"].(json.Float)
 
+    decoded_rune, _ := utf8.decode_rune_in_string(char)
     if !ok || !ok2 || !ok3 || !ok4 || !ok5 || !ok6 || !ok7 || !ok8 {
-      fmt.eprintfln("Failed to aquire sufficient properties from glyph")
+      fmt.eprintfln("Failed to aquire sufficient properties from glyph %r", decoded_rune)
       continue
     }
 
-    decoded_rune, _ := utf8.decode_rune_in_string(char)
-    fmt.printfln("FOUND CHARACTER %r\n  Width = %f\n Height = %f\n  x = %f\n  y = %f",
-      decoded_rune, width, height, x, y)
+    // fmt.printfln("FOUND CHARACTER %r\n  Width = %f\n Height = %f\n  x = %f\n  y = %f",
+    //   decoded_rune, width, height, x, y)
 
     r.font_msdf_common.chardata[decoded_rune] = MsdfCharData {
       char = decoded_rune,
