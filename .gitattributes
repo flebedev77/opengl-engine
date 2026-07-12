@@ -5,3 +5,4 @@ screenshot000.png filter=lfs diff=lfs merge=lfs -text
 assets/cubemaps/** filter=lfs diff=lfs merge=lfs -text
 assets/models/** filter=lfs diff=lfs merge=lfs -text
 assets/textures/** filter=lfs diff=lfs merge=lfs -text
+*.bin filter=lfs diff=lfs merge=lfs -text
