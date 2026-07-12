@@ -372,7 +372,12 @@ player_calculate_aero_forces :: proc(scene: ^Scene, player: ^Player) -> (Vec3, V
     player.basis_matrix[0][1],
     player.basis_matrix[0][2]
   }
-  wind_view_matrix := linalg.matrix4_look_at_f32({0, 0, 0}, player.velocity, local_forward)
+  wind_view_matrix: Mat4
+  if abs(linalg.dot(velocity_direction, local_forward)) > 1-EPSILON {
+    wind_view_matrix = linalg.matrix4_look_at_f32({0, EPSILON, 0}, player.velocity, local_forward)
+  } else {
+    wind_view_matrix = linalg.matrix4_look_at_f32({0, 0, 0}, player.velocity, local_forward)
+  }
   A := wind_view_matrix * player.basis_matrix * player.aerodynamics_triangle[0]
   B := wind_view_matrix * player.basis_matrix * player.aerodynamics_triangle[1]
   C := wind_view_matrix * player.basis_matrix * player.aerodynamics_triangle[2]
@@ -409,9 +414,12 @@ player_calculate_aero_forces :: proc(scene: ^Scene, player: ^Player) -> (Vec3, V
     lift_coefficient = -lift_coefficient
   }
 
-  lift_dir := linalg.normalize(linalg.cross(velocity_direction, local_right))
-  if linalg.dot(lift_dir, local_up) < 0.0 {
-    lift_dir = -lift_dir
+  lift_dir := linalg.cross(velocity_direction, local_right)
+  if linalg.length2(lift_dir) > EPSILON {
+    lift_dir = linalg.normalize(lift_dir)
+    if linalg.dot(lift_dir, local_up) < 0.0 {
+      lift_dir = -lift_dir
+    }
   }
 
   lift_force := lift_dir * (0.5 * SIMULATION_AIR_DENSITY * speed_sq * player.wing_area * lift_coefficient)

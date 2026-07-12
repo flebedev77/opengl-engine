@@ -21,6 +21,7 @@ float median(vec3 v) {
 void main() {
   frag_color = quad_color;
   if (is_char) {
+  // frag_color = texture(msdf_font_texture, frag_uv * uv.zw + uv.xy);
     float sig_dist = median(texture(msdf_font_texture, frag_uv * uv.zw + uv.xy).rgb) - quad_char_weight;
     frag_color.a *= clamp(sig_dist / fwidth(sig_dist) + quad_char_weight, 0.0, 1.0);
   }

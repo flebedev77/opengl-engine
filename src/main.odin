@@ -21,7 +21,7 @@ PLAYER_LOOK_SENSITIVITY :: Vec2{0.0001, 0.0002}
 EPSILON : f32 : 0.0001
 SIMULATION_AIR_DENSITY : f32 : 1.225
 
-LOAD_WORLD :: false // Gives an ability to not waste time loading the world
+LOAD_WORLD :: true // Gives an ability to not waste time loading the world
  //for faster load times if testing other aspects
 
 VAO :: distinct u32

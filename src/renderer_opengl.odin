@@ -815,7 +815,7 @@ texture_load :: proc(filepath: string, srgb := false) -> (out: u32) {
   out, _ = texture_load_with_dimensions(filepath, srgb)
   return
 }
-texture_load_with_dimensions :: proc(filepath: string, srgb := false) -> (u32, IVec2) {
+texture_load_with_dimensions :: proc(filepath: string, srgb := false, mipmaps := true) -> (u32, IVec2) {
   contents := os.read_entire_file(filepath) or_else nil
 
   if contents == nil {
@@ -849,7 +849,7 @@ texture_load_with_dimensions :: proc(filepath: string, srgb := false) -> (u32, I
     gl.TexImage2D(gl.TEXTURE_2D, 0, (srgb) ? gl.SRGB : gl.RGB, img_w, img_h,
       0, (img_channels == 3) ? gl.RGB : gl.RGBA, gl.UNSIGNED_BYTE, &img_data[0])
   }
-  gl.GenerateMipmap(gl.TEXTURE_2D)
+  if (mipmaps) do gl.GenerateMipmap(gl.TEXTURE_2D)
 
 
   return texture, {img_w, img_h}

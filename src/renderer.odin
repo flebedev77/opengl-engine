@@ -2,6 +2,8 @@ package main
 import "core:unicode/utf8"
 import "core:fmt"
 import "core:strings"
+import "core:math/linalg"
+import "vendor:glfw"
 
 @(deprecated = "Broken UVs and normals")
 mesh_make_cube_unlit :: proc(material: Material) -> Mesh {
@@ -289,6 +291,7 @@ mesh_make_quad :: proc(material: Material) -> Mesh {
 }
 
 generate_ui :: proc(renderer: ^Renderer) {
+  // profile_begin() // 0.09 ms! Pretty slow...
   clear(&renderer.scene.quads) 
 
   append(&renderer.scene.quads, Quad{
@@ -305,50 +308,90 @@ generate_ui :: proc(renderer: ^Renderer) {
   //   height = 0.2
   // })
 
-  draw_text(renderer, Vec2{0, 0}, "The Lorem Ipsum Dolor sit amet", 66)
+  // xp, _ := glfw.GetCursorPos(GlfwWindow)
+  // fmt.printfln("PIXELS %f %f", pixels_to_ndc({0, 20}).xy)
+  // draw_text(renderer, Vec2{0, 0}, "AC AVThe Lorem Ipsum Dolor sit amet", f32(xp) / f32(WINDOW_WIDTH))
+  draw_text(renderer, {-1, -1} + pixels_to_ndc({0, 60}), fmt.tprintf("Speed %fkmh", linalg.length(renderer.scene.player.velocity) * renderer.scene.delta_time * 1000 * 3.6 /* meters per second to kmh */), 0.1)
+  draw_text(renderer, pixels_to_ndc({0, WINDOW_HEIGHT - 60}), fmt.tprintf("Altitude %f", renderer.scene.player.position.y), pixels_to_ndc({0, 30}).y)
+  // draw_text(renderer, {0, 0}, "Hello, World!", 0.2)
+  // profile_end()
 }
 
 draw_text :: proc(renderer: ^Renderer, position: Vec2, text: string, font_size: f32, color: Vec4 = {0.9, 0.9, 0.9, 1}) {
   position := position
+  // font_size := font_size / WINDOW_HEIGHT
   remaining := text
+
+  line_height, base :=
+    f32(renderer.scene.resources.font_msdf_common.line_height),
+    f32(renderer.scene.resources.font_msdf_common.base)
+
+  scale: f32 = (font_size * 2.0) / (line_height)
+
+  aspect_ratio := f32(WINDOW_HEIGHT) / f32(WINDOW_WIDTH)
+
+  prev_id: i32 = -1
+
   for len(remaining) > 0 {
     r, width := utf8.decode_rune_in_string(remaining)
     remaining = remaining[width:]
     if r == ' ' {
-      position.x += font_size / WINDOW_WIDTH
+      position.x += scale * 
+        renderer.scene.resources.font_msdf_common.chardata['A'].width *
+        aspect_ratio
+      prev_id = -1
       continue;
     }
-    if strings.contains_rune(renderer.scene.resources.font_msdf_charset, r) {
-      d : MsdfCharData = renderer.scene.resources.font_msdf_data[r]
+    if strings.contains_rune(renderer.scene.resources.font_msdf_common.charset, r) {
+      d : MsdfCharData = renderer.scene.resources.font_msdf_common.chardata[r]
       msdf_resx, msdf_resy :=
-        f32(renderer.scene.resources.font_msdf_resolution.x),
-        f32(renderer.scene.resources.font_msdf_resolution.y)
-      // fmt.printfln("W = %f, H = %f", msdf_resx, msdf_resy)
+        f32(renderer.scene.resources.font_msdf_common.resolution.x),
+        f32(renderer.scene.resources.font_msdf_common.resolution.y)
+      // fmt.printfln("Id = %d W = %f, H = %f, Line height %f, Base %f", d.id, msdf_resx, msdf_resy, line_height, base)
 
-      k: f32 = font_size / (msdf_resy * d.height)
+      kerning := renderer.scene.resources.font_msdf_common.kernings[KerningKey{first = prev_id, second = d.id}]
 
       append(&renderer.scene.quads, Quad{
-        position = {
-          position.x + d.xoffset * msdf_resx * k / WINDOW_WIDTH, 
-          position.y - (d.yoffset) * msdf_resy * k / WINDOW_HEIGHT
-        },
-        color = color,
-        width = d.width * msdf_resx * k / WINDOW_WIDTH,//font_size / WINDOW_WIDTH,
-        height = font_size / WINDOW_HEIGHT,//font_size / WINDOW_HEIGHT,
-        is_char = true,
-        char_weight = 0.5,
-        uv = {
-          d.x,
-          d.y,
-          d.width,
-          d.height
-        }
+          position = {
+            position.x + (kerning + d.xoffset) * scale * aspect_ratio, 
+            position.y + (line_height - base - (d.height + d.yoffset) + line_height - base * 0.5) * scale
+          },
+          color = color,
+          width = d.width * scale * aspect_ratio,
+          height = d.height * scale,
+          is_char = true,
+          char_weight = 0.5,
+          uv = {
+            d.x / msdf_resx,
+            d.y / msdf_resy,
+            d.width / msdf_resx,
+            d.height / msdf_resy
+          }
       })
 
-      position.x += (d.xadvance * msdf_resx * k) / WINDOW_WIDTH
+      position.x += (d.xadvance - kerning) * scale * aspect_ratio
+      prev_id = d.id
     } else {
       fmt.printfln("Tried printing invalid character %r", r)
+      prev_id = -1
     }
 
   }
+}
+
+// Pixel coordinates have 0 as the center
+ndc_to_pixels :: proc(v: Vec2) -> Vec2 {
+  vec := (v) // 2
+  vec.x *= WINDOW_WIDTH
+  vec.y *= WINDOW_HEIGHT
+  return vec
+}
+
+pixels_to_ndc :: proc(v: Vec2) -> Vec2 {
+  vec := Vec2{
+    v.x / WINDOW_WIDTH,
+    v.y / WINDOW_HEIGHT
+  }
+  // vec *= 2
+  return vec
 }
