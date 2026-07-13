@@ -28,7 +28,7 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
   renderer_init(renderer, scene)
   player_init(scene, &scene.player)
   scene.delta_time = 16.666;
-  scene.delta_time_ema = 10//scene.delta_time
+  scene.delta_time_ema = 1//scene.delta_time
 
   // scene.post_process_quad = mesh_make_quad()
 
@@ -120,7 +120,7 @@ scene_update :: proc(scene: ^Scene) {
   time_since_start := f32((current_time - start_time) / f64(time.Millisecond))
 
   scene.delta_time = delta_time
-  dt_ema_fac := f32(0.02)
+  dt_ema_fac := f32(0.3)
   scene.delta_time_ema = 
     scene.delta_time * dt_ema_fac + 
     scene.delta_time_ema * (1-dt_ema_fac)

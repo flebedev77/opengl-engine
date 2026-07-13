@@ -327,7 +327,7 @@ player_render :: proc(scene: ^Scene, player: ^Player, material_override: ^Materi
 
   if !LOAD_WORLD do return
 
-  scale := f32(0.5)//0.001)
+  scale := f32(0.25)//0.001)
   player.visual.mesh.model_matrix = identity_matrix() 
   player.visual.mesh.model_matrix *= translation_matrix(player.position)
   player.visual.mesh.model_matrix *= scale_matrix({scale, scale, scale})

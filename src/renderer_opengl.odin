@@ -259,20 +259,20 @@ renderer_render :: proc(renderer: ^Renderer) {
 
   gl.Disable(gl.BLEND)
 
+  shadowmap_far := f32(18000)
   light_viewmatrix := linalg.matrix4_look_at_f32(
-    renderer.scene.camera.position + linalg.normalize(renderer.sun_position) * 1000, 
+    renderer.scene.camera.position + linalg.normalize(renderer.sun_position) * shadowmap_far*0.5, 
     renderer.scene.camera.position,
     {0, 1, 0}
   )
-  shadowmap_far := f32(5000)
-  lightmap_proj_size := f32(6)
+  lightmap_proj_size := f32(86)
   light_projmatrix := orthographic_projection_matrix(
     -lightmap_proj_size,
     lightmap_proj_size,
     lightmap_proj_size,
     -lightmap_proj_size,
     3, shadowmap_far)
-  macromap_proj_size := f32(50)
+  macromap_proj_size := f32(6050)
   light_macromap_projmatrix := orthographic_projection_matrix(
     -macromap_proj_size,
     macromap_proj_size,
@@ -337,8 +337,8 @@ renderer_render :: proc(renderer: ^Renderer) {
   gl.BindTexture(gl.TEXTURE_3D, renderer.cloud_settings.cloud_noise.detail_worley)
   gl.ActiveTexture(gl.TEXTURE8)
   gl.BindTexture(gl.TEXTURE_2D, renderer.scene.resources.blue_noise_texture)
-  gl.ActiveTexture(gl.TEXTURE7)
-  gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_history_framebuffer.color_texture)
+  // gl.ActiveTexture(gl.TEXTURE7)
+  // gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_history_framebuffer.color_texture)
 
   renderer_bind_and_clear_framebuffer(renderer, renderer.volumetric_framebuffer)
   render_mesh(renderer, &renderer.post_process_quad, &renderer.volumetric_framebuffer.material)
