@@ -307,7 +307,8 @@ vec4 calculate_atmosphere(vec3 camera_world_pos, vec3 ray_dir, float ray_length)
 
     vec3 light_transmittance = vec3(1);
     vec3 prev_light_transmittance = light_transmittance;
-    vec3 light_step_vec = normalize(light_pos) * light_step_l;
+    vec3 light_dir = normalize(light_pos);
+    vec3 light_step_vec = light_dir * light_step_l;
     vec3 light_pos = pos;
 
     for (int j = 0; j < 5; j++) {
@@ -325,15 +326,28 @@ vec4 calculate_atmosphere(vec3 camera_world_pos, vec3 ray_dir, float ray_length)
       light_transmittance.r *= exp(-dens * light_step_l * light_dens.r);
       light_transmittance.g *= exp(-dens * light_step_l * light_dens.g);
       light_transmittance.b *= exp(-dens * light_step_l * light_dens.b);
-      light_pos += light_step_vec;
 
 
       // prev_light_transmittance = light_transmittance;
 
 
-      // vec2 A = ray_sphere(camera_world_pos, ray_dir, cloud_dome_radius + cloud_layer_thickness, cloud_dome_position);
-      // A.x
+      vec2 A = ray_sphere(light_pos, light_dir, cloud_dome_radius, cloud_dome_position);
+      float t_in = -1;
+      if (A.x < 0) t_in = max(A.y, 0);
+      if (A.y < 0) t_in = max(A.x, 0);
+      if (A.x >= 0 && A.y >= 0) t_in = min(A.x, A.y);
+      
+      if (t_in > 0) {
+        vec3 s_pos = light_pos + light_dir * (t_in + cloud_layer_thickness / 2);
+        vec2 d = sample_cloud_density(s_pos);
 
+        if (d.r > 0) {
+          light_transmittance = vec3(0);
+          break;
+        }
+      }
+
+      light_pos += light_step_vec;
     }
 
     vec3 prev_scatter = prev_light_transmittance * prev_density * prev_transmittance;
