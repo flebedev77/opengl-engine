@@ -98,6 +98,8 @@ void main() {
   // out_color += vec3(0.357, 0.047, 0.478) * noise3(frag_normal * 2) * 0.01;
 
   // Day sky
+  // out_frag_color = vec4(0);
+  // return;
 
   //Sun
   float y_factor = -frag_normal.y;

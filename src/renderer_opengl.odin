@@ -200,7 +200,7 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   framebuffer_init(&renderer.shadowmap_framebuffer, {4096, 4096}, {.DEPTH}, "shadowmap", .SHADOWMAP)
   framebuffer_init(&renderer.macroshadowmap_framebuffer, {4096, 4096}, {.DEPTH}, "shadowmap", .SHADOWMAP)
 
-  effects_resolution_factor: f32 = 1.0/1
+  effects_resolution_factor: f32 = 1.0/2
   effects_resolution := Vec2{WINDOW_WIDTH, WINDOW_HEIGHT} * effects_resolution_factor
   effects_resolution_int := IVec2{i32(effects_resolution.x), i32(effects_resolution.y)}
   fmt.printfln("Effects resolution %d (1/%d)", effects_resolution_int, i32(1 / effects_resolution_factor))
@@ -211,10 +211,10 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   renderer.cloud_settings.cloud_dome_radius = 1e5
 
   renderer.cloud_settings.cloud_noise = bake_cloud_noise()
-  // renderer.volumetrics_taa_frames = 128
+  renderer.volumetrics_taa_frames = 128
   framebuffer_init(&renderer.volumetric_framebuffer, effects_resolution_int, {.COLOR, .MOTION_VECTOR}, "volumetric", .TWO_DIMENSIONAL)
-  // framebuffer_init(&renderer.volumetric_history_framebuffer, effects_resolution_int, {.COLOR}, "", .TWO_DIMENSIONAL)
-  // framebuffer_init(&renderer.accumulated_volumetric_framebuffer, effects_resolution_int, {.COLOR}, "clouds_taa", .TWO_DIMENSIONAL)
+  framebuffer_init(&renderer.volumetric_history_framebuffer, effects_resolution_int, {.COLOR}, "", .TWO_DIMENSIONAL)
+  framebuffer_init(&renderer.accumulated_volumetric_framebuffer, effects_resolution_int, {.COLOR}, "clouds_taa", .TWO_DIMENSIONAL)
 
   renderer.final_pass_material = asset_loader_material(0, 0, "post_process", .TWO_DIMENSIONAL)
   renderer.ui_quad_material = asset_loader_material(0, 0, "ui_quad", .TWO_DIMENSIONAL, "ui_quad")
@@ -337,8 +337,6 @@ renderer_render :: proc(renderer: ^Renderer) {
   gl.BindTexture(gl.TEXTURE_3D, renderer.cloud_settings.cloud_noise.detail_worley)
   gl.ActiveTexture(gl.TEXTURE8)
   gl.BindTexture(gl.TEXTURE_2D, renderer.scene.resources.blue_noise_texture)
-  // gl.ActiveTexture(gl.TEXTURE7)
-  // gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_history_framebuffer.color_texture)
 
   renderer_bind_and_clear_framebuffer(renderer, renderer.volumetric_framebuffer)
   render_mesh(renderer, &renderer.post_process_quad, &renderer.volumetric_framebuffer.material)
@@ -353,15 +351,17 @@ renderer_render :: proc(renderer: ^Renderer) {
   // framebuffer_blit(renderer.blur_framebuffer, renderer.volumetric_framebuffer)
 
   // Volumetrics taa pass
-  // gl.ActiveTexture(gl.TEXTURE6)
-  // gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_framebuffer.color_texture)
-  // gl.ActiveTexture(gl.TEXTURE8)
-  // gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_framebuffer.vector_texture)
-  //
-  // renderer_bind_and_clear_framebuffer(renderer, renderer.accumulated_volumetric_framebuffer)
-  // render_mesh(renderer, &renderer.post_process_quad, &renderer.accumulated_volumetric_framebuffer.material)
-  //
-  // framebuffer_blit(renderer.accumulated_volumetric_framebuffer, renderer.volumetric_history_framebuffer)
+  gl.ActiveTexture(gl.TEXTURE6)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_framebuffer.color_texture)
+  gl.ActiveTexture(gl.TEXTURE7)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_history_framebuffer.color_texture)
+  gl.ActiveTexture(gl.TEXTURE8)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_framebuffer.vector_texture)
+
+  renderer_bind_and_clear_framebuffer(renderer, renderer.accumulated_volumetric_framebuffer)
+  render_mesh(renderer, &renderer.post_process_quad, &renderer.accumulated_volumetric_framebuffer.material)
+
+  framebuffer_blit(renderer.accumulated_volumetric_framebuffer, renderer.volumetric_history_framebuffer, {.COLOR})
 
 
   // SSAO
@@ -381,7 +381,7 @@ renderer_render :: proc(renderer: ^Renderer) {
 
   // Final combination pass
   gl.ActiveTexture(gl.TEXTURE6)
-  gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_framebuffer.color_texture)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.accumulated_volumetric_framebuffer.color_texture)
 
 
   renderer.default_framebuffer.size = {FrameBuffer.w, FrameBuffer.h}

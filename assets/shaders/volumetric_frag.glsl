@@ -138,7 +138,7 @@ float rand(vec2 co){
   frame_offset = fract(float(frame_number) * golden_ratio); 
 // #endif
   co.x *= aspect;
-  return fract(texture(blue_noise_texture, co * 7.3327486).r * 100 + frame_offset);
+  return fract(texture(blue_noise_texture, co * 7.3327486 + frame_offset * 10).r * 100 + frame_offset);
 }
 
 vec3 rand_vec_three(vec2 p) {
@@ -281,24 +281,77 @@ vec2 ray_sphere(vec3 ro, vec3 rd, float sr, vec3 sp) {
 
 
 
-// vec4 calculate_atmosphere(vec3 camera_world_pos, vec3 ray_dir, float ray_length) {
-//   float transmittance = 1.0; // Absobtion and out scattering
-//   vec3 scattering = vec3(0); // Really just in scattering
-//
-//   vec3 pos = camera_world_pos;
-//   float stes = 300;
-//   vec3 step_vec = ray_dir * stes;
-//   for (int i = 0; i < 64; i++) {
-//     if (length(pos-camera_world_pos) > ray_length) break;
-//     transmittance *= exp(-10.05 * stes);
-//
-//     scattering += vec3(10000) * transmittance;
-//
-//     pos += step_vec;
-//   }
-//
-//   return vec4(scattering, transmittance);
-// }
+vec4 calculate_atmosphere(vec3 camera_world_pos, vec3 ray_dir, float ray_length) {
+  // return vec4(vec3(1), 0.8);
+  // return vec4(vec3(0.494, 0.545, 0.729)*1.1, 1-exp(-ray_length * 0.0001) );
+  float transmittance = 1.0; // Absobtion and out scattering
+  vec3 scattering = vec3(0); // Really just in scattering
+
+  float stes = 55;
+  float base_step = stes;
+  vec3 pos = camera_world_pos + ray_dir * stes * fract(rand(frag_uv) * float(frame_number) * 0.8);
+  float light_step_l = 1200;
+  float dens = 0.0001;//0.0001;
+  vec3 light_dens = vec3(
+      0.75,
+      0.8,
+      0.3
+    );
+  vec3 step_vec = ray_dir * stes;
+  vec3 prev_light_transmittance = vec3(0);
+  float prev_density = dens;
+  float prev_transmittance = transmittance;
+  for (int i = 0; i < 64; i++) {
+    if (length(pos-camera_world_pos) > ray_length) break;
+    transmittance *= exp(-dens * stes);
+
+    vec3 light_transmittance = vec3(1);
+    vec3 prev_light_transmittance = light_transmittance;
+    vec3 light_step_vec = normalize(light_pos) * light_step_l;
+    vec3 light_pos = pos;
+
+    for (int j = 0; j < 5; j++) {
+      vec3 shadowspace = project_position(light_pos, macroshadowmap_matrix);
+      float current_depth = shadowspace.z;
+      vec2 uvspace = shadowspace.xy * 0.5 + vec2(0.5);
+      float closest_depth = texture(macroshadowmap_texture, uvspace).r;
+      vec3 light_step_shadowspace = project_position(light_step_vec, macroshadowmap_matrix);
+
+      if (closest_depth < current_depth) {
+        light_transmittance = vec3(0);
+        break;
+      }
+
+      light_transmittance.r *= exp(-dens * light_step_l * light_dens.r);
+      light_transmittance.g *= exp(-dens * light_step_l * light_dens.g);
+      light_transmittance.b *= exp(-dens * light_step_l * light_dens.b);
+      light_pos += light_step_vec;
+
+
+      // prev_light_transmittance = light_transmittance;
+
+
+      // vec2 A = ray_sphere(camera_world_pos, ray_dir, cloud_dome_radius + cloud_layer_thickness, cloud_dome_position);
+      // A.x
+
+    }
+
+    vec3 prev_scatter = prev_light_transmittance * prev_density * prev_transmittance;
+    vec3 current_scatter = light_transmittance * dens * transmittance;
+    scattering += (current_scatter + current_scatter) * 0.5 * stes;
+
+    stes = base_step * pow(1+0.02, float(i));
+    step_vec = ray_dir * (stes);// + stes * float(frame_number)*0.01);
+
+    pos += step_vec;
+    prev_light_transmittance = light_transmittance;
+    prev_density = dens;
+    prev_transmittance = transmittance;
+  }
+
+  return vec4(scattering, exp(-ray_length * dens));
+  // return vec4(scattering, 1-transmittance);
+}
 
 vec4 calculate_volumetrics() {
   base_cloud_noise_size = textureSize(base_cloud_noise, 0);
@@ -393,14 +446,19 @@ vec4 calculate_volumetrics() {
     // }
     // volumetric_light /= STEPS_LIGHT;
     bool hit_cloud_surface = false;
-    vec3 world_space_surface = vec3(0);//world_space_pixel;
+    // vec3 world_space_surface = vec3(0);//world_space_pixel;
+    float first_hit_distance = 1e9;
 
     float extinction = 1.0;
     vec3 scattering = vec3(0);
 
-    // vec4 atmo = calculate_atmosphere(camera_world_pos, ray_dir, ray_length);
-    // extinction = atmo.a;
-    // scattering = atmo.rgb;
+    vec4 atmo_void = calculate_atmosphere(
+        camera_world_pos,
+        ray_dir,
+        float(99999999)
+      );
+    // scattering = atmo_void.rgb;
+
 
     vec2 A = ray_sphere(camera_world_pos, ray_dir, cloud_dome_radius + cloud_layer_thickness, cloud_dome_position);
     vec2 B = ray_sphere(camera_world_pos, ray_dir, cloud_dome_radius, cloud_dome_position);
@@ -441,7 +499,7 @@ vec4 calculate_volumetrics() {
             start_pos.y < sky_bounding_box.y &&
             start_pos.y > -sky_bounding_box.y &&
             start_pos.z < sky_bounding_box.z &&
-            start_pos.z > -sky_bounding_box.z)) return vec4(0, 0, 0, 1);
+            start_pos.z > -sky_bounding_box.z)) extinction = 0;
 
         // if (start_pos.y < cloud_minimum_height || cloud_march_length > 2000) return vec4(0, 0, 0, 0);
         // return vec4(0, 0, 0, 0);
@@ -505,8 +563,9 @@ vec4 calculate_volumetrics() {
 
           current_step_length = CLOUD_STEP_LENGTH;
           if (current_density > MIN_DENSITY) {
-            if (!hit_cloud_surface) {
-              world_space_surface = current_pos; 
+            if (!hit_cloud_surface && current_density > 0.03) {
+              // world_space_surface = current_pos; 
+              first_hit_distance = distance_travelled + t_in;
               hit_cloud_surface = true;
             }
 
@@ -614,24 +673,40 @@ vec4 calculate_volumetrics() {
     // vec2 prev_uv = projected.xy * 0.5 + 0.5;
     // motion_vector = (frag_uv - prev_uv) * 100;
 
-    vec4 prev_clip = prev_projection_matrix * prev_view_matrix * vec4(world_space_surface, 1.0);
-    if (prev_clip.w < 0) {
-      motion_vector = vec2(999);
-    } else {
-      vec2 prev_ndc = prev_clip.xy / prev_clip.w;
-      vec2 prev_uv = prev_ndc * 0.5 + 0.5;
+    // vec4 prev_clip = prev_projection_matrix * prev_view_matrix * vec4(world_space_surface, 1.0);
+    // if (prev_clip.w < 0) {
+    //   motion_vector = vec2(999);
+    // } else {
+    //   vec2 prev_ndc = prev_clip.xy / prev_clip.w;
+    //   vec2 prev_uv = prev_ndc * 0.5 + 0.5;
+    //
+    //   vec4 current_clip = projection_matrix * view_matrix * vec4(world_space_surface, 1.0);
+    //   vec2 current_ndc = current_clip.xy / current_clip.w;
+    //   vec2 current_uv = current_ndc * 0.5 + 0.5;
+    //
+    //   motion_vector = current_uv - prev_uv;
+    // }
 
-      vec4 current_clip = projection_matrix * view_matrix * vec4(world_space_surface, 1.0);
-      vec2 current_ndc = current_clip.xy / current_clip.w;
-      vec2 current_uv = current_ndc * 0.5 + 0.5;
 
-      motion_vector = current_uv - prev_uv;
-    }
+      // first_hit_distance = 99999999;
+    vec4 atmo = calculate_atmosphere(
+        camera_world_pos,
+        ray_dir,
+        min(ray_length, first_hit_distance)
+      );
 
     scattering = clamp(scattering*1.1, vec3(0), vec3(1));
     extinction = clamp(extinction, 0, 1);
+
+    float transmittance = extinction;
+    transmittance *= atmo.a;
+    scattering += atmo.rgb;// * (1-atmo.a);// + atmo_void.rgb * (extinction - atmo.a);
+
+    scattering = clamp(scattering, vec3(0), vec3(1));
+    transmittance = clamp(transmittance, 0, 1);
+
     return vec4(
-        scattering, extinction
+        scattering, transmittance
     );
 }
 

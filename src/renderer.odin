@@ -301,6 +301,14 @@ generate_ui :: proc(renderer: ^Renderer) {
     width = 0.25,
     height = 0.25
   })
+
+  w, h := f32(690), f32(90)
+  append(&renderer.scene.quads, Quad{
+    position = ({-1, 1} - pixels_to_ndc({0, h})),
+    color = {0.057, 0.057, 0.057, 1},
+    width = pixels_to_ndc({w, h}).x,
+    height = pixels_to_ndc({w, h}).y
+  })
   
   // append(&renderer.scene.quads, Quad{
   //   position = {-1 + 0.025, -1 + 0.025},
@@ -325,7 +333,7 @@ generate_ui :: proc(renderer: ^Renderer) {
 
   // dt_average := math.sum(renderer.scene.delta_time_history[:]) / len(renderer.scene.delta_time_history)
   draw_text(renderer, {-1, 1} + pixels_to_ndc({10, -80}), 
-    fmt.tprintf("FPS: %0.1f", math.ceil((1000 / renderer.scene.delta_time_ema)*10)/10), pixels_to_ndc({0, 60}).y)
+    fmt.tprintf("FPS: %0.1f %0.1f", math.ceil((1000 / renderer.scene.delta_time_ema)*10)/10, renderer.scene.delta_time_ema), pixels_to_ndc({0, 60}).y)
   // draw_text(renderer, {0, 0}, "Hello, World!", 0.2)
   // profile_end()
 }

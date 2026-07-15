@@ -43,7 +43,7 @@ void main() {
 
   vec4 volumetrics = texture(volumetrics_texture, frag_uv);
   // Could do a lanczos or bicubic filter here
-  frag_color = volumetrics.rgb + frag_color * volumetrics.a;
+  frag_color = volumetrics.rgb + frag_color * (volumetrics.a);
 
   // frag_color += volumetrics;
   // frag_color = ACES_ToneMap(frag_color.xyz);

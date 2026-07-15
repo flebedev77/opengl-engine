@@ -27,21 +27,35 @@ vec3 reconstruct_position(vec2 uv, float non_linear_depth) {
 }
 
 void main() {
-  float weight = 1;//1/float(volumetrics_taa_frames);
+  vec4 current_sample = texture(volumetrics_texture, frag_uv);
+  // frag_color = current_sample;
+  // return;
+  float weight = 1/10;//float(volumetrics_taa_frames);
   vec2 velocity = texture(volumetric_motion_vectors_texture, frag_uv).xy;
   // frag_color = vec4(velocity.xy, 0, 0);
   // return;
-  if (length(velocity) > 0.68) weight = 1;
+  // if (length(velocity) > 0.68) weight = 1;
 
-  vec4 current_sample = texture(volumetrics_texture, frag_uv);
+
+
   // if (current_sample.r < 0) current_sample += vec4(1);
-  // frag_color = current_sample;
-  // return;
-  if (current_sample.r < 0) weight = 0;
+  // if (current_sample.r < 0) weight = 0;
 
-  vec2 history_uv = frag_uv - velocity;
+  vec2 v = clamp(velocity, vec2(-1), vec2(1));
+  v = vec2(0);
+  vec2 history_uv = frag_uv - v;
 
-  if (current_sample.r >= 0 && 
+  vec4 history_color = texture(volumetric_history_texture, history_uv);
+  // history_color = clamp(history_color, min_color, max_color);
+
+  frag_color = mix(
+      history_color,
+      current_sample,
+      1
+      );
+  return;
+
+  if ( 
       (history_uv.x <= 0 || history_uv.x >= 1 ||
       history_uv.y <= 0 || history_uv.y >= 1)) {
     frag_color = current_sample;
