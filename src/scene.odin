@@ -36,7 +36,9 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
     sky_shader := shader_compileprogram(
                   cstring(#load("../assets/shaders/sky_frag.glsl")),
                   cstring(#load("../assets/shaders/sky_vert.glsl")),
-                  .THREE_DIMENSIONAL
+                  .THREE_DIMENSIONAL,
+                  "./assets/shaders/sky_frag.glsl",
+                  "./assets/shaders/sky_vert.glsl"
                 )
     sky_material := Material{
       is_valid = true,

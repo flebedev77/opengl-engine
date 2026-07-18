@@ -276,10 +276,10 @@ player_debug_update :: proc(scene: ^Scene, player: ^Player) {
   if glfw.GetKey(GlfwWindow, glfw.KEY_D) > 0 {
     moveinput += right
   }
-  if player.is_flying && glfw.GetKey(GlfwWindow, glfw.KEY_SPACE) > 0 {
+  if player.is_flying && (glfw.GetKey(GlfwWindow, glfw.KEY_SPACE) > 0 || glfw.GetKey(GlfwWindow, glfw.KEY_E) > 0) {
     moveinput += {0, 1, 0}
   }
-  if player.is_flying && glfw.GetKey(GlfwWindow, glfw.KEY_LEFT_SHIFT) > 0 {
+  if player.is_flying && (glfw.GetKey(GlfwWindow, glfw.KEY_LEFT_SHIFT) > 0 || glfw.GetKey(GlfwWindow, glfw.KEY_Q) > 0) {
     moveinput += {0, -1, 0}
   }
 
@@ -295,7 +295,7 @@ player_debug_update :: proc(scene: ^Scene, player: ^Player) {
   }
 
 
-  if player.debug_is_fast do player.walk_speed = PLAYER_WALK_SPEED + 6
+  if player.debug_is_fast do player.walk_speed = PLAYER_WALK_SPEED + 26
   else do player.walk_speed = PLAYER_WALK_SPEED
 
   if linalg.length2(moveinput) > 0 &&

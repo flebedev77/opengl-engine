@@ -102,8 +102,11 @@ void main() {
   // return;
 
   //Sun
-  float y_factor = -frag_normal.y;
-  vec3 high_color = vec3(0.094, 0.345, 0.729);
+  // float y_factor = min(frag_pos.y+0.0, 1);
+  float y_factor = clamp(
+      pow(dot(frag_pos, vec3(0, 1, 0)), 0.8) * 0.5 + 0.5,
+      0, 1);
+  vec3 high_color = vec3(0.094, 0.345, 0.729) * 0.1;
   vec3 out_color = mix(vec3(0.345, 0.6, 0.839), high_color, y_factor);
   vec3 view_dir = normalize(frag_pos);
   vec3 light_dir = normalize(light_pos);
