@@ -54,6 +54,8 @@ ShaderParameters :: struct {
   shadowmap_matrix_location,
   macroshadowmap_texture_location,
   macroshadowmap_matrix_location,
+  inv_macroshadowmap_matrix_location,
+  esm_shadowmap_texture_location,
   blue_noise_texture_location,
   frame_number_location,
   volumetrics_taa_frames_location,
@@ -74,6 +76,7 @@ ShaderParameters :: struct {
   resolution: Vec2,
   shadowmap_matrix,
   macroshadowmap_matrix,
+  inv_macroshadowmap_matrix,
   inv_view_matrix,
   inv_projection_matrix,
   prev_view_matrix,
@@ -149,6 +152,7 @@ Renderer :: struct {
   volumetric_framebuffer: Framebuffer,
   volumetric_history_framebuffer: Framebuffer,
   accumulated_volumetric_framebuffer: Framebuffer,
+  volumetric_exponential_shadowmap: Framebuffer,
   blur_framebuffer: Framebuffer,
   shadowmap_framebuffer: Framebuffer,
   macroshadowmap_framebuffer: Framebuffer,
@@ -158,8 +162,10 @@ Renderer :: struct {
   post_process_quad: Mesh,
   shadowmap_matrix: Mat4,
   macroshadowmap_matrix: Mat4,
+  inv_macroshadowmap_matrix: Mat4,
   default_shader: Shader,
   sun_position: Vec3,
+  sun_angle: f32,
 
   transparent_mesh_queue: [dynamic]^Mesh,
 
@@ -175,6 +181,7 @@ CloudSettings :: struct {
 
 renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   renderer.sun_position = {1, 1, 1}//10, 1}
+  renderer.sun_angle = math.PI/2 - math.PI/6
 
   gl.LineWidth(5.0)
   gl.Enable(gl.DEPTH_TEST)
@@ -194,11 +201,12 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
 
   // TODO: Make the resize on window change
   window_resolution := IVec2{WINDOW_WIDTH, WINDOW_HEIGHT}
+  shadowmap_resolution := IVec2{4096, 4096}
   framebuffer_init(&renderer.prepass_framebuffer, window_resolution, {.REVERSED_Z, .NORMAL, .DEPTH}, "prepass", .THREE_DIMENSIONAL)
   framebuffer_init(&renderer.msaa_back_framebuffer, window_resolution, {.REVERSED_Z, .COLOR, .DEPTH}, "", .THREE_DIMENSIONAL, true, 8)
   framebuffer_init(&renderer.back_framebuffer, window_resolution, {.REVERSED_Z, .COLOR})
-  framebuffer_init(&renderer.shadowmap_framebuffer, {4096, 4096}, {.DEPTH}, "shadowmap", .SHADOWMAP)
-  framebuffer_init(&renderer.macroshadowmap_framebuffer, {4096, 4096}, {.DEPTH}, "shadowmap", .SHADOWMAP)
+  framebuffer_init(&renderer.shadowmap_framebuffer, shadowmap_resolution, {.DEPTH}, "shadowmap", .SHADOWMAP)
+  framebuffer_init(&renderer.macroshadowmap_framebuffer, shadowmap_resolution, {.DEPTH}, "shadowmap", .SHADOWMAP)
 
   effects_resolution_factor: f32 = 1.0/4
   effects_resolution := Vec2{WINDOW_WIDTH, WINDOW_HEIGHT} * effects_resolution_factor
@@ -215,6 +223,7 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   framebuffer_init(&renderer.volumetric_framebuffer, effects_resolution_int, {.COLOR, .MOTION_VECTOR}, "volumetric", .TWO_DIMENSIONAL)
   framebuffer_init(&renderer.volumetric_history_framebuffer, effects_resolution_int, {.COLOR}, "", .TWO_DIMENSIONAL)
   framebuffer_init(&renderer.accumulated_volumetric_framebuffer, effects_resolution_int, {.COLOR}, "clouds_taa", .TWO_DIMENSIONAL)
+  framebuffer_init(&renderer.volumetric_exponential_shadowmap, {1024, 1024}, {.RED}, "cloud_esm", .TWO_DIMENSIONAL)
 
   renderer.final_pass_material = asset_loader_material(0, 0, "post_process", .TWO_DIMENSIONAL)
   renderer.ui_quad_material = asset_loader_material(0, 0, "ui_quad", .TWO_DIMENSIONAL, "ui_quad")
@@ -241,6 +250,9 @@ renderer_delete :: proc(renderer: ^Renderer) {
     renderer.back_framebuffer.framebuffer,
     renderer.ssao_framebuffer.framebuffer,
     renderer.volumetric_framebuffer.framebuffer,
+    renderer.volumetric_history_framebuffer.framebuffer,
+    renderer.accumulated_volumetric_framebuffer.framebuffer,
+    renderer.volumetric_exponential_shadowmap.framebuffer
   }
   gl.DeleteFramebuffers(i32(len(fbs)), &fbs[0])
 }
@@ -259,7 +271,7 @@ renderer_render :: proc(renderer: ^Renderer) {
 
   gl.Disable(gl.BLEND)
 
-  shadowmap_far := f32(18000)
+  shadowmap_far := f32(708000)
   light_viewmatrix := linalg.matrix4_look_at_f32(
     renderer.scene.camera.position + linalg.normalize(renderer.sun_position) * shadowmap_far*0.5, 
     renderer.scene.camera.position,
@@ -282,6 +294,7 @@ renderer_render :: proc(renderer: ^Renderer) {
   )
   renderer.macroshadowmap_matrix = light_macromap_projmatrix * light_viewmatrix
   renderer.shadowmap_matrix = light_projmatrix * light_viewmatrix
+  renderer.inv_macroshadowmap_matrix = linalg.inverse(renderer.macroshadowmap_matrix)
 
   gl.Enable(gl.DEPTH_TEST)
   renderer_bind_and_clear_framebuffer(renderer, renderer.shadowmap_framebuffer)
@@ -308,6 +321,8 @@ renderer_render :: proc(renderer: ^Renderer) {
 
   // MSAA forward pass
   // scene.renderer.back_framebuffer.size = {FrameBuffer.w, FrameBuffer.h}
+  gl.ActiveTexture(gl.TEXTURE8)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_exponential_shadowmap.red_texture)
   renderer_bind_and_clear_framebuffer(renderer, renderer.msaa_back_framebuffer)
   render_mesh(renderer, &renderer.scene.sky_mesh)
   renderer_draw_meshes(renderer)
@@ -340,6 +355,10 @@ renderer_render :: proc(renderer: ^Renderer) {
 
   renderer_bind_and_clear_framebuffer(renderer, renderer.volumetric_framebuffer)
   render_mesh(renderer, &renderer.post_process_quad, &renderer.volumetric_framebuffer.material)
+
+  // NOTE: Rendering esm here will cause it to be 1 frame behind
+  renderer_bind_and_clear_framebuffer(renderer, renderer.volumetric_exponential_shadowmap)
+  render_mesh(renderer, &renderer.post_process_quad, &renderer.volumetric_exponential_shadowmap.material)
 
   // Volumetrics blur pass
   // gl.ActiveTexture(gl.TEXTURE5)
@@ -413,7 +432,7 @@ renderer_render :: proc(renderer: ^Renderer) {
   free_all(context.temp_allocator)
 
   // θ := f32(renderer.scene.frame_number) * 0.0001 + math.PI * 0.5
-  // renderer.sun_position = {0, math.sin(θ), math.cos(θ)}
+  renderer.sun_position = {0, math.sin(renderer.sun_angle), math.cos(renderer.sun_angle)}
 }
 
 renderer_bind_and_clear_framebuffer :: proc(renderer: ^Renderer, framebuffer: Framebuffer) {
@@ -487,6 +506,7 @@ render_mesh :: proc(renderer: ^Renderer, mesh: ^Mesh, material_override: ^Materi
   shader_parameters.frame_number = renderer.scene.frame_number
   shader_parameters.volumetrics_taa_frames = renderer.volumetrics_taa_frames
   shader_parameters.resolution = {WINDOW_WIDTH, WINDOW_HEIGHT}
+  shader_parameters.inv_macroshadowmap_matrix = renderer.inv_macroshadowmap_matrix
 
   shader_parameters.cloud_dome_radius = renderer.cloud_settings.cloud_dome_radius
 
@@ -593,6 +613,7 @@ mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}) {
   gl.UniformMatrix4fv(shader.parameters.inv_view_matrix_location, 1, gl.FALSE, &shader.parameters.inv_view_matrix[0,0])
   gl.UniformMatrix4fv(shader.parameters.shadowmap_matrix_location, 1, gl.FALSE, &shader.parameters.shadowmap_matrix[0,0])
   gl.UniformMatrix4fv(shader.parameters.macroshadowmap_matrix_location, 1, gl.FALSE, &shader.parameters.macroshadowmap_matrix[0,0])
+  gl.UniformMatrix4fv(shader.parameters.inv_macroshadowmap_matrix_location, 1, gl.FALSE, &shader.parameters.inv_macroshadowmap_matrix[0,0])
 
   gl.Uniform3fv(shader.parameters.light_position_location, 1, &shader.parameters.sun_position[0])
 
@@ -657,6 +678,7 @@ mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}) {
     gl.Uniform1i(shader.parameters.albedo_texture_location, 0)
     gl.Uniform1i(shader.parameters.secondary_albedo_texture_location, 3)
     gl.Uniform1i(shader.parameters.roughness_texture_location, 2)
+    gl.Uniform1i(shader.parameters.esm_shadowmap_texture_location, 8)
 
     gl.Uniform1f(shader.parameters.roughness_strength_location, material.roughness_strength)
     gl.Uniform1f(shader.parameters.metallic_strength_location, material.metallic_strength)
@@ -736,6 +758,7 @@ shader_init :: proc(shader: ^Shader) {
   shader.parameters.shadowmap_matrix_location = gl.GetUniformLocation(shader.program, "shadowmap_matrix")
   shader.parameters.macroshadowmap_texture_location = gl.GetUniformLocation(shader.program, "macroshadowmap_texture")
   shader.parameters.macroshadowmap_matrix_location = gl.GetUniformLocation(shader.program, "macroshadowmap_matrix")
+  shader.parameters.inv_macroshadowmap_matrix_location = gl.GetUniformLocation(shader.program, "inv_macroshadowmap_matrix")
 
   shader.parameters.inv_view_matrix_location = gl.GetUniformLocation(shader.program, "inv_view_matrix")
   shader.parameters.inv_projection_matrix_location = gl.GetUniformLocation(shader.program, "inv_projection_matrix")
@@ -763,6 +786,7 @@ shader_init :: proc(shader: ^Shader) {
       shader.parameters.roughness_texture_location = gl.GetUniformLocation(shader.program, "roughness_texture")
       shader.parameters.roughness_strength_location = gl.GetUniformLocation(shader.program, "roughness_strength")
       shader.parameters.metallic_strength_location = gl.GetUniformLocation(shader.program, "metallic_strength")
+      shader.parameters.esm_shadowmap_texture_location = gl.GetUniformLocation(shader.program, "esm_shadowmap_texture")
     // case .TWO_DIMENSIONAL:
       shader.parameters.resolution_location = gl.GetUniformLocation(shader.program, "resolution")
       shader.parameters.blue_noise_texture_location = gl.GetUniformLocation(shader.program, "blue_noise_texture")
@@ -924,7 +948,7 @@ framebuffer_init :: proc(
     gl.GenTextures(1, &framebuffer.red_texture)
     gl.BindTexture(gl.TEXTURE_2D, framebuffer.red_texture)
 
-    gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RED, size.x, size.y, 0, gl.RED, gl.FLOAT, nil)
+    gl.TexImage2D(gl.TEXTURE_2D, 0, gl.R32F, size.x, size.y, 0, gl.RED, gl.FLOAT, nil)
 
     gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
     gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)

@@ -14,6 +14,7 @@ uniform sampler2D secondary_albedo_texture;
 uniform sampler2D roughness_texture;
 uniform sampler2D shadowmap_texture;
 uniform sampler2D macroshadowmap_texture;
+uniform sampler2D esm_shadowmap_texture;
 
 uniform vec3 tint;
 uniform vec3 camera_pos;
@@ -99,6 +100,8 @@ vec2(0.63081646, -0.04855106),
 vec2(0.43956539, -0.09492128), 
 vec2(-0.22184938, 0.03012371)
 );
+
+const float esm_k = 140;
 
 float rand(vec2 co) {
     return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
@@ -300,6 +303,10 @@ void main() {
   
   float shadow = 1.0;
   
+  vec4 macromap_space = macroshadowmap_matrix * vec4(frag_pos, 1);
+  vec3 macromap_proj = macromap_space.xyz / macromap_space.w;
+  macromap_proj = vec3(vec2(macromap_proj.xy * 0.5 + 0.5), macromap_proj.z);
+
   if (diffuse != 0) {
     vec3 proj_coords = frag_pos_lightspace.xyz / frag_pos_lightspace.w;
     proj_coords = vec3(vec2(proj_coords.xy * 0.5 + 0.5), proj_coords.z);
@@ -309,16 +316,20 @@ void main() {
     if (proj_coords.x <= 1-p && proj_coords.y <= 1-p && proj_coords.x >= p && proj_coords.y >= p) {
       shadow = calculate_shadow(proj_coords, shadowmap_texture);
     } else {
-      vec4 macromap_space = macroshadowmap_matrix * vec4(frag_pos, 1);
-      proj_coords = macromap_space.xyz / macromap_space.w;
-      proj_coords = vec3(vec2(proj_coords.xy * 0.5 + 0.5), proj_coords.z);
-      shadow = calculate_shadow(proj_coords, macroshadowmap_texture);
+      shadow = calculate_shadow(macromap_proj, macroshadowmap_texture);
     }
 
     shadow = clamp(pow(shadow, shadow_pcf_border_exponent), 0, 1);
   }
 
   float inv_shadow = 1 - shadow;
+  inv_shadow = exp(-esm_k * (macromap_proj.z)) * 
+    texture(esm_shadowmap_texture, macromap_proj.xy).r;
+  inv_shadow = clamp(inv_shadow, 0, 1);
+  // out_frag_color = 
+  //   texture(esm_shadowmap_texture, macromap_proj.xy);
+  // return;
+  // inv_shadow = (texture(esm_shadowmap_texture, macromap_proj.xy).r < macromap_proj.z) ? 0 : 1;
   // out_frag_color = mix(out_frag_color, out_frag_color * shadow_ambient, clamp(pow(shadow, shadow_pcf_border_exponent), 0.0, 1.0));
   out_frag_color = (light_energy * inv_shadow + vec4(albedo, 1) * ambient);
   out_frag_color = out_frag_color / (out_frag_color + vec4(1));

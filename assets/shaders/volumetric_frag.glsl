@@ -280,7 +280,7 @@ vec2 ray_sphere(vec3 ro, vec3 rd, float sr, vec3 sp) {
 }
 
 float sample_atmo_density(vec3 p, bool far) {
-  p.x += float(frame_number) * 1.1 + p.y * 0.01;
+  p.x += float(frame_number) * 5.1 + p.y * 0.01;
   float v = exp(-(p.y + 200) * 0.001) * 0.0002;
   if (!far) v -= texture(detail_cloud_noise, p * 0.0012).r * 0.0001;
   return max(v, 0);
@@ -306,7 +306,7 @@ vec4 calculate_atmosphere(vec3 camera_world_pos, vec3 ray_dir, float ray_length)
   vec3 prev_light_transmittance = vec3(0);
   float prev_density = dens;
   float prev_transmittance = transmittance;
-  vec3 obstructed_scatter = vec3(0.1);
+  vec3 obstructed_scatter = vec3(0.4);
   for (int i = 0; i < 128; i++) {
     if (distance_along > ray_length ||
         transmittance <= 0.001) break;
@@ -346,7 +346,7 @@ vec4 calculate_atmosphere(vec3 camera_world_pos, vec3 ray_dir, float ray_length)
       if (A.x >= 0 && A.y >= 0) t_in = min(A.x, A.y);
       
       if (t_in > 0) {
-        vec3 s_pos = light_pos + light_dir * (t_in + 200 / 2);
+        vec3 s_pos = light_pos + light_dir * (t_in + 600 / 2);
         vec2 d = sample_cloud_density(s_pos);
 
         if (d.r > 0) {
@@ -475,14 +475,6 @@ vec4 calculate_volumetrics() {
 
     float extinction = 1.0;
     vec3 scattering = vec3(0);
-
-    vec4 atmo_void = calculate_atmosphere(
-        camera_world_pos,
-        ray_dir,
-        float(99999999)
-      );
-    // scattering = atmo_void.rgb;
-
 
     vec2 A = ray_sphere(camera_world_pos, ray_dir, cloud_dome_radius + cloud_layer_thickness, cloud_dome_position);
     vec2 B = ray_sphere(camera_world_pos, ray_dir, cloud_dome_radius, cloud_dome_position);
