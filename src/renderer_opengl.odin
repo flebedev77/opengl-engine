@@ -154,6 +154,7 @@ Renderer :: struct {
   accumulated_volumetric_framebuffer: Framebuffer,
   volumetric_exponential_shadowmap: Framebuffer,
   blur_framebuffer: Framebuffer,
+  esm_blur_framebuffer: Framebuffer,
   shadowmap_framebuffer: Framebuffer,
   macroshadowmap_framebuffer: Framebuffer,
 
@@ -202,6 +203,7 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   // TODO: Make the resize on window change
   window_resolution := IVec2{WINDOW_WIDTH, WINDOW_HEIGHT}
   shadowmap_resolution := IVec2{4096, 4096}
+  esm_resolution := IVec2{2048, 2048}
   framebuffer_init(&renderer.prepass_framebuffer, window_resolution, {.REVERSED_Z, .NORMAL, .DEPTH}, "prepass", .THREE_DIMENSIONAL)
   framebuffer_init(&renderer.msaa_back_framebuffer, window_resolution, {.REVERSED_Z, .COLOR, .DEPTH}, "", .THREE_DIMENSIONAL, true, 8)
   framebuffer_init(&renderer.back_framebuffer, window_resolution, {.REVERSED_Z, .COLOR})
@@ -223,7 +225,9 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   framebuffer_init(&renderer.volumetric_framebuffer, effects_resolution_int, {.COLOR, .MOTION_VECTOR}, "volumetric", .TWO_DIMENSIONAL)
   framebuffer_init(&renderer.volumetric_history_framebuffer, effects_resolution_int, {.COLOR}, "", .TWO_DIMENSIONAL)
   framebuffer_init(&renderer.accumulated_volumetric_framebuffer, effects_resolution_int, {.COLOR}, "clouds_taa", .TWO_DIMENSIONAL)
-  framebuffer_init(&renderer.volumetric_exponential_shadowmap, {1024, 1024}, {.RED}, "cloud_esm", .TWO_DIMENSIONAL)
+
+  framebuffer_init(&renderer.volumetric_exponential_shadowmap, esm_resolution, {.RED}, "cloud_esm", .TWO_DIMENSIONAL)
+  framebuffer_init(&renderer.esm_blur_framebuffer, esm_resolution, {.RED}, "", .TWO_DIMENSIONAL)
 
   renderer.final_pass_material = asset_loader_material(0, 0, "post_process", .TWO_DIMENSIONAL)
   renderer.ui_quad_material = asset_loader_material(0, 0, "ui_quad", .TWO_DIMENSIONAL, "ui_quad")
@@ -284,7 +288,7 @@ renderer_render :: proc(renderer: ^Renderer) {
     lightmap_proj_size,
     -lightmap_proj_size,
     3, shadowmap_far)
-  macromap_proj_size := f32(6050)
+  macromap_proj_size := f32(16050)
   light_macromap_projmatrix := orthographic_projection_matrix(
     -macromap_proj_size,
     macromap_proj_size,
@@ -356,9 +360,18 @@ renderer_render :: proc(renderer: ^Renderer) {
   renderer_bind_and_clear_framebuffer(renderer, renderer.volumetric_framebuffer)
   render_mesh(renderer, &renderer.post_process_quad, &renderer.volumetric_framebuffer.material)
 
+  // Exponential shadowmap
   // NOTE: Rendering esm here will cause it to be 1 frame behind
   renderer_bind_and_clear_framebuffer(renderer, renderer.volumetric_exponential_shadowmap)
   render_mesh(renderer, &renderer.post_process_quad, &renderer.volumetric_exponential_shadowmap.material)
+
+  // TODO: Optimise the blur.. This blur pass currently takes longer than the shadowmap generation itself
+  gl.ActiveTexture(gl.TEXTURE5)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_exponential_shadowmap.red_texture)
+  renderer.blur_framebuffer.material.shader.parameters.blur_amount = 3
+  renderer_bind_and_clear_framebuffer(renderer, renderer.esm_blur_framebuffer)
+  render_mesh(renderer, &renderer.post_process_quad, &renderer.blur_framebuffer.material)
+  framebuffer_blit(renderer.esm_blur_framebuffer, renderer.volumetric_exponential_shadowmap)
 
   // Volumetrics blur pass
   // gl.ActiveTexture(gl.TEXTURE5)
