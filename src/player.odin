@@ -294,6 +294,13 @@ player_debug_update :: proc(scene: ^Scene, player: ^Player) {
     player.freecam_velocity.y = 0.14
   }
 
+  if glfw.GetKey(GlfwWindow, glfw.KEY_I) > 0 {
+    scene.renderer.sun_angle += 0.01
+  }
+  if glfw.GetKey(GlfwWindow, glfw.KEY_O) > 0 {
+    scene.renderer.sun_angle -= 0.01
+  }
+
 
   if player.debug_is_fast do player.walk_speed = PLAYER_WALK_SPEED + 26
   else do player.walk_speed = PLAYER_WALK_SPEED
