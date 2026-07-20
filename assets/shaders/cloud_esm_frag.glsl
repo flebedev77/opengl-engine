@@ -42,7 +42,7 @@ float actual_cloud_height_base = cloud_dome_radius;
 float actual_cloud_height_apex = cloud_dome_radius + cloud_layer_thickness;
 const float cloud_minimum_height = -3500;
 
-const float esm_k = 140;
+const float esm_k = 120;
 
 ivec3 base_cloud_noise_size = ivec3(128*6, 16, 128*6);
 

@@ -32,7 +32,7 @@ const float shadow_pcf_noisiness = 1.0;
 const int shadow_pcf_samples = 5;
 const float ambient_light_intensity = 0.2;
 
-const float esm_k = 20;
+const float esm_k = 120;
 
 const vec2 poisson_offsets[64] = vec2[](
 vec2(0.24772918, 0.42333201), 
@@ -319,10 +319,18 @@ void main() {
     shadow = clamp(pow(shadow, shadow_pcf_border_exponent), 0, 1);
   }
 
+  float esm_lightness = exp(-esm_k * (macromap_proj.z)) * 
+    texture(esm_shadowmap_texture, macromap_proj.xy).r;
+  esm_lightness *= esm_lightness;
+  esm_lightness *= esm_lightness;
+  esm_lightness *= esm_lightness;
+  esm_lightness *= esm_lightness;
+  esm_lightness *= esm_lightness;
+  esm_lightness *= esm_lightness;
+
   float inv_shadow = 1 - shadow;
-  // inv_shadow = exp(-esm_k * (1-macromap_proj.z)) * 
-  //   texture(esm_shadowmap_texture, macromap_proj.xy).r;
-  // inv_shadow = (texture(esm_shadowmap_texture, macromap_proj.xy).r < macromap_proj.z) ? 0 : 1;
+  inv_shadow = min(inv_shadow, esm_lightness);
+  inv_shadow = clamp(inv_shadow, 0, 1);
   // out_frag_color = mix(out_frag_color, out_frag_color * shadow_ambient, clamp(pow(shadow, shadow_pcf_border_exponent), 0.0, 1.0));
   out_frag_color = (light_energy * inv_shadow + vec4(albedo, 1) * ambient);
   out_frag_color = out_frag_color / (out_frag_color + vec4(1));

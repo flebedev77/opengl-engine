@@ -101,7 +101,7 @@ vec2(0.43956539, -0.09492128),
 vec2(-0.22184938, 0.03012371)
 );
 
-const float esm_k = 140;
+const float esm_k = 120;
 
 float rand(vec2 co) {
     return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
@@ -322,9 +322,17 @@ void main() {
     shadow = clamp(pow(shadow, shadow_pcf_border_exponent), 0, 1);
   }
 
-  float inv_shadow = 1 - shadow;
-  inv_shadow = exp(-esm_k * (macromap_proj.z)) * 
+  float esm_lightness = exp(-esm_k * (macromap_proj.z)) * 
     texture(esm_shadowmap_texture, macromap_proj.xy).r;
+  esm_lightness *= esm_lightness;
+  esm_lightness *= esm_lightness;
+  esm_lightness *= esm_lightness;
+  esm_lightness *= esm_lightness;
+  esm_lightness *= esm_lightness;
+  esm_lightness *= esm_lightness;
+
+  float inv_shadow = 1 - shadow;
+  inv_shadow = min(inv_shadow, esm_lightness);
   inv_shadow = clamp(inv_shadow, 0, 1);
   // out_frag_color = 
   //   texture(esm_shadowmap_texture, macromap_proj.xy);
