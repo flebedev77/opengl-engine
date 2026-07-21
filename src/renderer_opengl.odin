@@ -38,7 +38,7 @@ ShaderParameters :: struct {
   roughness_strength_location,
   screen_texture_location,
   ssao_texture_location,
-  blur_texture_location,
+  input_texture_location,
   blur_amount_location,
   volumetrics_texture_location,
   volumetric_history_texture_location,
@@ -216,13 +216,13 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   fmt.printfln("Effects resolution %d (1/%d)", effects_resolution_int, i32(1 / effects_resolution_factor))
   framebuffer_init(&renderer.ssao_framebuffer, effects_resolution_int, {.RED}, "ssao", .TWO_DIMENSIONAL)
   framebuffer_init(&renderer.blur_framebuffer, effects_resolution_int, {.COLOR}, "blur", .TWO_DIMENSIONAL)
-  framebuffer_init(&renderer.downscaled_depth_framebuffer, effects_resolution_int, {.REVERSED_Z, .DEPTH}, "", .THREE_DIMENSIONAL)
+  framebuffer_init(&renderer.downscaled_depth_framebuffer, effects_resolution_int, {.RED}, "depth_downscale", .TWO_DIMENSIONAL)
 
   renderer.cloud_settings.cloud_dome_radius = 1e5
 
   renderer.cloud_settings.cloud_noise = bake_cloud_noise()
   renderer.volumetrics_taa_frames = 128
-  framebuffer_init(&renderer.volumetric_framebuffer, effects_resolution_int, {.COLOR, .MOTION_VECTOR}, "volumetric", .TWO_DIMENSIONAL)
+  framebuffer_init(&renderer.volumetric_framebuffer, effects_resolution_int, {.COLOR, .RED}, "volumetric", .TWO_DIMENSIONAL)
   framebuffer_init(&renderer.volumetric_history_framebuffer, effects_resolution_int, {.COLOR}, "", .TWO_DIMENSIONAL)
   framebuffer_init(&renderer.accumulated_volumetric_framebuffer, effects_resolution_int, {.COLOR}, "clouds_taa", .TWO_DIMENSIONAL)
 
@@ -325,7 +325,10 @@ renderer_render :: proc(renderer: ^Renderer) {
   renderer_draw_meshes(renderer, &renderer.prepass_framebuffer.material)
 
   // Depth downscale
-  framebuffer_blit(renderer.prepass_framebuffer, renderer.downscaled_depth_framebuffer, {.DEPTH})
+  gl.ActiveTexture(gl.TEXTURE5)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.prepass_framebuffer.depth_texture)
+  renderer_bind_and_clear_framebuffer(renderer, renderer.downscaled_depth_framebuffer)
+  render_mesh(renderer, &renderer.post_process_quad, &renderer.downscaled_depth_framebuffer.material)
 
   // Exponential shadowmap
   gl.ActiveTexture(gl.TEXTURE5)
@@ -372,11 +375,13 @@ renderer_render :: proc(renderer: ^Renderer) {
   gl.ActiveTexture(gl.TEXTURE2)
   gl.BindTexture(gl.TEXTURE_2D, renderer.back_framebuffer.color_texture)
   gl.ActiveTexture(gl.TEXTURE3)
-  gl.BindTexture(gl.TEXTURE_2D, renderer.downscaled_depth_framebuffer.depth_texture)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.downscaled_depth_framebuffer.red_texture)
   gl.ActiveTexture(gl.TEXTURE4)
   gl.BindTexture(gl.TEXTURE_2D, renderer.prepass_framebuffer.normal_texture)
 
   // Volumetrics pass
+  gl.ActiveTexture(gl.TEXTURE1)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_exponential_shadowmap.red_texture)
   gl.ActiveTexture(gl.TEXTURE5)
   gl.BindTexture(gl.TEXTURE_3D, renderer.cloud_settings.cloud_noise.base_shape)
   gl.ActiveTexture(gl.TEXTURE6)
@@ -660,10 +665,11 @@ mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}) {
   if material.shader.type == .TWO_DIMENSIONAL {
     gl.Uniform1i(shader.parameters.normal_texture_location, 4)
     gl.Uniform1i(shader.parameters.ssao_texture_location, 5)
-    gl.Uniform1i(shader.parameters.blur_texture_location, 5)
+    gl.Uniform1i(shader.parameters.input_texture_location, 5)
     gl.Uniform1i(shader.parameters.base_cloud_noise_texture_location, 5)
     gl.Uniform1i(shader.parameters.detail_cloud_noise_texture_location, 6)
     gl.Uniform1i(shader.parameters.volumetric_history_texture_location, 7)
+    gl.Uniform1i(shader.parameters.esm_shadowmap_texture_location, 1)
     gl.Uniform1i(shader.parameters.volumetric_motion_vectors_texture_location, 8)
     gl.Uniform1i(shader.parameters.blue_noise_texture_location, 8)
     gl.Uniform1i(shader.parameters.blur_amount_location, i32(shader.parameters.blur_amount))
@@ -823,7 +829,7 @@ shader_init :: proc(shader: ^Shader) {
       shader.parameters.ssao_texture_location = gl.GetUniformLocation(shader.program, "ssao_texture")
       shader.parameters.depth_texture_location = gl.GetUniformLocation(shader.program, "depth_texture")
       shader.parameters.normal_texture_location = gl.GetUniformLocation(shader.program, "normal_texture")
-      shader.parameters.blur_texture_location = gl.GetUniformLocation(shader.program, "blur_texture");
+      shader.parameters.input_texture_location = gl.GetUniformLocation(shader.program, "input_texture");
       shader.parameters.blur_amount_location = gl.GetUniformLocation(shader.program, "blur_size")
       shader.parameters.volumetrics_taa_frames_location = gl.GetUniformLocation(shader.program, "volumetrics_taa_frames")
       shader.parameters.cloud_dome_radius_location = gl.GetUniformLocation(shader.program, "cloud_dome_radius")
@@ -950,6 +956,7 @@ FramebufferType :: enum {
   MOTION_VECTOR
 }
 
+// NOTE: Here I assume that some specific framebuffer type combinations don't appear
 framebuffer_init :: proc(
   framebuffer: ^Framebuffer,
   size: IVec2,
@@ -972,7 +979,7 @@ framebuffer_init :: proc(
   gl.GenFramebuffers(1, &framebuffer.framebuffer)
   gl.BindFramebuffer(gl.FRAMEBUFFER, framebuffer.framebuffer)
 
-  if type == {.RED} {
+  if .RED in type {
     gl.GenTextures(1, &framebuffer.red_texture)
     gl.BindTexture(gl.TEXTURE_2D, framebuffer.red_texture)
 
@@ -984,14 +991,34 @@ framebuffer_init :: proc(
     gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
     gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
 
-    gl.FramebufferTexture2D(
-      gl.FRAMEBUFFER,
-      gl.COLOR_ATTACHMENT0,
-      gl.TEXTURE_2D,
-      framebuffer.red_texture,
-      0
-    )
-  } else if .DEPTH in type {
+    just_red := (type == {.RED})
+    if just_red {
+      gl.FramebufferTexture2D(
+        gl.FRAMEBUFFER,
+        gl.COLOR_ATTACHMENT0,
+        gl.TEXTURE_2D,
+        framebuffer.red_texture,
+        0
+      )
+    } else {
+      // Hopefully a fb that contains normals/motion vecs doesn't appear here...
+      gl.FramebufferTexture2D(
+        gl.FRAMEBUFFER,
+        gl.COLOR_ATTACHMENT1,
+        gl.TEXTURE_2D,
+        framebuffer.red_texture,
+        0
+      )
+
+      draw_attachments := []u32 {
+        gl.COLOR_ATTACHMENT0,
+        gl.COLOR_ATTACHMENT1
+      }
+      gl.DrawBuffers(2, &draw_attachments[0])
+    }
+
+  } 
+  if .DEPTH in type {
     gl.GenTextures(1, &framebuffer.depth_texture)
     gl.BindTexture(texture_attachment, framebuffer.depth_texture)
 
