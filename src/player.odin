@@ -65,7 +65,7 @@ player_init :: proc(scene: ^Scene, player: ^Player) {
   player_material := Material{
     is_valid = true,
     albedo_textures = texture_load("assets/models/mig/textures/BaseColor.png", true),
-    roughness_texture = texture_load("assets/models/mig/textures/metallic.png"),
+    roughness_textures = texture_load("assets/models/mig/textures/metallic.png"),
     shader = scene.renderer.default_shader,
     metallic_strength = 1,
     roughness_strength = 1,
@@ -108,7 +108,7 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
 
     player.velocity += acceleration * scene.delta_time
     player.position += player.velocity * scene.delta_time
-    GROUND_PLANE_Y: f32 : -2.98
+    GROUND_PLANE_Y: f32 : -250.98
     if player.position.y < GROUND_PLANE_Y {
       player.position.y = GROUND_PLANE_Y
       player.velocity.y = 0

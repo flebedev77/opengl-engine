@@ -2,7 +2,7 @@
 
 in vec2 frag_uv;
 layout (location = 0) out vec4 frag_color;
-layout (location = 1) out float depth;
+layout (location = 1) out float frag_depth;
 
 uniform sampler2D screen_texture;
 uniform sampler2D depth_texture;
@@ -312,7 +312,11 @@ vec4 calculate_atmosphere(vec3 camera_world_pos, vec3 ray_dir, float ray_length,
   float prev_transmittance = transmittance;
   vec3 obstructed_scatter = vec3(0.4);
 
-  if (ray_length < base_step) return vec4(scattering, start_transmittance * exp(-dens * ray_length));
+  if (ray_length < base_step) {
+    float out_trans = start_transmittance * 
+      exp(-sample_atmo_density(camera_world_pos, true) * ray_length);
+    return vec4(vec3(0) * out_trans, out_trans);
+  }
 
   for (int i = 0; i < 128; i++) {
     if (distance_along > max(ray_length, base_step) ||
@@ -461,7 +465,7 @@ vec4 calculate_volumetrics() {
     // volumetric_light /= STEPS_LIGHT;
     bool hit_cloud_surface = false;
     // vec3 world_space_surface = vec3(0);//world_space_pixel;
-    float first_hit_distance = 1e9;
+    float first_hit_distance = 1.0 / 0.0;//1e19; // Apparently infinity?
 
     float extinction = 1.0;
     vec3 scattering = vec3(0);
@@ -677,6 +681,18 @@ vec4 calculate_volumetrics() {
 
 
       }
+    }
+
+    vec3 p_view = project_position(camera_world_pos + ray_dir * min(ray_length, first_hit_distance), view_matrix);
+    vec3 p_proj = project_position(p_view, projection_matrix);
+
+
+    if (isinf(first_hit_distance)) {
+      vec3 d_view = project_position(world_space_pixel.xyz - ray_dir * 0.1, view_matrix);
+      vec3 d_proj = project_position(d_view, projection_matrix);
+      frag_depth = d_view.z;
+    } else {
+      frag_depth = p_proj.z;
     }
 
     // vec4 projected = prev_projection_matrix * prev_view_matrix * vec4(world_space_surface, 1);

@@ -11,7 +11,12 @@ in vec3 frag_pos_objectspace;
 
 uniform sampler2D albedo_texture;
 uniform sampler2D secondary_albedo_texture;
+uniform sampler2D third_albedo_texture;
+
 uniform sampler2D roughness_texture;
+uniform sampler2D secondary_roughness_texture;
+uniform sampler2D third_roughness_texture;
+
 uniform sampler2D shadowmap_texture;
 uniform sampler2D macroshadowmap_texture;
 uniform sampler2D esm_shadowmap_texture;
@@ -257,8 +262,11 @@ void main() {
   // out_frag_color = vec4(frag_normal, 0);
   // return;
 
-  vec4 textureSample = (frag_pos_objectspace.y > 0.04) ? texture(albedo_texture, (frag_uv + uv.xy) * uv.zw) :
-    texture(secondary_albedo_texture, (frag_uv + uv.xy) * uv.zw);
+  float mat_blend = clamp(
+      (texture(albedo_texture, frag_uv).r - 0.2667) * 1.363
+      , 0, 1);
+  vec4 textureSample = mix(texture(secondary_albedo_texture, (frag_uv + uv.xy) * uv.zw),
+    texture(third_albedo_texture, (frag_uv + uv.xy) * uv.zw), mat_blend);
   vec3 albedo = textureSample.rgb * tint * frag_vert_color;
 
   vec3 light_dir = normalize(light_pos); // TODO change this to point from an actual light
@@ -269,7 +277,9 @@ void main() {
   vec3 fr = vec3(0.04); // Reflectance at normal incidence
   fr = mix(fr, albedo, metallic);
 
-  float roughness = 1 - texture(roughness_texture, frag_uv).r * roughness_strength;
+  float roughness_sample = mix(texture(roughness_texture, frag_uv).r,
+      texture(secondary_roughness_texture, frag_uv).r, mat_blend);
+  float roughness = (1 - roughness_sample) * roughness_strength;
   vec3 light_view_midway = normalize(light_dir + view_dir);
 
 
@@ -340,7 +350,8 @@ void main() {
   // inv_shadow = (texture(esm_shadowmap_texture, macromap_proj.xy).r < macromap_proj.z) ? 0 : 1;
   // out_frag_color = mix(out_frag_color, out_frag_color * shadow_ambient, clamp(pow(shadow, shadow_pcf_border_exponent), 0.0, 1.0));
   out_frag_color = (light_energy * inv_shadow + vec4(albedo, 1) * ambient);
-  out_frag_color = out_frag_color / (out_frag_color + vec4(1));
+  // out_frag_color *= 2.1;
+  // out_frag_color = out_frag_color / (out_frag_color + vec4(1));
 
   // out_frag_color = vec4(frag_uv, 1, 1);
   // out_frag_color = vec4(1, 1, 1, 1);

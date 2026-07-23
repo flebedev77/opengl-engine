@@ -9,7 +9,7 @@ uniform vec3 light_pos;
 uniform vec3 camera_pos;
 
 // Noise functions
-const mat2 myt = mat2(.12121212, .13131313, -.13131313, .12121212);
+/*const mat2 myt = mat2(.12121212, .13131313, -.13131313, .12121212);
 const vec2 mys = vec2(1e4, 1e6);
 
 vec2 rhash(vec2 uv) {
@@ -68,7 +68,7 @@ float mod289(float x){return x - floor(x * (1.0 / 289.0)) * 289.0;}
 vec4 mod289(vec4 x){return x - floor(x * (1.0 / 289.0)) * 289.0;}
 vec4 perm(vec4 x){return mod289(((x * 34.0) + 1.0) * x);}
 
-float noise3(vec3 p){
+float noisethree(vec3 p){
     vec3 a = floor(p);
     vec3 d = p - a;
     d = d * d * (3.0 - 2.0 * d);
@@ -88,7 +88,7 @@ float noise3(vec3 p){
     vec2 o4 = o3.yw * d.x + o3.xz * (1.0 - d.x);
 
     return o4.y * d.y + o4.x * (1.0 - d.y);
-}
+}*/
 
 void main() {
   // frag_color = vec4(frag_normal, 1.0);
@@ -111,7 +111,7 @@ void main() {
   vec3 view_dir = normalize(frag_pos);
   vec3 light_dir = normalize(light_pos);
 
-  float sun_factor = clamp((pow(max(dot(view_dir, light_dir) - 0.002, 0), 200)) * 2.0, 0, 1);
+  float sun_factor = clamp((pow(max(dot(view_dir, light_dir) - 0.0065, 0), 200) - 0.001) * 2.0, 0, 1);
   out_color = mix(out_color, vec3(1, 1, 0.98), sun_factor);
 
   out_frag_color = vec4(out_color, 1.0);

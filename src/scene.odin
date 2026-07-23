@@ -61,7 +61,7 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
     is_valid = true,
     albedo_textures = albedo_texture,
     albedo_tint = {0.8,0.8,0.98},
-    roughness_texture = scene.resources.black_texture,
+    roughness_textures = scene.resources.black_texture,
     shader = renderer.default_shader,
     roughness_strength = 0,
     metallic_strength = 0
@@ -70,7 +70,7 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
   ground_material := Material{
     is_valid = true,
     albedo_textures = {grass_texture, dirt_texture, 0},
-    roughness_texture = scene.resources.black_texture,
+    roughness_textures = scene.resources.black_texture,
     uv = {0, 0, uvf*2600, uvf*2600},
     shader = shader_compileprogram(
         cstring(#load("../assets/shaders/terrain_frag.glsl")),
@@ -94,11 +94,11 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
   append(&scene.meshes, light_mesh)
 
 
-  ground_mesh := asset_loader_obj_mesh("assets/models/terrain.obj", ground_material)
+  // ground_mesh := asset_loader_obj_mesh("assets/models/terrain.obj", ground_material)
   scl := f32(850)
-  ground_mesh.material.albedo_tint = {0.3, 0.7, 0.3}
-  ground_mesh.model_matrix *= translation_matrix({0, -3, 0})
-  ground_mesh.model_matrix *= scale_matrix({scl, scl, scl})
+  // ground_mesh.material.albedo_tint = {0.3, 0.7, 0.3}
+  // ground_mesh.model_matrix *= translation_matrix({0, -3, 0})
+  // ground_mesh.model_matrix *= scale_matrix({scl, scl, scl})
 
   // append(&scene.meshes, ground_mesh)
 
@@ -108,6 +108,14 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
     "terrain",
     .THREE_DIMENSIONAL
   )
+  macroground_material.metallic_strength = 0
+  macroground_material.roughness_strength = 1
+  macroground_material.uv.zw = {100, 100}
+  macroground_material.albedo_textures[1] = texture_load("assets/textures/slate-cliff-rock-bl4/slatecliffrock-albedo.png", true)
+  macroground_material.albedo_textures[2] = texture_load("assets/textures/iced-over-ground7-bl/iced-over-ground7-albedo.png", true)
+  
+  macroground_material.roughness_textures[0] = texture_load("assets/textures/slate-cliff-rock-bl4/slatecliffrock_Roughness2.png")
+  macroground_material.roughness_textures[1] = texture_load("assets/textures/iced-over-ground7-bl/iced-over-ground7-Roughness.png")
   scl = f32(180)
   macroground_mesh := asset_loader_obj_mesh("assets/models/mountain/mountain.obj", macroground_material)
   macroground_mesh.model_matrix *= translation_matrix({0, -3, 0})
