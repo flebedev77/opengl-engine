@@ -109,13 +109,20 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
     .THREE_DIMENSIONAL
   )
   macroground_material.metallic_strength = 0
-  macroground_material.roughness_strength = 1
-  macroground_material.uv.zw = {100, 100}
+  macroground_material.roughness_strength = 0.2
+  macroground_material.normal_strength = 1
+  macroground_material.uv.zw = {100, 100} * 0.9
   macroground_material.albedo_textures[1] = texture_load("assets/textures/slate-cliff-rock-bl4/slatecliffrock-albedo.png", true)
   macroground_material.albedo_textures[2] = texture_load("assets/textures/iced-over-ground7-bl/iced-over-ground7-albedo.png", true)
   
   macroground_material.roughness_textures[0] = texture_load("assets/textures/slate-cliff-rock-bl4/slatecliffrock_Roughness2.png")
   macroground_material.roughness_textures[1] = texture_load("assets/textures/iced-over-ground7-bl/iced-over-ground7-Roughness.png")
+
+  macroground_material.normal_textures[0] = texture_load("assets/textures/slate-cliff-rock-bl4/slatecliffrock_Normal-ogl.png")
+  macroground_material.normal_textures[1] = texture_load("assets/textures/iced-over-ground7-bl/iced-over-ground7-Normal-ogl.png")
+
+
+
   scl = f32(180)
   macroground_mesh := asset_loader_obj_mesh("assets/models/mountain/mountain.obj", macroground_material)
   macroground_mesh.model_matrix *= translation_matrix({0, -3, 0})

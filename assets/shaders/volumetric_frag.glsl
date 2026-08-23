@@ -15,6 +15,7 @@ uniform sampler2D volumetric_history_texture;
 
 uniform sampler3D base_cloud_noise;
 uniform sampler3D detail_cloud_noise;
+uniform sampler3D perlin_cloud_noise;
 
 uniform vec2 resolution;
 
@@ -35,7 +36,7 @@ uniform int frame_number;
 
 uniform float cloud_dome_radius;
 
-const float cloud_layer_thickness = 1600;//(186-10);
+const float cloud_layer_thickness = 3600;//(186-10);
 const float cloud_height_base = 1000;
 float cloud_height_apex = cloud_height_base+cloud_layer_thickness;
 // const float cloud_dome_radius = 1000000;
@@ -53,8 +54,8 @@ vec3 sky_bounding_box = vec3(bb_side, cloud_height_apex+100, bb_side);
 
 #define STEPS_CLOUDS 128//64
 #define STEPS_CLOUDS_LIGHTING 5
-#define CLOUD_DENSITY 1.5
-#define CLOUD_LIGHT_DENSITY 0.018
+#define CLOUD_DENSITY 0.018
+#define CLOUD_LIGHT_DENSITY 3.018
 #define CLOUD_STEP_LENGTH 55.5
 #define CLOUD_LARGE_STEP_LENGTH 800//265.5
 #define CLOUD_LIGHT_STEP_LENGTH 100.6
@@ -130,6 +131,7 @@ float noisetwod(vec2 p) {
 
 vec2 snoise(vec3 v){ return texture(base_cloud_noise, v).rg; }
 float dnoise(vec3 p) { return texture(detail_cloud_noise, p).r; }
+float pnoise(vec3 p) { return texture(perlin_cloud_noise, p).r; }
 
 const float golden_ratio = 1.61803398875;
 
@@ -183,6 +185,7 @@ vec2 sample_cloud_density(vec3 p) {
 
   float cloud_drift = float(frame_number) * 0.2 + 1e5;
   p.x += cloud_drift;
+  p.x += cloud_drift * 10;
   p.z += cloud_drift * 0.32;
   float width_to_height = base_cloud_noise_size.x / base_cloud_noise_size.y;
   float depth_to_height = base_cloud_noise_size.z / base_cloud_noise_size.y;
@@ -210,6 +213,11 @@ vec2 sample_cloud_density(vec3 p) {
     d += dnoise(detail_p * 1.5) * 1.6;
     // d += (dnoise(detail_p * 1.8)) * 2.4;
     d += dnoise(detail_p * 3.5) * 0.9;
+    d += dnoise(detail_p * 3.9) * 0.9 * pnoise(detail_p * 0.3);
+    d += (1-dnoise(detail_p * 2)) * 2;
+    d += pnoise(detail_p * 2) * 1;
+    d += pnoise(detail_p * 5) * 1;
+    // d += (1-dnoise(detail_p * 5)) * 1 * get_height_mask(y, 0, (cloud_height_apex - cloud_height_base) * 0.3, 100);
 
     n.r = clamp(n.r-d*0.14, 0, 1);
     n.r *= get_height_mask(y, 0, cloud_layer_thickness, 100);
@@ -574,7 +582,7 @@ vec4 calculate_volumetrics() {
               continue;
             }
 
-              current_step_length = CLOUD_STEP_LENGTH;
+              current_step_length = min(CLOUD_STEP_LENGTH, ray_length-distance_travelled-t_in);
               if (current_density > MIN_DENSITY) {
                 if (!hit_cloud_surface) {
                   // world_space_surface = current_pos; 
@@ -601,37 +609,25 @@ vec4 calculate_volumetrics() {
                   float closest_depth = texture(macroshadowmap_texture, light_macroshadowmap_uv).r;
                   if (closest_depth < current_depth - 0.00000001) {
 
-                    float shadow_sum = 0.0;
-                    vec2 texel_size = 1.0 / textureSize(macroshadowmap_texture, 0);
-                    float bias = 0.00001; // Adjusted bias slightly
-
-                    // 3x3 PCF Kernel
-                    for (int x = -1; x <= 1; ++x) {
-                      for (int y = -1; y <= 1; ++y) {
-                        vec2 offset = vec2(x, y) * texel_size;
-                        float closest_depth = texture(macroshadowmap_texture, light_macroshadowmap_uv + offset).r;
-                        if (closest_depth < light_start_macroshadowmap_pos.z - bias) {
-                          shadow_sum += 0.0; // In shadow
-                        } else {
-                          shadow_sum += 1.0; // Unshadowed
-                        }
-                      }
-                    }
-
-                    light_transmittance *= (shadow_sum / 9.0);
-                    float depth_delta = current_depth - closest_depth;
-
-                    float fade_distance = 0.01; 
-
-                    float shadow_factor = smoothstep(fade_distance, 0.0, depth_delta);
-                    light_transmittance *= shadow_factor;
+                    light_transmittance = 0;
                   }
+                  // float esm_lightness = exp(-esm_k * current_depth) *
+                  //   texture(esm_shadowmap_texture, light_macroshadowmap_uv).r;
+                  // esm_lightness *= esm_lightness;
+                  // esm_lightness *= esm_lightness;
+                  // esm_lightness *= esm_lightness;
+                  // esm_lightness *= esm_lightness;
+                  // esm_lightness *= esm_lightness;
+                  // esm_lightness *= esm_lightness;
+                  // esm_lightness = clamp(esm_lightness, 0, 1);
+                  // light_transmittance = esm_lightness;
+                  // if (esm_lightness < 0.2) light_transmittance = 0;
                 }
 
 
                 if (light_transmittance > 0) {
                   for (int j = 0; j < STEPS_CLOUDS_LIGHTING; j++) {
-                    if (light_transmittance < 0.01) break;
+                    // if (light_transmittance < 0.01) break;
 
                     vec2 light_current_data = sample_cloud_density(light_current_pos);
                     float light_step_length = light_current_data.y;
@@ -727,17 +723,17 @@ vec4 calculate_volumetrics() {
 
     float total_ext = atmo.a * extinction;
     if (extinction > 0 && extinction < 1) {
-      secondary_atmo_ray = calculate_atmosphere(
-          camera_world_pos + ray_dir * first_hit_distance,
-          ray_dir,
-          ray_length - first_hit_distance,
-          total_ext
-      );
+      // secondary_atmo_ray = calculate_atmosphere(
+      //     camera_world_pos + ray_dir * first_hit_distance,
+      //     ray_dir,
+      //     ray_length - first_hit_distance,
+      //     total_ext
+      // );
     }
       
     // vec4 atmo = vec4(0, 0, 0, 1);
 
-    scattering = clamp(scattering*1.1, vec3(0), vec3(1));
+    scattering = clamp(scattering*2.6, vec3(0), vec3(1));
     extinction = clamp(extinction, 0, 1);
 
     float transmittance = extinction;

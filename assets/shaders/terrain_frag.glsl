@@ -17,6 +17,10 @@ uniform sampler2D roughness_texture;
 uniform sampler2D secondary_roughness_texture;
 uniform sampler2D third_roughness_texture;
 
+uniform sampler2D geometry_normal_texture;
+uniform sampler2D secondary_geometry_normal_texture;
+uniform sampler2D third_geometry_normal_texture;
+
 uniform sampler2D shadowmap_texture;
 uniform sampler2D macroshadowmap_texture;
 uniform sampler2D esm_shadowmap_texture;
@@ -107,6 +111,10 @@ vec2(-0.22184938, 0.03012371)
 );
 
 const float esm_k = 120;
+
+float remap_float(float v, float fmin, float fmax, float tmin, float tmax) {
+  return ((v - fmin) / (fmax - fmin)) * (tmax - tmin) + tmin;
+}
 
 float rand(vec2 co) {
     return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
@@ -262,24 +270,29 @@ void main() {
   // out_frag_color = vec4(frag_normal, 0);
   // return;
 
+  vec2 uv_transformed = (frag_uv + uv.xy) * uv.zw;
   float mat_blend = clamp(
       (texture(albedo_texture, frag_uv).r - 0.2667) * 1.363
       , 0, 1);
-  vec4 textureSample = mix(texture(secondary_albedo_texture, (frag_uv + uv.xy) * uv.zw),
-    texture(third_albedo_texture, (frag_uv + uv.xy) * uv.zw), mat_blend);
+  vec4 textureSample = mix(texture(secondary_albedo_texture, uv_transformed),
+    texture(third_albedo_texture, uv_transformed), mat_blend);
   vec3 albedo = textureSample.rgb * tint * frag_vert_color;
 
   vec3 light_dir = normalize(light_pos); // TODO change this to point from an actual light
   vec3 view_dir = normalize(camera_pos - frag_pos);
 
+  vec3 normal_sample = texture(geometry_normal_texture, frag_uv).xyz;
+  normal_sample = normalize(normal_sample * 2.0 - vec3(1));
 
   float metallic = metallic_strength;
   vec3 fr = vec3(0.04); // Reflectance at normal incidence
   fr = mix(fr, albedo, metallic);
 
-  float roughness_sample = mix(texture(roughness_texture, frag_uv).r,
-      texture(secondary_roughness_texture, frag_uv).r, mat_blend);
-  float roughness = (1 - roughness_sample) * roughness_strength;
+  float roughness_sample = mix(texture(roughness_texture, uv_transformed).r,
+      texture(secondary_roughness_texture, uv_transformed).r, mat_blend);
+  float roughness = remap_float(pow(1 - roughness_sample, roughness_strength),
+      0, 1,
+      0.5, 1);
   vec3 light_view_midway = normalize(light_dir + view_dir);
 
 

@@ -1,3 +1,5 @@
+// First ever renderer that I wrote. Don't judge harsly...
+
 // Mesh Texture locations
 // 0 -> Albedo
 // 1 -> Shadowmap
@@ -46,6 +48,7 @@ ShaderParameters :: struct {
   volumetric_motion_vectors_texture_location,
   base_cloud_noise_texture_location,
   detail_cloud_noise_texture_location,
+  perlin_cloud_noise_texture_location,
   depth_texture_location,
   normal_texture_location,
   albedo_texture_location,
@@ -54,6 +57,9 @@ ShaderParameters :: struct {
   roughness_texture_location,
   secondary_roughness_texture_location,
   third_roughness_texture_location,
+  geonormal_texture_location,
+  secondary_geonormal_texture_location,
+  third_geonormal_texture_location,
   shadowmap_texture_location,
   shadowmap_matrix_location,
   macroshadowmap_texture_location,
@@ -106,12 +112,14 @@ Shader :: struct {
 
 Material :: struct {
   is_valid: bool,
+  normal_textures: [3]GpuID,
   roughness_textures: [3]GpuID,
   albedo_textures: [3]GpuID, //Multiple albedo textures used for terrain
   albedo_tint: Vec3,
   uv: Vec4,
   shader: Shader,
   roughness_strength,
+  normal_strength,
   metallic_strength: f32,
   is_transparent: bool
 }
@@ -214,7 +222,7 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   framebuffer_init(&renderer.shadowmap_framebuffer, shadowmap_resolution, {.DEPTH}, "shadowmap", .SHADOWMAP)
   framebuffer_init(&renderer.macroshadowmap_framebuffer, shadowmap_resolution, {.DEPTH}, "shadowmap", .SHADOWMAP)
 
-  effects_resolution_factor: f32 = 1.0/2
+  effects_resolution_factor: f32 = 1.0/4
   effects_resolution := Vec2{WINDOW_WIDTH, WINDOW_HEIGHT} * effects_resolution_factor
   effects_resolution_int := IVec2{i32(effects_resolution.x), i32(effects_resolution.y)}
   fmt.printfln("Effects resolution %d (1/%d)", effects_resolution_int, i32(1 / effects_resolution_factor))
@@ -392,6 +400,8 @@ renderer_render :: proc(renderer: ^Renderer) {
   gl.BindTexture(gl.TEXTURE_3D, renderer.cloud_settings.cloud_noise.detail_worley)
   gl.ActiveTexture(gl.TEXTURE8)
   gl.BindTexture(gl.TEXTURE_2D, renderer.scene.resources.blue_noise_texture)
+  gl.ActiveTexture(gl.TEXTURE9)
+  gl.BindTexture(gl.TEXTURE_3D, renderer.cloud_settings.cloud_noise.detail_perlin)
 
   renderer_bind_and_clear_framebuffer(renderer, renderer.volumetric_framebuffer)
   render_mesh(renderer, &renderer.post_process_quad, &renderer.volumetric_framebuffer.material)
@@ -677,6 +687,7 @@ mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}) {
     gl.Uniform1i(shader.parameters.input_texture_location, 5)
     gl.Uniform1i(shader.parameters.base_cloud_noise_texture_location, 5)
     gl.Uniform1i(shader.parameters.detail_cloud_noise_texture_location, 6)
+    gl.Uniform1i(shader.parameters.perlin_cloud_noise_texture_location, 9)
     gl.Uniform1i(shader.parameters.volumetric_history_texture_location, 7)
     gl.Uniform1i(shader.parameters.esm_shadowmap_texture_location, 1)
     gl.Uniform1i(shader.parameters.volumetric_motion_vectors_texture_location, 8)
@@ -731,6 +742,19 @@ mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}) {
       gl.BindTexture(gl.TEXTURE_2D, material.roughness_textures[2])
     }
 
+    if material.normal_textures[0] != 0 {
+      gl.ActiveTexture(gl.TEXTURE9)
+      gl.BindTexture(gl.TEXTURE_2D, material.normal_textures[0])
+    }
+    if material.normal_textures[1] != 0 {
+      gl.ActiveTexture(gl.TEXTURE10)
+      gl.BindTexture(gl.TEXTURE_2D, material.normal_textures[1])
+    }
+    if material.normal_textures[2] != 0 {
+      gl.ActiveTexture(gl.TEXTURE11)
+      gl.BindTexture(gl.TEXTURE_2D, material.normal_textures[2])
+    }
+
     gl.Uniform1i(shader.parameters.albedo_texture_location, 0)
     gl.Uniform1i(shader.parameters.secondary_albedo_texture_location, 3)
     gl.Uniform1i(shader.parameters.third_albedo_texture_location, 4)
@@ -738,6 +762,10 @@ mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}) {
     gl.Uniform1i(shader.parameters.roughness_texture_location, 2)
     gl.Uniform1i(shader.parameters.secondary_roughness_texture_location, 5)
     gl.Uniform1i(shader.parameters.third_roughness_texture_location, 6)
+
+    gl.Uniform1i(shader.parameters.geonormal_texture_location, 9)
+    gl.Uniform1i(shader.parameters.secondary_geonormal_texture_location, 10)
+    gl.Uniform1i(shader.parameters.third_geonormal_texture_location, 11)
 
     gl.Uniform1i(shader.parameters.esm_shadowmap_texture_location, 8)
 
@@ -842,6 +870,9 @@ shader_init :: proc(shader: ^Shader) {
       shader.parameters.third_albedo_texture_location = gl.GetUniformLocation(shader.program, "third_albedo_texture")
       shader.parameters.secondary_roughness_texture_location = gl.GetUniformLocation(shader.program, "secondary_roughness_texture")
       shader.parameters.third_roughness_texture_location = gl.GetUniformLocation(shader.program, "third_roughness_texture")
+      shader.parameters.geonormal_texture_location = gl.GetUniformLocation(shader.program, "geometry_normal_texture")
+      shader.parameters.secondary_geonormal_texture_location = gl.GetUniformLocation(shader.program, "secondary_geometry_normal_texture")
+      shader.parameters.third_geonormal_texture_location = gl.GetUniformLocation(shader.program, "third_geometry_normal_texture")
       shader.parameters.shadowmap_texture_location = gl.GetUniformLocation(shader.program, "shadowmap_texture")
       shader.parameters.light_position_location = gl.GetUniformLocation(shader.program, "light_pos")
       shader.parameters.camera_position_location = gl.GetUniformLocation(shader.program, "camera_pos")
@@ -866,6 +897,7 @@ shader_init :: proc(shader: ^Shader) {
       shader.parameters.cloud_dome_radius_location = gl.GetUniformLocation(shader.program, "cloud_dome_radius")
       shader.parameters.base_cloud_noise_texture_location = gl.GetUniformLocation(shader.program, "base_cloud_noise")
       shader.parameters.detail_cloud_noise_texture_location = gl.GetUniformLocation(shader.program, "detail_cloud_noise")
+      shader.parameters.perlin_cloud_noise_texture_location = gl.GetUniformLocation(shader.program, "perlin_cloud_noise")
       shader.parameters.volumetric_history_texture_location = gl.GetUniformLocation(shader.program, "volumetric_history_texture")
       shader.parameters.volumetric_motion_vectors_texture_location = gl.GetUniformLocation(shader.program, "volumetric_motion_vectors_texture")
       shader.parameters.quad_position_location = gl.GetUniformLocation(shader.program, "quad_position")
@@ -943,7 +975,11 @@ texture_load_with_dimensions :: proc(filepath: string, srgb := false, mipmaps :=
     gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RED, img_w, img_h,
       0, gl.RED, gl.UNSIGNED_BYTE, &img_data[0])
   } else {
-    gl.TexImage2D(gl.TEXTURE_2D, 0, (srgb) ? gl.SRGB8_ALPHA8: gl.RGB, img_w, img_h,
+    // gl.TexImage2D(gl.TEXTURE_2D, 0, (srgb) ? gl.SRGB8_ALPHA8 : gl.RGBA,
+    //   img_w, img_h,
+    //   0, (img_channels == 3) ? gl.RGB : gl.RGBA, gl.UNSIGNED_BYTE, &img_data[0])
+    gl.TexImage2D(gl.TEXTURE_2D, 0, (srgb) ? gl.SRGB8_ALPHA8 : ((img_channels == 3) ? gl.RGB32F : gl.RGBA32F),
+      img_w, img_h,
       0, (img_channels == 3) ? gl.RGB : gl.RGBA, gl.UNSIGNED_BYTE, &img_data[0])
   }
   if mipmaps {

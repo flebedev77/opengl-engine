@@ -33,7 +33,7 @@ uniform int frame_number;
 
 uniform float cloud_dome_radius;
 
-const float cloud_layer_thickness = 1600;//(186-10);
+const float cloud_layer_thickness = 3600;//(186-10);
 const float cloud_height_base = 1000;
 float cloud_height_apex = cloud_height_base+cloud_layer_thickness;
 // const float cloud_dome_radius = 1000000;
@@ -71,6 +71,7 @@ vec2 sample_cloud_density(vec3 p) {
 
   float cloud_drift = float(frame_number) * 0.2 + 1e5;
   p.x += cloud_drift;
+  p.x += cloud_drift * 10;
   p.z += cloud_drift * 0.32;
   float width_to_height = base_cloud_noise_size.x / base_cloud_noise_size.y;
   float depth_to_height = base_cloud_noise_size.z / base_cloud_noise_size.y;
@@ -95,9 +96,9 @@ vec2 sample_cloud_density(vec3 p) {
     detail_p += vec3(cloud_drift, -cloud_drift * 0.3, cloud_drift) * (1/cloud_layer_thickness);
 
     float d = pow(dnoise(detail_p * 0.9), 1) * 1.4;
-    d += dnoise(detail_p * 1.5) * 1.6;
+    // d += dnoise(detail_p * 1.5) * 1.6;
     // d += (dnoise(detail_p * 1.8)) * 2.4;
-    d += dnoise(detail_p * 3.5) * 0.9;
+    // d += dnoise(detail_p * 3.5) * 0.9;
 
     n.r = clamp(n.r-d*0.14, 0, 1);
     n.r *= get_height_mask(y, 0, cloud_layer_thickness, 100);

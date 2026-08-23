@@ -8,6 +8,7 @@ import gl "vendor:OpenGL"
 CloudNoise :: struct {
   base_shape:    GpuID,
   detail_worley: GpuID,
+  detail_perlin: GpuID
 }
 
 Vec3i :: struct { x, y, z: i32 }
@@ -96,51 +97,104 @@ bake_cloud_noise :: proc() -> CloudNoise {
   )
   profile_end()
 
-  fmt.printf("Allocating 3d detail noise ")
-  profile_begin()
-  detail_w, detail_h, detail_d := i32(32), i32(32), i32(32)
-  detail_noise: []f32
-  detail_loaded := false
-  when #exists("../cloud_noise_detail") {
-    detail_loaded = true
-    detail_noise = #load("../cloud_noise_detail")
-  } else {
-    detail_noise = make([]f32, detail_w * detail_h * detail_d, context.temp_allocator)
-  }
-  profile_end()
-
-
-  if !detail_loaded {
-    fmt.printf("Generating 3d detail noise ")
+  {
+    fmt.printf("Allocating 3d detail worley noise ")
     profile_begin()
-    for z : i32 = 0; z < detail_d; z += 1 {
-      for y : i32 = 0; y < detail_h; y += 1 {
-        for x : i32 = 0; x < detail_w; x += 1 {
-          p := Vec3{f32(x), f32(y), f32(z)} * 0.1
-          worley : f32 = cpu_voronoi3d(p * 1.5).r
-          detail_noise[z * (detail_h * detail_d) + y * detail_w + x] =
-          clamp(worley, 0, 1)
+    detail_w, detail_h, detail_d := i32(32), i32(32), i32(32)
+    detail_noise: []f32
+    detail_loaded := false
+    when #exists("../cloud_noise_worley_detail") {
+      detail_loaded = true
+      detail_noise = #load("../cloud_noise_worley_detail")
+    } else {
+      detail_noise = make([]f32, detail_w * detail_h * detail_d, context.temp_allocator)
+    }
+    // defer delete(detail_noise)
+    profile_end()
+
+
+    if !detail_loaded {
+      fmt.printf("Generating 3d detail worley noise ")
+      profile_begin()
+      for z : i32 = 0; z < detail_d; z += 1 {
+        for y : i32 = 0; y < detail_h; y += 1 {
+          for x : i32 = 0; x < detail_w; x += 1 {
+            p := Vec3{f32(x), f32(y), f32(z)} * 0.1
+            worley : f32 = cpu_voronoi3d(p * 1.5).r
+            detail_noise[z * (detail_h * detail_d) + y * detail_w + x] =
+            clamp(worley, 0, 1)
+          }
         }
       }
+
+      profile_end()
+
+      fmt.printf("Saving 3d detail worley noise ")
+      profile_begin()
+      os.write_entire_file("cloud_noise_worley_detail", mem.slice_data_cast([]u8, detail_noise))
+      profile_end()
     }
 
-    profile_end()
-
-    fmt.printf("Saving 3d detail noise ")
+    fmt.printf("Uploading 3d detail worley noise ")
     profile_begin()
-    os.write_entire_file("cloud_noise_detail", mem.slice_data_cast([]u8, detail_noise))
+    cloud_noise.detail_worley = upload_noise(detail_w,
+      detail_h,
+      detail_d,
+      &detail_noise[0],
+      .DENSITY
+    )
     profile_end()
   }
 
-  fmt.printf("Uploading 3d detail noise ")
-  profile_begin()
-  cloud_noise.detail_worley = upload_noise(detail_w,
-    detail_h,
-    detail_d,
-    &detail_noise[0],
-    .DENSITY
-  )
-  profile_end()
+  {
+    fmt.printf("Allocating 3d detail perlin noise ")
+    profile_begin()
+    detail_w, detail_h, detail_d := i32(32), i32(32), i32(32)
+    detail_noise: []f32
+    detail_loaded := false
+    when #exists("../cloud_noise_perlin_detail") {
+      detail_loaded = true
+      detail_noise = #load("../cloud_noise_perlin_detail")
+    } else {
+      detail_noise = make([]f32, detail_w * detail_h * detail_d, context.temp_allocator)
+    }
+    // defer delete(detail_noise)
+    profile_end()
+
+
+    if !detail_loaded {
+      fmt.printf("Generating 3d detail perlin noise ")
+      profile_begin()
+      for z : i32 = 0; z < detail_d; z += 1 {
+        for y : i32 = 0; y < detail_h; y += 1 {
+          for x : i32 = 0; x < detail_w; x += 1 {
+            p := Vec3{f32(x), f32(y), f32(z)} * 0.1
+            perlin : f32 = cpu_snoise(p * 1.5)
+            detail_noise[z * (detail_h * detail_d) + y * detail_w + x] =
+            clamp(perlin * 0.5 + 0.5, 0, 1)
+          }
+        }
+      }
+
+      profile_end()
+
+      fmt.printf("Saving 3d detail perlin noise ")
+      profile_begin()
+      os.write_entire_file("cloud_noise_perlin_detail", mem.slice_data_cast([]u8, detail_noise))
+      profile_end()
+    }
+    fmt.printf("Uploading 3d detail perlin noise ")
+    profile_begin()
+    cloud_noise.detail_perlin = upload_noise(detail_w,
+      detail_h,
+      detail_d,
+      &detail_noise[0],
+      .DENSITY
+    )
+    profile_end()
+  }
+
+
 
   return cloud_noise
 }
