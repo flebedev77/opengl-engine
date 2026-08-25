@@ -347,12 +347,14 @@ void main() {
 
   float esm_lightness = exp(-esm_k * (macromap_proj.z)) * 
     texture(esm_shadowmap_texture, macromap_proj.xy).r;
-  esm_lightness *= esm_lightness;
-  esm_lightness *= esm_lightness;
-  esm_lightness *= esm_lightness;
-  esm_lightness *= esm_lightness;
-  esm_lightness *= esm_lightness;
-  esm_lightness *= esm_lightness;
+  esm_lightness = pow(esm_lightness, 2.5);
+  // esm_lightness *= esm_lightness;
+  // esm_lightness *= esm_lightness;
+  // esm_lightness *= esm_lightness*0.5;
+  // esm_lightness *= esm_lightness;
+  // esm_lightness *= esm_lightness;
+  // esm_lightness *= esm_lightness;
+  // esm_lightness *= esm_lightness;
 
   float inv_shadow = 1 - shadow;
   inv_shadow = min(inv_shadow, esm_lightness);

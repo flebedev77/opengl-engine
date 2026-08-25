@@ -12,6 +12,7 @@ uniform sampler2D blue_noise_texture;
 
 uniform sampler3D base_cloud_noise;
 uniform sampler3D detail_cloud_noise;
+uniform sampler3D perlin_cloud_noise;
 
 uniform vec2 resolution;
 
@@ -58,6 +59,7 @@ vec3 project_position(vec3 p, mat4 proj_view) {
 
 vec2 snoise(vec3 v){ return texture(base_cloud_noise, v).rg; }
 float dnoise(vec3 p) { return texture(detail_cloud_noise, p).r; }
+float pnoise(vec3 p) { return texture(perlin_cloud_noise, p).r; }
 
 float get_height_mask(float y, float layerMin, float layerMax, float feather) {
     float bottomFade = smoothstep(layerMin, layerMin + feather, y);
@@ -96,15 +98,17 @@ vec2 sample_cloud_density(vec3 p) {
     detail_p += vec3(cloud_drift, -cloud_drift * 0.3, cloud_drift) * (1/cloud_layer_thickness);
 
     float d = pow(dnoise(detail_p * 0.9), 1) * 1.4;
-    // d += dnoise(detail_p * 1.5) * 1.6;
+    d += dnoise(detail_p * 1.5) * 1.6;
     // d += (dnoise(detail_p * 1.8)) * 2.4;
-    // d += dnoise(detail_p * 3.5) * 0.9;
+    d += dnoise(detail_p * 3.5) * 0.9;
+    d += dnoise(detail_p * 3.9) * 0.9 * pnoise(detail_p * 0.3);
+    d += (1-dnoise(detail_p * 2)) * 2;
+    d += pnoise(detail_p * 2) * 1;
+    d += pnoise(detail_p * 5) * 1;
+    // d += (1-dnoise(detail_p * 5)) * 1 * get_height_mask(y, 0, (cloud_height_apex - cloud_height_base) * 0.3, 100);
 
     n.r = clamp(n.r-d*0.14, 0, 1);
     n.r *= get_height_mask(y, 0, cloud_layer_thickness, 100);
-    // n.r *= 0.18;
-    // n.r *= 0.08;
-    // n.r += 1.001;
   }
 
   return vec2(n.r * CLOUD_DENSITY, sdf_step_length);

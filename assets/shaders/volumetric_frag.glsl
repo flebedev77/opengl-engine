@@ -54,7 +54,7 @@ vec3 sky_bounding_box = vec3(bb_side, cloud_height_apex+100, bb_side);
 
 #define STEPS_CLOUDS 128//64
 #define STEPS_CLOUDS_LIGHTING 5
-#define CLOUD_DENSITY 0.018
+#define CLOUD_DENSITY 0.0198
 #define CLOUD_LIGHT_DENSITY 3.018
 #define CLOUD_STEP_LENGTH 55.5
 #define CLOUD_LARGE_STEP_LENGTH 800//265.5
@@ -404,6 +404,7 @@ vec4 calculate_volumetrics() {
     float ray_length = length(ray_dir);
     ray_dir = normalize(ray_dir);
     // ray_length = min(ray_length, 100);
+    frag_depth = ray_length;
 
     float jitter = rand(frag_uv);// * 0.8;
     float density = 0.0;
@@ -535,7 +536,7 @@ vec4 calculate_volumetrics() {
           float sdf_skip_outside = -1;
 
           for (int i = 0; i < STEPS_CLOUDS; i++) {
-            if (extinction < 0.01) { extinction = 0; break; }
+            if (extinction < 0.02) { extinction = 0; break; }
             // if (distance_travelled >= cloud_march_length ||
             //     current_pos.y < cloud_minimum_height ||
             //     current_pos.y > cloud_height_apex) break;
@@ -548,7 +549,7 @@ vec4 calculate_volumetrics() {
 
             float cell_size = cloud_layer_thickness / float(base_cloud_noise_size.y);
 
-            float k = 50.1;
+            float k = 150.1;
             if (current_density <= 0.0 && current_sdf >= 0) {
               sdf_skip_outside = distance_travelled;
               distance_travelled += current_sdf;
@@ -683,13 +684,13 @@ vec4 calculate_volumetrics() {
     vec3 p_proj = project_position(p_view, projection_matrix);
 
 
-    if (isinf(first_hit_distance)) {
-      vec3 d_view = project_position(world_space_pixel.xyz - ray_dir * 0.1, view_matrix);
-      vec3 d_proj = project_position(d_view, projection_matrix);
-      frag_depth = d_view.z;
-    } else {
-      frag_depth = p_proj.z;
-    }
+    // if (isinf(first_hit_distance)) {
+    //   vec3 d_view = project_position(world_space_pixel.xyz - ray_dir * 0.1, view_matrix);
+    //   vec3 d_proj = project_position(d_view, projection_matrix);
+    //   frag_depth = d_view.z;
+    // } else {
+    //   frag_depth = p_proj.z;
+    // }
 
     // vec4 projected = prev_projection_matrix * prev_view_matrix * vec4(world_space_surface, 1);
     // projected.xyz /= projected.w;
@@ -714,12 +715,13 @@ vec4 calculate_volumetrics() {
       // first_hit_distance = 99999999;
     vec4 secondary_atmo_ray = vec4(0, 0, 0, 1);
 
-    vec4 atmo = calculate_atmosphere(
-        camera_world_pos,
-        ray_dir,
-        min(first_hit_distance, ray_length),
-        1.0
-    );
+    //vec4 atmo = calculate_atmosphere(
+    //    camera_world_pos,
+    //    ray_dir,
+    //    min(first_hit_distance, ray_length),
+    //     1.0
+    // );
+    vec4 atmo = vec4(0, 0, 0, 1);
 
     float total_ext = atmo.a * extinction;
     if (extinction > 0 && extinction < 1) {

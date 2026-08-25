@@ -10,6 +10,7 @@ uniform sampler2D ssao_texture;
 uniform sampler2D depth_texture;
 uniform sampler2D volumetrics_texture;
 uniform sampler2D volumetric_depth_texture;
+uniform sampler2D volumetric_motion_vectors_texture;
 uniform int volumetrics_taa_frames;
 uniform int frame_number;
 
@@ -94,9 +95,25 @@ vec4 textureBicubic(sampler2D tex, vec2 uv) {
     );
 }
 
+
+vec3 reconstruct_position(vec2 uv, float non_linear_depth) {
+  vec2 ndc = uv * 2 - 1;
+  vec4 clip = vec4(ndc.x, ndc.y, non_linear_depth, 1);
+  vec4 view = inv_projection_matrix * clip;
+  return view.xyz / view.w;
+}
+
 void main() {
   float depth = texture(depth_texture, frag_uv).r;
   float volume_depth = texture(volumetric_depth_texture, frag_uv).r;
+
+  float linear_depth = reconstruct_position(frag_uv, depth).z;
+  // frag_color = vec3(pow(abs(volume_depth-linear_depth), 2)) * 0.001;
+  // return;
+  if (pow(abs(volume_depth-linear_depth), 1) > 1000) {
+    // frag_color = vec3(1, 0, 0);
+    // return;
+  }
 
   frag_color = texture(screen_texture, frag_uv).rgb * 6;
   

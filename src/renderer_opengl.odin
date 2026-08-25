@@ -349,6 +349,8 @@ renderer_render :: proc(renderer: ^Renderer) {
   gl.BindTexture(gl.TEXTURE_3D, renderer.cloud_settings.cloud_noise.detail_worley)
   gl.ActiveTexture(gl.TEXTURE8)
   gl.BindTexture(gl.TEXTURE_2D, renderer.scene.resources.blue_noise_texture)
+  gl.ActiveTexture(gl.TEXTURE9)
+  gl.BindTexture(gl.TEXTURE_3D, renderer.cloud_settings.cloud_noise.detail_perlin)
   renderer_bind_and_clear_framebuffer(renderer, renderer.volumetric_exponential_shadowmap)
   render_mesh(renderer, &renderer.post_process_quad, &renderer.volumetric_exponential_shadowmap.material)
 
@@ -360,7 +362,7 @@ renderer_render :: proc(renderer: ^Renderer) {
   render_mesh(renderer, &renderer.post_process_quad, &renderer.blur_framebuffer.material)
   framebuffer_blit(renderer.esm_blur_framebuffer, renderer.volumetric_exponential_shadowmap)
 
-  renderer.blur_framebuffer.material.shader.parameters.blur_amount = 4
+  renderer.blur_framebuffer.material.shader.parameters.blur_amount = 1
   renderer_bind_and_clear_framebuffer(renderer, renderer.esm_blur_framebuffer)
   render_mesh(renderer, &renderer.post_process_quad, &renderer.blur_framebuffer.material)
   framebuffer_blit(renderer.esm_blur_framebuffer, renderer.volumetric_exponential_shadowmap)
@@ -452,6 +454,8 @@ renderer_render :: proc(renderer: ^Renderer) {
   gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_framebuffer.red_texture)
   gl.ActiveTexture(gl.TEXTURE3)
   gl.BindTexture(gl.TEXTURE_2D, renderer.prepass_framebuffer.depth_texture)
+  gl.ActiveTexture(gl.TEXTURE8)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_framebuffer.vector_texture)
 
 
   renderer.default_framebuffer.size = {FrameBuffer.w, FrameBuffer.h}
@@ -1199,7 +1203,7 @@ framebuffer_init :: proc(
     gl.GenTextures(1, &framebuffer.vector_texture)
     gl.BindTexture(gl.TEXTURE_2D, framebuffer.vector_texture)
 
-    gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RG16F, size.x, size.y, 0, gl.RG, gl.HALF_FLOAT, nil)
+    gl.TexImage2D(gl.TEXTURE_2D, 0, gl.RGB16F, size.x, size.y, 0, gl.RGB, gl.HALF_FLOAT, nil)
 
     gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
     gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
