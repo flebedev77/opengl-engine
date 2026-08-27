@@ -177,7 +177,7 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
     player.position,
     {0, 1, 0}
   )
-  player.zoom -= scene.mouse.scroll * 1.4
+  player.zoom -= scene.mouse.scroll * 1.4 * player.zoom * 0.05
 
   moveinput: Vec3
   rotation_speed := f32(0.03) // TODO: Make this variable depending on drag/lift from elevons
