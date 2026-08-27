@@ -1,6 +1,5 @@
 // Netbpm ppm image file format
 
-
 package main
 import "core:os"
 import "core:mem"
@@ -10,7 +9,7 @@ import "core:strings"
 
 ppm_parse :: proc(filename: string, verbose := false) ->
 (image_w, image_h, image_channels: i32, data: [^]byte) {
-  if data, ok := os.read_entire_file(filename); ok {
+  if data, err := os.read_entire_file_from_path(filename, context.allocator); err == nil {
     return ppm_parse_from_memory(data)
   }
   return

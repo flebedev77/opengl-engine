@@ -35,12 +35,12 @@ asset_loader_material :: proc(
     fmt.aprintf("./assets/shaders/%s_vert.glsl", vertex_shader_override)
 
 
-  frag_contents, frag_success := os.read_entire_file_from_filename(frag_path, context.temp_allocator)
-  assert(frag_success, fmt.tprintf("Failed to load fragment shader from %s", frag_path))
+  frag_contents, frag_success := os.read_entire_file_from_path(frag_path, context.temp_allocator)
+  assert(frag_success == nil, fmt.tprintf("Failed to load fragment shader from %s", frag_path))
   frag_cstring := strings.clone_to_cstring(string(frag_contents), context.temp_allocator)
 
-  vert_contents, vert_success := os.read_entire_file_from_filename(vert_path, context.temp_allocator)
-  assert(vert_success, fmt.tprintf("Failed to load vertment shader from %s", vert_path))
+  vert_contents, vert_success := os.read_entire_file_from_path(vert_path, context.temp_allocator)
+  assert(vert_success == nil, fmt.tprintf("Failed to load vertment shader from %s", vert_path))
   vert_cstring := strings.clone_to_cstring(string(vert_contents), context.temp_allocator)
 
   shader := shader_compileprogram(

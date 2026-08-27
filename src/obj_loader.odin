@@ -21,8 +21,8 @@ obj_parse :: proc(filename: string, verbose := false) ->
    vertex_texture_coordinates: []f32,
    vertex_normals: []f32,
    indices: []u32) {
-  data, read_ok := os.read_entire_file(filename)
-  if read_ok {
+  data, read_err := os.read_entire_file_from_path(filename, context.allocator)
+  if read_err == nil {
     return obj_parse_from_memory(data, verbose)
   }
   fmt.eprintfln("Failed to read %s obj file", filename)

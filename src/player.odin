@@ -2,6 +2,7 @@ package main
 import "core:math"
 import "core:math/linalg"
 import "core:fmt"
+import "vendor:box3d"
 
 import "vendor:glfw"
 
@@ -55,7 +56,7 @@ player_init :: proc(scene: ^Scene, player: ^Player) {
   // player.aerodynamics_triangle[2] = {1, 0, 0, 1}
 
   player.aerodynamics_triangle[0] = {-1, 0, 0, 1}
-  player.aerodynamics_triangle[1] = {0, 0, 2, 1}
+  player.aerodynamics_triangle[1] = {0, 0, 6, 1}
   player.aerodynamics_triangle[2] = {1, 0, 0, 1}
   // player.velocity = {0, 0, 0.3}
 
@@ -92,12 +93,12 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
     player.basis_matrix[0][1],
     player.basis_matrix[0][2]
   }
-  basis_draw_scale := f32(0.05)
+  basis_draw_scale := f32(2.55)
 
   if player.is_flying && !player.debug_movement { 
     force: Vec3
 
-    thrust_force := player.mass * local_forward * player.thrust
+    thrust_force := player.mass * local_forward * player.thrust * 10
     drag_force, lift_force := player_calculate_aero_forces(scene, player)
     gravity_force := player.mass * Vec3{0, -9.81, 0}
 
@@ -232,6 +233,15 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
     debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position, player.position + local_forward * basis_draw_scale, {0, 0, 1})
     debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position, player.position + local_up * basis_draw_scale, {0, 1, 0})
     debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position, player.position + local_right * basis_draw_scale, {1, 0, 0})
+
+    aerodynamic_color := Vec3{0.5, 0.5, 0.5}
+    aero_scale := basis_draw_scale * 0.8
+    A, B, C := player.basis_matrix * player.aerodynamics_triangle[0] * aero_scale,
+                player.basis_matrix * player.aerodynamics_triangle[1] * aero_scale,
+                player.basis_matrix * player.aerodynamics_triangle[2] * aero_scale
+    debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position + A.xyz, player.position + B.xyz, aerodynamic_color)
+    debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position + A.xyz, player.position + C.xyz, aerodynamic_color)
+    debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position + B.xyz, player.position + C.xyz, aerodynamic_color)
   }
 }
 
@@ -381,15 +391,22 @@ player_calculate_aero_forces :: proc(scene: ^Scene, player: ^Player) -> (Vec3, V
   }
   wind_view_matrix: Mat4
   if abs(linalg.dot(velocity_direction, local_forward)) > 1-EPSILON {
-    wind_view_matrix = linalg.matrix4_look_at_f32({0, EPSILON, 0}, player.velocity, local_forward)
+    wind_view_matrix = linalg.matrix4_look_at_f32({0, EPSILON, 0}, player.velocity, local_up)
   } else {
-    wind_view_matrix = linalg.matrix4_look_at_f32({0, 0, 0}, player.velocity, local_forward)
+    wind_view_matrix = linalg.matrix4_look_at_f32({0, 0, 0}, player.velocity, local_up)
   }
-  A := wind_view_matrix * player.basis_matrix * player.aerodynamics_triangle[0]
-  B := wind_view_matrix * player.basis_matrix * player.aerodynamics_triangle[1]
-  C := wind_view_matrix * player.basis_matrix * player.aerodynamics_triangle[2]
+  A := wind_view_matrix * (player.basis_matrix * player.aerodynamics_triangle[0])
+  B := wind_view_matrix * (player.basis_matrix * player.aerodynamics_triangle[1])
+  C := wind_view_matrix * (player.basis_matrix * player.aerodynamics_triangle[2])
   area := abs(linalg.cross((B-A).xy, (C-A).xy))/2
   area *= player.wing_area
+
+  if .DEBUG_OVERLAY in scene.flags {
+    aero_color := Vec3{1, 0.647, 0}
+    debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position + {A.x, A.y, 0}, player.position + {B.x, B.y, 0}, aero_color)
+    debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position + {A.x, A.y, 0}, player.position + {C.x, B.y, 0}, aero_color)
+    debugrenderer_linebatch(&scene.renderer.debug_renderer, player.position + {B.x, A.y, 0}, player.position + {C.x, B.y, 0}, aero_color)
+  }
 
   drag_force := -velocity_direction * (0.5 * drag_coefficient * SIMULATION_AIR_DENSITY * speed_sq * area)
 

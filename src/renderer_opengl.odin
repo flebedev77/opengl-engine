@@ -529,11 +529,11 @@ render_mesh :: proc(renderer: ^Renderer, mesh: ^Mesh, material_override: ^Materi
     fragment_filename := mesh_material.shader.fragment_source_path
     vertex_filename := mesh_material.shader.vertex_source_path
     new_fragment_source, fragment_load_success := 
-    os.read_entire_file_from_filename(fragment_filename, context.temp_allocator)
-    if fragment_load_success {
+    os.read_entire_file_from_path(fragment_filename, context.temp_allocator)
+    if fragment_load_success == nil {
       new_vertex_source, vertex_load_success := 
-      os.read_entire_file_from_filename(vertex_filename, context.temp_allocator)
-      if vertex_load_success {
+      os.read_entire_file_from_path(vertex_filename, context.temp_allocator)
+      if vertex_load_success == nil {
         frag_contents_cstring := strings.clone_to_cstring(string(new_fragment_source), context.temp_allocator)
         vert_contents_cstring := strings.clone_to_cstring(string(new_vertex_source), context.temp_allocator)
         mesh_material.shader.program = shader_compileprogram(
@@ -950,7 +950,7 @@ texture_load :: proc(filepath: string, srgb := false) -> (out: u32) {
   return
 }
 texture_load_with_dimensions :: proc(filepath: string, srgb := false, mipmaps := true) -> (u32, IVec2) {
-  contents := os.read_entire_file(filepath) or_else nil
+  contents := os.read_entire_file_from_path(filepath, context.allocator) or_else nil
 
   if contents == nil {
     fmt.eprintfln("Failed to read %s image", filepath)

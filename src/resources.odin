@@ -45,9 +45,9 @@ resources_load :: proc(r: ^Resources) {
   r.font_msdf_common.charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!?.,;:'\"()[]{}-+@#$%^&*=_|<>/`~\\"
 
   // MSDF generated from https://msdf.zap.works/
-  font_json_data, ok := os.read_entire_file("assets/textures/msdf_fonts/noto_data.json")
-  defer delete(font_json_data)
-  assert(ok, "Failed to load msdf data")
+  font_json_data, ok := os.read_entire_file_from_path("assets/textures/msdf_fonts/noto_data.json", context.temp_allocator)
+  // defer delete(font_json_data)
+  assert(ok == nil, "Failed to load msdf data")
 
   value, err := json.parse(font_json_data)
   defer json.destroy_value(value)

@@ -82,7 +82,7 @@ bake_cloud_noise :: proc() -> CloudNoise {
 
     fmt.printf("Saving 3d noise ")
     profile_begin()
-    os.write_entire_file("cloud_noise", mem.slice_data_cast([]u8, base_noise))
+    assert(os.write_entire_file("cloud_noise", mem.slice_data_cast([]u8, base_noise)) == nil)
     profile_end()
   }
 
@@ -131,7 +131,7 @@ bake_cloud_noise :: proc() -> CloudNoise {
 
       fmt.printf("Saving 3d detail worley noise ")
       profile_begin()
-      os.write_entire_file("cloud_noise_worley_detail", mem.slice_data_cast([]u8, detail_noise))
+      assert(os.write_entire_file("cloud_noise_worley_detail", mem.slice_data_cast([]u8, detail_noise)) == nil)
       profile_end()
     }
 
@@ -180,7 +180,7 @@ bake_cloud_noise :: proc() -> CloudNoise {
 
       fmt.printf("Saving 3d detail perlin noise ")
       profile_begin()
-      os.write_entire_file("cloud_noise_perlin_detail", mem.slice_data_cast([]u8, detail_noise))
+      assert(os.write_entire_file("cloud_noise_perlin_detail", mem.slice_data_cast([]u8, detail_noise)) == nil)
       profile_end()
     }
     fmt.printf("Uploading 3d detail perlin noise ")
