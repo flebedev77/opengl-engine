@@ -12,6 +12,8 @@ Scene :: struct {
   player: Player,
   sky_mesh: Mesh,
   mouse: Mouse,
+  keys: map[int]bool,
+  keys_pressed: map[int]bool,
   meshes: [dynamic]Mesh,
   quads: [dynamic]Quad,
   renderer: ^Renderer,
@@ -165,6 +167,7 @@ scene_update :: proc(scene: ^Scene) {
 
   scene.mouse.scroll = 0
   scene.frame_number += 1
+  platform_advance()
 }
 
 scene_delete :: proc(scene: ^Scene, verbose := false) {

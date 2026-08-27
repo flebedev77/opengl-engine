@@ -128,24 +128,24 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
   }
 
 
-  if glfw.GetKey(GlfwWindow, glfw.KEY_TAB) > 0 {
+  if platform_key_pressed(glfw.KEY_TAB) {
     player.is_flying = true
     player.debug_movement = true
     player.freecam_position = player.position
   }
-  if glfw.GetKey(GlfwWindow, glfw.KEY_RIGHT_ALT) > 0 {
+  if platform_key_pressed(glfw.KEY_RIGHT_ALT) {
     player.is_flying = false
     player.debug_movement = false
   }
 
-  if glfw.GetKey(GlfwWindow, glfw.KEY_LEFT_ALT) > 0 {
+  if platform_key_pressed(glfw.KEY_LEFT_ALT) {
     scene.flags ~= {.DEBUG_OVERLAY}
   }
-  if glfw.GetKey(GlfwWindow, glfw.KEY_APOSTROPHE) > 0 {
+  if platform_key_pressed(glfw.KEY_APOSTROPHE) {
     player.debug_is_fast = !player.debug_is_fast
   }
   
-  if glfw.GetKey(GlfwWindow, glfw.KEY_F7) > 0 {
+  if platform_key_pressed(glfw.KEY_F7) {
     scene.renderer.reload_shaders = true
   }
 
@@ -184,38 +184,38 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
   // rotation_speed := f32(0.1)
   delta_pitch, delta_yaw, delta_roll: f32
   // TODO move this to glfw layer
-  if glfw.GetKey(GlfwWindow, glfw.KEY_W) > 0 {
+  if platform_key_down(glfw.KEY_W) {
     player.pitch += rotation_speed
     delta_pitch = rotation_speed
   }
-  if glfw.GetKey(GlfwWindow, glfw.KEY_S) > 0 {
+  if platform_key_down(glfw.KEY_S) {
     player.pitch -= rotation_speed
     delta_pitch = -rotation_speed
   }
-  if glfw.GetKey(GlfwWindow, glfw.KEY_A) > 0 {
+  if platform_key_down(glfw.KEY_A) {
     player.yaw -= rotation_speed
     delta_yaw = rotation_speed
   }
-  if glfw.GetKey(GlfwWindow, glfw.KEY_D) > 0 {
+  if platform_key_down(glfw.KEY_D) {
     player.yaw += rotation_speed
     delta_yaw = -rotation_speed
   }
-  if glfw.GetKey(GlfwWindow, glfw.KEY_Q) > 0 {
+  if platform_key_down(glfw.KEY_Q) {
     player.roll -= rotation_speed
     delta_roll = -rotation_speed
   }
-  if glfw.GetKey(GlfwWindow, glfw.KEY_E) > 0 {
+  if platform_key_down(glfw.KEY_E) {
     player.roll += rotation_speed
     delta_roll = rotation_speed
   }
-  if glfw.GetKey(GlfwWindow, glfw.KEY_SPACE) > 0 {
+  if platform_key_down(glfw.KEY_SPACE) {
     player.is_flying = !player.is_flying
   }
 
-  if glfw.GetKey(GlfwWindow, glfw.KEY_LEFT_SHIFT) > 0 {
+  if platform_key_down(glfw.KEY_LEFT_SHIFT) {
     player.thrust += 0.01 * scene.delta_time
   }
-  if glfw.GetKey(GlfwWindow, glfw.KEY_LEFT_CONTROL) > 0 {
+  if platform_key_down(glfw.KEY_LEFT_CONTROL) {
     player.thrust -= 0.01 * scene.delta_time
   }
   player.thrust = clamp(player.thrust, 0, 10)
@@ -274,22 +274,22 @@ player_debug_update :: proc(scene: ^Scene, player: ^Player) {
 
   moveinput: Vec3
   // TODO move this to glfw layer
-  if glfw.GetKey(GlfwWindow, glfw.KEY_W) > 0 {
+  if platform_key_down(glfw.KEY_W) {
     moveinput += forward
   }
-  if glfw.GetKey(GlfwWindow, glfw.KEY_S) > 0 {
+  if platform_key_down(glfw.KEY_S) {
     moveinput -= forward
   }
-  if glfw.GetKey(GlfwWindow, glfw.KEY_A) > 0 {
+  if platform_key_down(glfw.KEY_A) {
     moveinput -= right
   }
-  if glfw.GetKey(GlfwWindow, glfw.KEY_D) > 0 {
+  if platform_key_down(glfw.KEY_D) {
     moveinput += right
   }
-  if player.is_flying && (glfw.GetKey(GlfwWindow, glfw.KEY_SPACE) > 0 || glfw.GetKey(GlfwWindow, glfw.KEY_E) > 0) {
+  if player.is_flying && (platform_key_down(glfw.KEY_SPACE) || platform_key_down(glfw.KEY_E)) {
     moveinput += {0, 1, 0}
   }
-  if player.is_flying && (glfw.GetKey(GlfwWindow, glfw.KEY_LEFT_SHIFT) > 0 || glfw.GetKey(GlfwWindow, glfw.KEY_Q) > 0) {
+  if player.is_flying && (platform_key_down(glfw.KEY_LEFT_SHIFT) || platform_key_down(glfw.KEY_Q)) {
     moveinput += {0, -1, 0}
   }
 
@@ -299,15 +299,15 @@ player_debug_update :: proc(scene: ^Scene, player: ^Player) {
     player.is_onground = true
   }
 
-  if !player.is_flying && glfw.GetKey(GlfwWindow, glfw.KEY_SPACE) > 0 && player.is_onground {
+  if !player.is_flying && platform_key_down(glfw.KEY_SPACE) && player.is_onground {
     player.is_onground = false 
     player.freecam_velocity.y = 0.14
   }
 
-  if glfw.GetKey(GlfwWindow, glfw.KEY_I) > 0 {
+  if platform_key_down(glfw.KEY_I) {
     scene.renderer.sun_angle += 0.01
   }
-  if glfw.GetKey(GlfwWindow, glfw.KEY_O) > 0 {
+  if platform_key_down(glfw.KEY_O) {
     scene.renderer.sun_angle -= 0.01
   }
 
