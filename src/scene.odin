@@ -251,6 +251,7 @@ scene_update :: proc(scene: ^Scene) {
       m.mesh.model_matrix *= linalg.matrix4_from_quaternion(r)
       m.mesh.model_matrix *= scale_matrix(m.def.size)
       // fmt.printfln("Body pos %f %f %f", p.x, p.y, p.z)
+
     }
   }
 

@@ -5,6 +5,15 @@ import "core:fmt"
 import "core:strings"
 import "core:math/linalg"
 import "vendor:glfw"
+import bd "vendor:box3d"
+
+renderer_world_to_screen :: proc(renderer: ^Renderer, pos: Vec3) -> Vec2{
+  v := renderer.scene.camera.projection_matrix *
+    renderer.scene.camera.view_matrix *
+    Vec4{pos.x, pos.y, pos.z, 1}
+  v /= v.w
+  return v.xy
+}
 
 @(deprecated = "Broken UVs and normals")
 mesh_make_cube_unlit :: proc(material: Material) -> Mesh {
@@ -294,6 +303,17 @@ mesh_make_quad :: proc(material: Material) -> Mesh {
 generate_ui :: proc(renderer: ^Renderer) {
   // profile_begin() // 0.09 ms! Pretty slow...
   clear(&renderer.scene.quads) 
+
+  if .DEBUG_OVERLAY in renderer.scene.flags {
+    for &m in renderer.scene.physics_meshes {
+      p := bd.Body_GetPosition(m.body_id)
+      r := bd.Body_GetRotation(m.body_id)
+      pscreen := renderer_world_to_screen(renderer, p)
+      // fmt.printfln("SCREEN POS DEBUG %f", pscreen)
+      draw_text(renderer, pscreen, fmt.tprintf("X:%f, Y:%f, Z:%f",
+          p.x, p.y, p.z), 0.03)
+    }
+  }
 
   append(&renderer.scene.quads, Quad{
     position = {-1, -1},
