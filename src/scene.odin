@@ -1,7 +1,57 @@
 package main
 import "core:fmt"
 import "core:time"
+import "core:math/linalg"
 import "vendor:glfw"
+import bd "vendor:box3d"
+
+default_material: Material
+
+PhysicsMesh :: struct {
+  scene: ^Scene,
+  body_id: bd.BodyId,
+  mesh_index: int,
+  mesh: ^Mesh,
+  def: PhysicsMeshDef
+}
+
+PhysicsMeshType :: enum {
+  DYNAMIC,
+  STATIC
+}
+
+PhysicsMeshDef :: struct {
+  position: Vec3,
+  size: Vec3,
+  type: PhysicsMeshType
+}
+
+scene_append_physics_mesh :: proc(scene: ^Scene, def: PhysicsMeshDef) {
+  o: PhysicsMesh
+  o.def = def
+  m := mesh_make_cube(default_material)
+  append(&scene.meshes, m)
+  o.mesh_index = len(scene.meshes)-1
+  o.mesh = &scene.meshes[o.mesh_index]
+
+  bdef := bd.DefaultBodyDef()
+  if def.type == .DYNAMIC {
+    bdef.type = .dynamicBody
+  }
+  bdef.position = def.position
+
+  o.body_id = bd.CreateBody(scene.world_id, bdef)
+
+  hull := bd.MakeBoxHull(def.size.x*0.5, def.size.y*0.5, def.size.z*0.5)
+  shape := bd.DefaultShapeDef()
+  shape.density = 1
+  shape.baseMaterial.friction = 0.3
+  _ = bd.CreateHullShape(o.body_id, shape, &hull.base)
+  bd.Body_ApplyMassFromShapes(o.body_id)
+
+  bd.Body_SetAwake(o.body_id, true)
+  append(&scene.physics_meshes, o)
+}
 
 SceneFlags :: enum {
   DEBUG_OVERLAY
@@ -15,16 +65,38 @@ Scene :: struct {
   keys: map[int]bool,
   keys_pressed: map[int]bool,
   meshes: [dynamic]Mesh,
+  physics_meshes: [dynamic]PhysicsMesh,
   quads: [dynamic]Quad,
   renderer: ^Renderer,
   resources: Resources,
   delta_time: f32,
   delta_time_ema: f32,
   frame_number: i32,
-  flags: bit_set[SceneFlags]
+  flags: bit_set[SceneFlags],
+
+  // Physics
+  world_id: bd.WorldId,
+  ground_box_id: bd.BodyId,
+  physics_timestep: f32,
+  substep_count: i32
 }
 
 scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
+  {
+    scene.substep_count = 4
+    scene.physics_timestep = 1.0 / 60.0
+    world_def := bd.DefaultWorldDef()
+    scene.world_id = bd.CreateWorld(world_def)
+
+    ground_body_def := bd.DefaultBodyDef()
+    ground_body_def.position = {0, -250, 0}
+    scene.ground_box_id = bd.CreateBody(scene.world_id, ground_body_def)
+
+    ground_hull := bd.MakeBoxHull(800, 5, 800)
+    ground_shape := bd.DefaultShapeDef()
+    _ = bd.CreateHullShape(scene.ground_box_id, ground_shape, &ground_hull.base)
+  }
+
   platform_init(scene)
   resources_load(&scene.resources)
   renderer_init(renderer, scene)
@@ -55,11 +127,11 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
 
   if !LOAD_WORLD do return
 
-  albedo_texture := texture_load("assets/textures/box_placeholder.ppm", true)
+  albedo_texture := texture_load("assets/textures/slate-cliff-rock-bl4/slatecliffrock-albedo.png", true)//texture_load("assets/textures/box_placeholder.ppm", true)
   grass_texture := texture_load("assets/textures/whispy-grass-meadow-bl/wispy-grass-meadow_albedo.png", true)
   dirt_texture := texture_load("assets/textures/dirt_albedo.png", true)
 
-  default_material := Material{
+  default_material = Material{
     is_valid = true,
     albedo_textures = albedo_texture,
     albedo_tint = {0.8,0.8,0.98},
@@ -130,6 +202,17 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
   macroground_mesh.model_matrix *= translation_matrix({0, -3, 0})
   macroground_mesh.model_matrix *= scale_matrix({scl, scl, scl})
   append(&scene.meshes, macroground_mesh)
+
+  scene_append_physics_mesh(scene, {
+    position = {0, 1000, 0},
+    size = {50, 50, 50},
+    type = .DYNAMIC
+  })
+  scene_append_physics_mesh(scene, {
+    position = {28, 1100, 26},
+    size = {50, 50, 50},
+    type = .DYNAMIC
+  })
 }
 
 scene_update :: proc(scene: ^Scene) {
@@ -159,11 +242,23 @@ scene_update :: proc(scene: ^Scene) {
     scene.mouse.delta_position = scene.mouse.current_position - scene.mouse.previous_position
   }
 
+  bd.World_Step(scene.world_id, scene.physics_timestep, scene.substep_count)
+  { // Update physics meshes
+    for &m in scene.physics_meshes {
+      p := bd.Body_GetPosition(m.body_id)
+      r := bd.Body_GetRotation(m.body_id)
+      m.mesh.model_matrix = translation_matrix(p) 
+      m.mesh.model_matrix *= linalg.matrix4_from_quaternion(r)
+      m.mesh.model_matrix *= scale_matrix(m.def.size)
+      // fmt.printfln("Body pos %f %f %f", p.x, p.y, p.z)
+    }
+  }
 
   player_update(scene, &scene.player)
   camera_update(&scene.camera)
 
   renderer_render(scene.renderer)
+
 
   scene.mouse.scroll = 0
   scene.frame_number += 1
@@ -182,4 +277,6 @@ scene_delete :: proc(scene: ^Scene, verbose := false) {
   shader_delete(scene.sky_mesh.material.shader)
   delete(scene.meshes)
   renderer_delete(scene.renderer)
+
+  bd.DestroyWorld(scene.world_id)
 }
