@@ -32,7 +32,6 @@ scene_append_physics_mesh :: proc(scene: ^Scene, def: PhysicsMeshDef) {
   m := mesh_make_cube(default_material)
   append(&scene.meshes, m)
   o.mesh_index = len(scene.meshes)-1
-  o.mesh = &scene.meshes[o.mesh_index]
 
   bdef := bd.DefaultBodyDef()
   if def.type == .DYNAMIC {
@@ -247,9 +246,10 @@ scene_update :: proc(scene: ^Scene) {
     for &m in scene.physics_meshes {
       p := bd.Body_GetPosition(m.body_id)
       r := bd.Body_GetRotation(m.body_id)
-      m.mesh.model_matrix = translation_matrix(p) 
-      m.mesh.model_matrix *= linalg.matrix4_from_quaternion(r)
-      m.mesh.model_matrix *= scale_matrix(m.def.size)
+      mesh := &scene.meshes[m.mesh_index]
+      mesh.model_matrix = translation_matrix(p) 
+      mesh.model_matrix *= linalg.matrix4_from_quaternion(r)
+      mesh.model_matrix *= scale_matrix(m.def.size)
       // fmt.printfln("Body pos %f %f %f", p.x, p.y, p.z)
 
     }

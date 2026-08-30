@@ -12,6 +12,7 @@ renderer_world_to_screen :: proc(renderer: ^Renderer, pos: Vec3) -> Vec2{
     renderer.scene.camera.view_matrix *
     Vec4{pos.x, pos.y, pos.z, 1}
   v /= v.w
+  if v.z < 0 do return {2, 2}
   return v.xy
 }
 

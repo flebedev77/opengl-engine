@@ -18,7 +18,7 @@ GL_VERSION_MINOR :: 5
 PLAYER_WALK_SPEED :: 2.0001
 PLAYER_LOOK_SENSITIVITY :: Vec2{0.0001, 0.0002}
 
-EPSILON : f32 : 0.0001
+EPSILON : f32 : 0.01
 SIMULATION_AIR_DENSITY : f32 : 1.225
 
 LOAD_WORLD :: true // Gives an ability to not waste time loading the world

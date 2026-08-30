@@ -2,7 +2,7 @@ package main
 import "core:math"
 import "core:math/linalg"
 import "core:fmt"
-import "vendor:box3d"
+import bd "vendor:box3d"
 
 import "vendor:glfw"
 
@@ -33,10 +33,15 @@ Player :: struct {
   basis_matrix: Mat4,
   aerodynamics_triangle: [3]Vec4,
   visual: PlayerVisual,
-  thrust: f32
+  thrust: f32,
+  body_id: bd.BodyId,
+  cm_offset,
+  cp_offset: Vec3
 }
 
 player_init :: proc(scene: ^Scene, player: ^Player) {
+  player.cm_offset = {0, 0, 10}
+  player.cp_offset = {0, 0, -10}
   player.position = {-150, -2.96, 0}
   // player.position = {0, -502.12, 0}
   // player.position = {0, 5502.12, 0}
@@ -59,6 +64,18 @@ player_init :: proc(scene: ^Scene, player: ^Player) {
   player.aerodynamics_triangle[1] = {0, 0, 6, 1}
   player.aerodynamics_triangle[2] = {1, 0, 0, 1}
   // player.velocity = {0, 0, 0.3}
+
+  {
+    def := bd.DefaultBodyDef()
+    def.type = .dynamicBody
+    def.position = player.position
+    player.body_id = bd.CreateBody(scene.world_id, def)
+    hull := bd.MakeBoxHull(10, 5, 40)
+    shape := bd.DefaultShapeDef()
+    shape.density = 1
+    shape.baseMaterial.friction = 0.3
+    _ = bd.CreateHullShape(player.body_id, shape, &hull.base)
+  }
 
   player.basis_matrix = identity_matrix()
 
@@ -98,23 +115,23 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
   if player.is_flying && !player.debug_movement { 
     force: Vec3
 
-    thrust_force := player.mass * local_forward * player.thrust * 10
+    thrust_force := player.mass * local_forward * player.thrust * 100000000
     drag_force, lift_force := player_calculate_aero_forces(scene, player)
-    gravity_force := player.mass * Vec3{0, -9.81, 0}
-
-    force += thrust_force + gravity_force + drag_force + lift_force
-    force *= 0.000001
-
-    acceleration := force / player.mass
-
-    player.velocity += acceleration * scene.delta_time
-    player.position += player.velocity * scene.delta_time
-    GROUND_PLANE_Y: f32 : -250.98
-    if player.position.y < GROUND_PLANE_Y {
-      player.position.y = GROUND_PLANE_Y
-      player.velocity.y = 0
-      // acceleration.y = 0
-    }
+    // gravity_force := player.mass * Vec3{0, -9.81, 0}
+    //
+    // force += thrust_force + gravity_force + drag_force + lift_force
+    // force *= 0.000001
+    //
+    // acceleration := force / player.mass
+    //
+    // player.velocity += acceleration * scene.delta_time
+    // player.position += player.velocity * scene.delta_time
+    // GROUND_PLANE_Y: f32 : -250.98
+    // if player.position.y < GROUND_PLANE_Y {
+    //   player.position.y = GROUND_PLANE_Y
+    //   player.velocity.y = 0
+    //   // acceleration.y = 0
+    // }
 
     if .DEBUG_OVERLAY in scene.flags {
       debugrenderer_linebatch(
@@ -124,6 +141,9 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
         {0, 1, 0}
       )
     }
+    bd.Body_ApplyForce(player.body_id, thrust_force, player.position + local_forward * player.cm_offset.z, true)
+    bd.Body_ApplyForce(player.body_id, drag_force, player.position + local_forward * player.cp_offset.z, true)
+    bd.Body_ApplyForce(player.body_id, lift_force, player.position + local_forward * player.cm_offset.z, true)
 
   }
 
@@ -152,6 +172,10 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
   if player.debug_movement {
     player_debug_update(scene, player)
     return
+  }
+
+  if platform_key_pressed(glfw.KEY_L) {
+    scene_append_physics_mesh(scene, {position = player.position, size = {20, 20, 20}, type = .DYNAMIC})
   }
 
   player.camera_yaw += scene.mouse.delta_position.x * player.look_sensitivity.x * scene.delta_time
@@ -191,6 +215,7 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
   if platform_key_down(glfw.KEY_S) {
     player.pitch -= rotation_speed
     delta_pitch = -rotation_speed
+    bd.Body_ApplyTorque(player.body_id, {2000, 0, 0}, true)
   }
   if platform_key_down(glfw.KEY_A) {
     player.yaw -= rotation_speed
@@ -227,6 +252,13 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
 
   scene.camera.position = player.position + look_direction * player.zoom
   scene.camera.view_matrix = player.viewmatrix
+
+  physics_pos := bd.Body_GetPosition(player.body_id)
+  physics_rot := bd.Body_GetRotation(player.body_id)
+  physics_vel := bd.Body_GetLinearVelocity(player.body_id)
+  player.position = physics_pos
+  player.velocity = physics_vel
+  player.basis_matrix = linalg.matrix4_from_quaternion(physics_rot)
 
 
   if .DEBUG_OVERLAY in scene.flags {
@@ -400,6 +432,7 @@ player_calculate_aero_forces :: proc(scene: ^Scene, player: ^Player) -> (Vec3, V
   C := wind_view_matrix * (player.basis_matrix * player.aerodynamics_triangle[2])
   area := abs(linalg.cross((B-A).xy, (C-A).xy))/2
   area *= player.wing_area
+  area = 5
 
   if .DEBUG_OVERLAY in scene.flags {
     aero_color := Vec3{1, 0.647, 0}
@@ -409,6 +442,9 @@ player_calculate_aero_forces :: proc(scene: ^Scene, player: ^Player) -> (Vec3, V
   }
 
   drag_force := -velocity_direction * (0.5 * drag_coefficient * SIMULATION_AIR_DENSITY * speed_sq * area)
+  // fmt.printfln("%d", drag_force)
+  // fmt.printfln("%d", velocity_direction)
+  // fmt.printfln("%f %f", speed_sq, area)
 
   forward_speed := linalg.dot(player.velocity, local_forward)
   upward_speed  := linalg.dot(player.velocity, local_up)
