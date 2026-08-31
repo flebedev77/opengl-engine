@@ -18,7 +18,7 @@ uniform mat4 view_matrix;
 // #define fov 80
 
 const int ssao_samples = 16;
-const float ssao_radius = 0.09;
+const float ssao_radius = 0.19;
 const float ssao_intensity = 0.97;
 const float ssao_max_range = 15;
 

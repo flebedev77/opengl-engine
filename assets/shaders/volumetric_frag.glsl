@@ -312,13 +312,17 @@ vec4 calculate_atmosphere(vec3 camera_world_pos, vec3 ray_dir, float ray_length,
   float light_step_l = 900;
   float dens = 0.002;//0.0001;
   vec3 light_dens = vec3(
-      1
+      3,
+      3,
+      2
     );
   vec3 step_vec = ray_dir * stes;
   vec3 prev_light_transmittance = vec3(0);
   float prev_density = dens;
   float prev_transmittance = transmittance;
   vec3 obstructed_scatter = vec3(0.4);
+  obstructed_scatter.b = 0.5;
+  obstructed_scatter *= 0.3;
 
   if (ray_length < base_step) {
     float out_trans = start_transmittance * 
@@ -404,7 +408,7 @@ vec4 calculate_volumetrics() {
     float ray_length = length(ray_dir);
     ray_dir = normalize(ray_dir);
     // ray_length = min(ray_length, 100);
-    frag_depth = ray_length;
+    frag_depth = depth;
 
     float jitter = rand(frag_uv);// * 0.8;
     float density = 0.0;
@@ -715,22 +719,27 @@ vec4 calculate_volumetrics() {
       // first_hit_distance = 99999999;
     vec4 secondary_atmo_ray = vec4(0, 0, 0, 1);
 
-    //vec4 atmo = calculate_atmosphere(
-    //    camera_world_pos,
-    //    ray_dir,
-    //    min(first_hit_distance, ray_length),
-    //     1.0
-    // );
-    vec4 atmo = vec4(0, 0, 0, 1);
+    float d = ray_length;
+    // if (first_hit_distance < d && extinction < 0.02) d = first_hit_distance;
+    if (first_hit_distance < d && scattering.r > 0.1) d = first_hit_distance;
+    vec4 atmo = calculate_atmosphere(
+       camera_world_pos,
+       ray_dir,
+       d,//min(first_hit_distance, ray_length),
+        1.0
+    );
+    // vec4 atmo = vec4(0, 0, 0, 1);
 
     float total_ext = atmo.a * extinction;
-    if (extinction > 0 && extinction < 1) {
+    if (total_ext > 0.1 && total_ext < 1) {
       // secondary_atmo_ray = calculate_atmosphere(
       //     camera_world_pos + ray_dir * first_hit_distance,
       //     ray_dir,
       //     ray_length - first_hit_distance,
       //     total_ext
       // );
+      // atmo.a *= secondary_atmo_ray.a;
+      // atmo.rgb += secondary_atmo_ray.rgb;
     }
       
     // vec4 atmo = vec4(0, 0, 0, 1);
@@ -743,7 +752,7 @@ vec4 calculate_volumetrics() {
     // transmittance *= secondary_atmo_ray.a;
     scattering *= atmo.a;
     scattering += atmo.rgb;// * (1-atmo.a);// + atmo_void.rgb * (extinction - atmo.a);
-    scattering += secondary_atmo_ray.rgb;
+    // scattering += secondary_atmo_ray.rgb;
 
     scattering = clamp(scattering, vec3(0), vec3(1));
     transmittance = clamp(transmittance, 0, 1);

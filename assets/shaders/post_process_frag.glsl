@@ -18,7 +18,6 @@ uniform mat4 inv_projection_matrix;
 uniform mat4 projection_matrix;
 uniform mat4 view_matrix;
 
-
 uniform vec3 light_pos;
 
 const float DEPTH_THRESHOLD = 100.05;
@@ -106,20 +105,26 @@ vec3 reconstruct_position(vec2 uv, float non_linear_depth) {
 void main() {
   float depth = texture(depth_texture, frag_uv).r;
   float volume_depth = texture(volumetric_depth_texture, frag_uv).r;
-
-  float linear_depth = reconstruct_position(frag_uv, depth).z;
-  // frag_color = vec3(pow(abs(volume_depth-linear_depth), 2)) * 0.001;
+  // frag_color = vec3(volume_depth);
   // return;
-  if (pow(abs(volume_depth-linear_depth), 1) > 1000) {
-    // frag_color = vec3(1, 0, 0);
-    // return;
-  }
+
+  // float linear_depth = reconstruct_position(frag_uv, depth).z;
+  // frag_color = vec3(volume_depth);
+  // frag_color = vec3(depth, volume_depth, 0);
+  // frag_color = vec3(frag_color.r*10000 - frag_color.g * 10000);
+  // if (frag_color.r > 0.01) return;
+  // return;
+  // if (pow(abs(volume_depth-linear_depth), 1) < 1000) {
+  // if (abs(volume_depth - linear_depth) < 100) {
+  //   frag_color = vec3(1, 0, 0);
+  //   return;
+  // }
 
   frag_color = texture(screen_texture, frag_uv).rgb * 6;
   
   frag_color *= 1-texture(ssao_texture, frag_uv).r;
 
-  vec4 volumetrics = textureBicubic(volumetrics_texture, frag_uv);
+  vec4 volumetrics = texture(volumetrics_texture, frag_uv);
   volumetrics.rgb *= 2;
   // Could do a lanczos or bicubic filter here
   vec3 mixed = volumetrics.rgb + frag_color * (volumetrics.a);

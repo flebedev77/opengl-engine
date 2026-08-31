@@ -69,6 +69,7 @@ player_init :: proc(scene: ^Scene, player: ^Player) {
     def := bd.DefaultBodyDef()
     def.type = .dynamicBody
     def.position = player.position
+    def.angularDamping = 3.2
     player.body_id = bd.CreateBody(scene.world_id, def)
     hull := bd.MakeBoxHull(10, 5, 40)
     shape := bd.DefaultShapeDef()
@@ -141,9 +142,9 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
         {0, 1, 0}
       )
     }
-    bd.Body_ApplyForce(player.body_id, thrust_force, player.position + local_forward * player.cm_offset.z, true)
-    bd.Body_ApplyForce(player.body_id, drag_force, player.position + local_forward * player.cp_offset.z, true)
-    bd.Body_ApplyForce(player.body_id, lift_force, player.position + local_forward * player.cm_offset.z, true)
+    bd.Body_ApplyForceToCenter(player.body_id, thrust_force, true)
+    bd.Body_ApplyForceToCenter(player.body_id, drag_force, true)
+    bd.Body_ApplyForceToCenter(player.body_id, lift_force, true)
 
   }
 
@@ -244,7 +245,6 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
     player.thrust -= 0.01 * scene.delta_time
   }
   player.thrust = clamp(player.thrust, 0, 10)
-
 
   player.basis_matrix *= linalg.matrix4_rotate_f32(delta_pitch, {1, 0, 0})
   player.basis_matrix *= linalg.matrix4_rotate_f32(delta_yaw, {0, 1, 0})
@@ -400,7 +400,7 @@ player_calculate_drag_coefficient :: proc(player: ^Player) -> f32 {
 
 player_calculate_aero_forces :: proc(scene: ^Scene, player: ^Player) -> (Vec3, Vec3) {
   speed_sq := linalg.length2(player.velocity)
-  if speed_sq < EPSILON do return {0, 0, 0}, {0, 0, 0}
+  if math.sqrt(speed_sq) < EPSILON do return {0, 0, 0}, {0, 0, 0}
 
   velocity_direction := player.velocity / math.sqrt(speed_sq)
 
@@ -422,8 +422,8 @@ player_calculate_aero_forces :: proc(scene: ^Scene, player: ^Player) -> (Vec3, V
     player.basis_matrix[0][2]
   }
   wind_view_matrix: Mat4
-  if abs(linalg.dot(velocity_direction, local_forward)) > 1-EPSILON {
-    wind_view_matrix = linalg.matrix4_look_at_f32({0, EPSILON, 0}, player.velocity, local_up)
+  if abs(linalg.dot(velocity_direction, local_up)) > 1-EPSILON {
+    wind_view_matrix = linalg.matrix4_look_at_f32({EPSILON, EPSILON, 0}, player.velocity, local_up)
   } else {
     wind_view_matrix = linalg.matrix4_look_at_f32({0, 0, 0}, player.velocity, local_up)
   }
@@ -432,7 +432,7 @@ player_calculate_aero_forces :: proc(scene: ^Scene, player: ^Player) -> (Vec3, V
   C := wind_view_matrix * (player.basis_matrix * player.aerodynamics_triangle[2])
   area := abs(linalg.cross((B-A).xy, (C-A).xy))/2
   area *= player.wing_area
-  area = 5
+  // area = 5
 
   if .DEBUG_OVERLAY in scene.flags {
     aero_color := Vec3{1, 0.647, 0}
