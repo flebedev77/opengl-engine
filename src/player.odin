@@ -96,6 +96,10 @@ player_init :: proc(scene: ^Scene, player: ^Player) {
 }
 
 player_update :: proc(scene: ^Scene, player: ^Player) {
+  physics_pos := bd.Body_GetPosition(player.body_id)
+  physics_rot := bd.Body_GetRotation(player.body_id)
+  physics_vel := bd.Body_GetLinearVelocity(player.body_id)
+
   local_forward := Vec3{
     player.basis_matrix[2][0],
     player.basis_matrix[2][1],
@@ -143,8 +147,8 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
       )
     }
     bd.Body_ApplyForceToCenter(player.body_id, thrust_force, true)
-    bd.Body_ApplyForceToCenter(player.body_id, drag_force, true)
-    bd.Body_ApplyForceToCenter(player.body_id, lift_force, true)
+    // bd.Body_ApplyForceToCenter(player.body_id, drag_force, true)
+    // bd.Body_ApplyForceToCenter(player.body_id, lift_force, true)
 
   }
 
@@ -209,30 +213,41 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
   // rotation_speed := f32(0.1)
   delta_pitch, delta_yaw, delta_roll: f32
   // TODO move this to glfw layer
+  pitch_force := f32(4000)
+  yaw_force := f32(4000)
+  roll_force := f32(-400)
   if platform_key_down(glfw.KEY_W) {
     player.pitch += rotation_speed
     delta_pitch = rotation_speed
+    bd.Body_ApplyForce(player.body_id, (local_forward * -1000 + local_up * 9000) * pitch_force, physics_pos + local_forward * -3, true)
   }
   if platform_key_down(glfw.KEY_S) {
     player.pitch -= rotation_speed
     delta_pitch = -rotation_speed
-    bd.Body_ApplyTorque(player.body_id, {2000, 0, 0}, true)
+    // bd.Body_ApplyTorque(player.body_id, {2000, 0, 0}, true)
+    bd.Body_ApplyForce(player.body_id, (local_forward * -1000 + local_up * -9000) * pitch_force, physics_pos + local_forward * -3, true)
   }
   if platform_key_down(glfw.KEY_A) {
     player.yaw -= rotation_speed
     delta_yaw = rotation_speed
+    bd.Body_ApplyForce(player.body_id, (local_forward * -1000 + local_right * -9000) * yaw_force, physics_pos + local_forward * -3, true)
   }
   if platform_key_down(glfw.KEY_D) {
     player.yaw += rotation_speed
     delta_yaw = -rotation_speed
+    bd.Body_ApplyForce(player.body_id, (local_forward * -1000 + local_right * 9000) * yaw_force, physics_pos + local_forward * -3, true)
   }
   if platform_key_down(glfw.KEY_Q) {
     player.roll -= rotation_speed
     delta_roll = -rotation_speed
+    bd.Body_ApplyForce(player.body_id, (local_up * 9000) * roll_force, physics_pos + local_forward * -3 + local_right * 2, true)
+    bd.Body_ApplyForce(player.body_id, (local_up * -9000) * roll_force, physics_pos + local_forward * -3 + local_right * -2, true)
   }
   if platform_key_down(glfw.KEY_E) {
     player.roll += rotation_speed
     delta_roll = rotation_speed
+    bd.Body_ApplyForce(player.body_id, (local_up * -9000) * roll_force, physics_pos + local_forward * -3 + local_right * 2, true)
+    bd.Body_ApplyForce(player.body_id, (local_up * 9000) * roll_force, physics_pos + local_forward * -3 + local_right * -2, true)
   }
   if platform_key_down(glfw.KEY_SPACE) {
     player.is_flying = !player.is_flying
@@ -253,9 +268,6 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
   scene.camera.position = player.position + look_direction * player.zoom
   scene.camera.view_matrix = player.viewmatrix
 
-  physics_pos := bd.Body_GetPosition(player.body_id)
-  physics_rot := bd.Body_GetRotation(player.body_id)
-  physics_vel := bd.Body_GetLinearVelocity(player.body_id)
   player.position = physics_pos
   player.velocity = physics_vel
   player.basis_matrix = linalg.matrix4_from_quaternion(physics_rot)

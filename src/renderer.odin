@@ -311,8 +311,8 @@ generate_ui :: proc(renderer: ^Renderer) {
       r := bd.Body_GetRotation(m.body_id)
       pscreen := renderer_world_to_screen(renderer, p)
       // fmt.printfln("SCREEN POS DEBUG %f", pscreen)
-      draw_text(renderer, pscreen, fmt.tprintf("X:%f, Y:%f, Z:%f",
-          p.x, p.y, p.z), 0.03)
+      draw_text(renderer, pscreen, fmt.tprintf("%fm X:%f, Y:%f, Z:%f",
+          linalg.length(p-renderer.scene.camera.position), p.x, p.y, p.z), 0.03)
     }
   }
 

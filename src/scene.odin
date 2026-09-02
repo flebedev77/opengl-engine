@@ -91,7 +91,8 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
     ground_body_def.position = {0, -250, 0}
     scene.ground_box_id = bd.CreateBody(scene.world_id, ground_body_def)
 
-    ground_hull := bd.MakeBoxHull(800, 5, 800)
+    s := f32(80000)
+    ground_hull := bd.MakeBoxHull(s, 5, s)
     ground_shape := bd.DefaultShapeDef()
     _ = bd.CreateHullShape(scene.ground_box_id, ground_shape, &ground_hull.base)
   }
@@ -202,16 +203,31 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
   macroground_mesh.model_matrix *= scale_matrix({scl, scl, scl})
   append(&scene.meshes, macroground_mesh)
 
+  // scene_append_physics_mesh(scene, {
+  //   position = {0, 100, 0},
+  //   size = {50, 50, 50},
+  //   type = .DYNAMIC
+  // })
+  // scene_append_physics_mesh(scene, {
+  //   position = {0, 200, 0},
+  //   size = {50, 50, 50},
+  //   type = .DYNAMIC
+  // })
+
+  for i in 0..<50 {
   scene_append_physics_mesh(scene, {
-    position = {0, 1000, 0},
-    size = {50, 50, 50},
+    position = {0, 30 + 16 * f32(i), 0},
+    size = {105 + 20 * f32((i) % 2), 15, 15},
     type = .DYNAMIC
   })
+  }
+  for i in 0..<50 {
   scene_append_physics_mesh(scene, {
-    position = {28, 1100, 26},
-    size = {50, 50, 50},
+    position = {116, 30 + 16 * f32(i), 0},
+    size = {105 - 20 * f32((i) % 2), 15, 15},
     type = .DYNAMIC
   })
+  }
 }
 
 scene_update :: proc(scene: ^Scene) {
