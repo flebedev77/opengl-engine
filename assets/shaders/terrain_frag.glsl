@@ -8,6 +8,7 @@ in vec3 frag_normal;
 in vec4 frag_pos_lightspace;
 in vec3 frag_vert_color;
 in vec3 frag_pos_objectspace;
+in mat3 frag_normal_matrix;
 
 uniform sampler2D albedo_texture;
 uniform sampler2D secondary_albedo_texture;
@@ -271,18 +272,31 @@ void main() {
   // return;
 
   vec2 uv_transformed = (frag_uv + uv.xy) * uv.zw;
-  float mat_blend = clamp(
-      (texture(albedo_texture, frag_uv).r - 0.2667) * 1.363
-      , 0, 1);
+  float mat_blend = smoothstep(0.1, 0.7, clamp(
+      pow((texture(albedo_texture, frag_uv).r - 0.2667) * 1.363, 4)
+      , 0, 1));
   vec4 textureSample = mix(texture(secondary_albedo_texture, uv_transformed),
     texture(third_albedo_texture, uv_transformed), mat_blend);
-  vec3 albedo = textureSample.rgb * tint * frag_vert_color;
+  // uv_transformed *= 0.3;
+  // uv_transformed += textureSample.xy;//vec2(0.2, 0.3);
+  // vec4 textureSamplescal = mix(texture(secondary_albedo_texture, uv_transformed),
+  //   texture(third_albedo_texture, uv_transformed), mat_blend);
+  // uv_transformed *= 1/0.9;
+
+  float macroValue = 1;//dot(textureSamplescal.rgb, vec3(0.299, 0.587, 0.114));
+  vec3 albedo = textureSample.rgb * tint * frag_vert_color * macroValue;// * textureSamplescal.bgr;
 
   vec3 light_dir = normalize(light_pos); // TODO change this to point from an actual light
   vec3 view_dir = normalize(camera_pos - frag_pos);
 
-  vec3 normal_sample = texture(geometry_normal_texture, frag_uv).xyz;
+  vec3 normal_sample = mix(texture(geometry_normal_texture, uv_transformed),
+      texture(secondary_geometry_normal_texture, uv_transformed), mat_blend).xyz;
+
+  normal_sample = vec3(normal_sample.x, normal_sample.z, normal_sample.y);
   normal_sample = normalize(normal_sample * 2.0 - vec3(1));
+  normal_sample = normalize(frag_normal_matrix * normal_sample); 
+  // albedo = (normal_sample + vec3(1)) / 2.0;
+  // normal_sample = frag_normal;
 
   float metallic = metallic_strength;
   vec3 fr = vec3(0.04); // Reflectance at normal incidence
@@ -294,15 +308,17 @@ void main() {
       0, 1,
       0.5, 1);
   vec3 light_view_midway = normalize(light_dir + view_dir);
+  // out_frag_color = vec4(albedo, 1) * max(0, dot(light_dir, -normal_sample));
+  // return;
 
 
   // Cook-Torrance BRDF
-  float NDF = distribution_ggx(frag_normal, light_view_midway, roughness);   
-  float G   = geometrysmith(frag_normal, view_dir, light_dir, roughness);      
+  float NDF = distribution_ggx(normal_sample, light_view_midway, roughness);   
+  float G   = geometrysmith(normal_sample, view_dir, light_dir, roughness);      
   vec3 F    = fresnelschlick(clamp(dot(light_view_midway, view_dir), 0.0, 1.0), fr);
 
   vec3 numerator    = NDF * G * F; 
-  float denominator = 4.0 * max(dot(frag_normal, view_dir), 0.0) * max(dot(frag_normal, light_dir), 0.0) + 0.0001; // + 0.0001 to prevent divide by zero
+  float denominator = 4.0 * max(dot(normal_sample, view_dir), 0.0) * max(dot(normal_sample, light_dir), 0.0) + 0.0001; // + 0.0001 to prevent divide by zero
   vec3 specular = numerator / denominator;
 
   // kS is equal to Fresnel
@@ -317,7 +333,7 @@ void main() {
   kD *= 1.0 - metallic;
 
   vec4 ambient = vec4(ambient_light_intensity * vec3(0.094, 0.345, 0.729), 1.0); // NOTE multiplying by the color of the sky, make sure it always corresponds
-  float diffuse = clamp(dot(light_dir, frag_normal), 0, 1);// * 0.5;
+  float diffuse = clamp(dot(light_dir, normal_sample), 0, 1);// * 0.5;
   vec4 light_energy = vec4((kD * albedo / PI + specular) * diffuse, 1);
 
 
@@ -359,6 +375,7 @@ void main() {
   float inv_shadow = 1 - shadow;
   inv_shadow = min(inv_shadow, esm_lightness);
   inv_shadow = clamp(inv_shadow, 0, 1);
+  // inv_shadow = 1;
   // out_frag_color = 
   //   texture(esm_shadowmap_texture, macromap_proj.xy);
   // return;
@@ -370,5 +387,5 @@ void main() {
 
   // out_frag_color = vec4(frag_uv, 1, 1);
   // out_frag_color = vec4(1, 1, 1, 1);
-  // out_frag_color = vec4(frag_normal, 1);
+  // out_frag_color = vec4(normal_sample, 1);
 }

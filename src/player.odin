@@ -249,7 +249,7 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
     bd.Body_ApplyForce(player.body_id, (local_up * -9000) * roll_force, physics_pos + local_forward * -3 + local_right * 2, true)
     bd.Body_ApplyForce(player.body_id, (local_up * 9000) * roll_force, physics_pos + local_forward * -3 + local_right * -2, true)
   }
-  if platform_key_down(glfw.KEY_SPACE) {
+  if platform_key_pressed(glfw.KEY_SPACE) {
     player.is_flying = !player.is_flying
   }
 

@@ -125,7 +125,7 @@ void main() {
   frag_color *= 1-texture(ssao_texture, frag_uv).r;
 
   vec4 volumetrics = texture(volumetrics_texture, frag_uv);
-  volumetrics.rgb *= 2;
+  volumetrics.rgb *= 2.5;
   // Could do a lanczos or bicubic filter here
   vec3 mixed = volumetrics.rgb + frag_color * (volumetrics.a);
   frag_color = mixed;
