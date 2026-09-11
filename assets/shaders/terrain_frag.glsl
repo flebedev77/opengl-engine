@@ -273,7 +273,7 @@ void main() {
 
   vec2 uv_transformed = (frag_uv + uv.xy) * uv.zw;
   float mat_blend = smoothstep(0.1, 0.7, clamp(
-      pow((texture(albedo_texture, frag_uv).r - 0.2667) * 1.363, 4)
+      pow((texture(albedo_texture, (frag_pos_objectspace.xz/68.22)*0.5+vec2(0.5, 0.5)).r - 0.2667) * 1.363, 4)
       , 0, 1));
   vec4 textureSample = mix(texture(secondary_albedo_texture, uv_transformed),
     texture(third_albedo_texture, uv_transformed), mat_blend);
