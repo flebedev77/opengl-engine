@@ -222,7 +222,7 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   framebuffer_init(&renderer.shadowmap_framebuffer, shadowmap_resolution, {.DEPTH}, "shadowmap", .SHADOWMAP)
   framebuffer_init(&renderer.macroshadowmap_framebuffer, shadowmap_resolution, {.DEPTH}, "shadowmap", .SHADOWMAP)
 
-  effects_resolution_factor: f32 = 1.0/1
+  effects_resolution_factor: f32 = 1.0/4
   effects_resolution := Vec2{WINDOW_WIDTH, WINDOW_HEIGHT} * effects_resolution_factor
   effects_resolution_int := IVec2{i32(effects_resolution.x), i32(effects_resolution.y)}
   fmt.printfln("Effects resolution %d (1/%d)", effects_resolution_int, i32(1 / effects_resolution_factor))
@@ -949,25 +949,7 @@ texture_load :: proc(filepath: string, srgb := false) -> (out: u32) {
   out, _ = texture_load_with_dimensions(filepath, srgb)
   return
 }
-texture_load_with_dimensions :: proc(filepath: string, srgb := false, mipmaps := true) -> (u32, IVec2) {
-  contents := os.read_entire_file_from_path(filepath, context.allocator) or_else nil
-
-  if contents == nil {
-    fmt.eprintfln("Failed to read %s image", filepath)
-  }
-
-  img_w, img_h, img_channels: i32
-  img_data := stbi.load_from_memory(&contents[0], i32(len(contents)), 
-    &img_w, &img_h, &img_channels, 0)
-  defer stbi.image_free(img_data)
-
-  // img_w, img_h, img_channels, img_data := ppm_parse(filepath)
-  // defer free(img_data)
-
-  if img_data == nil {
-    fmt.eprintfln("Failed to parse %s image", filepath)
-  }
-
+texture_init :: proc(img_channels: i32 = 3, img_w: i32, img_h: i32, img_data: [^]byte, mipmaps := false, srgb := false) -> u32 {
   texture: u32
 
   gl.GenTextures(1, &texture)
@@ -992,7 +974,62 @@ texture_load_with_dimensions :: proc(filepath: string, srgb := false, mipmaps :=
   } else {
     gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
   }
+  return texture
+}
+texture_load_with_dimensions :: proc(filepath: string, srgb := false, mipmaps := true) -> (u32, IVec2) {
+  file_stat, _ := os.stat(filepath, context.temp_allocator)
+  cached_filename := fmt.tprintf("%s.img.cache", filepath)
 
+  if os.exists(cached_filename) {
+    cached_contents, err := os.read_entire_file_from_path(cached_filename, context.temp_allocator)
+    assert(err == os.General_Error.None)
+    base := cast([^]i64)raw_data(cached_contents)
+    if file_stat.creation_time._nsec == base[0] {
+      cscope := profile_begin(false)
+      fmt.printf("Loading image from cache %s ", cached_filename)
+      half_base := cast([^]i32)&base[1]
+      img_w, img_h, img_channels := half_base[0], half_base[1], half_base[2]
+      fmt.printf("%dx%d %d ", img_w, img_h, img_channels)
+      img_data := (cast([^]byte)(&half_base[3]))[:(img_w*img_h*img_channels)]
+      texture := texture_init(img_channels, img_w, img_h, &img_data[0], mipmaps, srgb)
+      profile_end(cscope)
+      return texture, {img_w, img_h}
+    } else {
+      os.remove(cached_filename)
+    }
+  }
+
+  contents := os.read_entire_file_from_path(filepath, context.allocator) or_else nil
+
+  if contents == nil {
+    fmt.eprintfln("Failed to read %s image", filepath)
+  }
+
+  img_w, img_h, img_channels: i32
+  img_data := stbi.load_from_memory(&contents[0], i32(len(contents)), 
+    &img_w, &img_h, &img_channels, 0)
+  defer stbi.image_free(img_data)
+
+  // img_w, img_h, img_channels, img_data := ppm_parse(filepath)
+  // defer free(img_data)
+
+  if img_data == nil {
+    fmt.eprintfln("Failed to parse %s image", filepath)
+  }
+
+  texture := texture_init(img_channels, img_w, img_h, img_data, mipmaps, srgb)
+
+  {
+    fmt.printfln("Caching image %s", filepath)
+    cached_file, e := os.open(cached_filename, {.Read, .Write, .Create})
+    assert(e == os.General_Error.None)
+    os.write_ptr(cached_file, &file_stat.creation_time._nsec, 8)
+    os.write_ptr(cached_file, &img_w, 4)
+    os.write_ptr(cached_file, &img_h, 4)
+    os.write_ptr(cached_file, &img_channels, 4)
+    os.write_ptr(cached_file, img_data, int(img_h*img_w*img_channels))
+    os.close(cached_file)
+  }
 
   return texture, {img_w, img_h}
 }

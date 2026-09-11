@@ -14,7 +14,6 @@ import "core:strings"
 import "core:strconv"
 import "core:mem"
 
-
 obj_parse :: proc(filename: string, verbose := false) ->
   (vertex_positions: []f32, 
    vertex_colors: []f32,
@@ -187,4 +186,136 @@ obj_parse_from_memory :: proc(contents: []u8, verbose := false) ->
   out_vertex_texture_coordinates,
   out_vertex_normals,
   out_indices
+}
+
+
+obj_parse_new :: proc(filename: string, verbose := false) ->
+  ObjModel {
+    // b: = [100000]u8{}
+    // return obj_parse_from_memory_new(b[:], verbose)
+  data, read_err := os.read_entire_file_from_path(filename, context.allocator)
+  if read_err == nil {
+    return obj_parse_from_memory_new(data, verbose)
+  }
+  fmt.eprintfln("Failed to read %s obj file", filename)
+  return {}
+}
+
+// @(private) OBJModeType :: enum {
+//   none,
+//   vertex_pos,
+//   vertex_nor,
+//   vertex_tex,
+//   face_ind
+// }
+
+ObjModel :: struct {
+  positions: []f32,
+  colors: []f32,
+  uvs: []f32,
+  normals: []f32,
+  indices: []u32,
+  
+  memory: rawptr,
+  memory_size: int,
+  allocator: mem.Allocator
+}
+
+obj_parse_from_memory_new :: proc(contents: []u8, verbose := false, allocator := context.allocator) -> ObjModel {
+  positions_amt := 0
+  colors_amt := 0
+  uvs_amt := 0
+  normals_amt := 0
+  indices_amt := 0
+  faces_amt := 0
+  
+  // Quick and dirty count, no bounds checking whatsoever
+  cur_state_vert := false
+ #no_bounds_check for i := 0; i < len(contents); i+=1 {
+    c := contents[i]    
+    if c == 'v' {
+      switch contents[i+1] {
+         case ' ': positions_amt += 3
+         case 'n': normals_amt += 3
+         case 't': uvs_amt += 3
+      }
+    }
+    if c == 'f' {
+      // faces_amt += 9
+      indices_amt += 9
+    }
+  }
+
+  mem_amount := size_of(f32) * positions_amt +
+    size_of(f32) * colors_amt +
+    size_of(f32) * uvs_amt +
+    size_of(f32) * normals_amt +
+    size_of(u32) * indices_amt
+  fmt.printfln("ALLOCATING %d bytes\n %d positions\n  %d colors\n %d uvs\n  %d normals\n  %d indices", mem_amount,
+    positions_amt, colors_amt, uvs_amt, normals_amt, indices_amt)
+
+  obj := ObjModel{}
+  obj.allocator = allocator
+  m, err := mem.alloc(mem_amount, 4, allocator)
+  assert(err == .None)
+
+  obj.memory = m
+  obj.memory_size = mem_amount
+  
+  p := cast([^]f32)obj.memory
+  obj.positions = p[0:positions_amt]
+  p = cast([^]f32)(uintptr(p) + uintptr(size_of(f32) * positions_amt))
+  obj.colors = p[0:colors_amt]
+  p = cast([^]f32)(uintptr(p) + uintptr(size_of(f32) * colors_amt))
+  obj.uvs = p[0:uvs_amt]
+  p = cast([^]f32)(uintptr(p) + uintptr(size_of(f32) * uvs_amt))
+  obj.normals = p[0:normals_amt]
+  indices_ptr := cast([^]u32)(uintptr(p) + uintptr(size_of(f32) * normals_amt))
+  obj.indices = indices_ptr[0:indices_amt]
+
+  parsing_sb: strings.Builder
+  _, err = strings.builder_init(&parsing_sb, allocator)
+  assert(err == .None)
+
+  curr_state: OBJModeType
+  pos_i, col_i, uv_i, nor_i, indices_i := 0, 0, 0, 0, 0
+  for i := 0; i < len(contents); i+=1 {
+    c := contents[i]
+    nc := (i+1 < len(contents)) ? contents[i+1] : ' '
+    if c == 'v' {
+      switch nc {
+        case ' ': curr_state = .vertex_pos
+        case 'n': curr_state = .vertex_nor
+        case 't': curr_state = .vertex_tex
+      }
+    } else if c == 'f' {
+      curr_state = .face_ind
+    }    
+
+    if is_numeric(c) {
+      strings.write_byte(&parsing_sb, c)
+      if !is_numeric(nc) {
+        v := strconv.parse_f32(strings.to_string(parsing_sb)) or_else 0
+        strings.builder_reset(&parsing_sb)
+        #partial switch curr_state {
+          case .vertex_pos: obj.positions[pos_i] = v; pos_i += 1
+          case .vertex_nor: obj.normals[nor_i] = v; nor_i += 1
+          case .vertex_tex: obj.uvs[uv_i] = v; uv_i += 1
+          case .face_ind: obj.indices[indices_i] = u32(v); indices_i += 1
+        }
+      }
+    }
+
+  }
+
+  strings.builder_destroy(&parsing_sb)
+
+  if verbose {
+    fmt.printfln("POSITIONS %#v", obj.positions)
+    fmt.printfln("NORMALS %#v", obj.normals)
+    fmt.printfln("UVS %#v", obj.uvs)
+    fmt.printfln("INDICES %#v", obj.indices)
+  }
+
+  return obj
 }

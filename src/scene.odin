@@ -1,4 +1,5 @@
 package main
+import "core:os"
 import "core:fmt"
 import "core:time"
 import "core:math/linalg"
@@ -97,14 +98,49 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
     _ = bd.CreateHullShape(scene.ground_box_id, ground_shape, &ground_hull.base)
   }
 
+  profile_scope := profile_begin(false)
   platform_init(scene)
+  fmt.printf("Platform load: ")
+  profile_end(profile_scope)
+  profile_scope = profile_begin(false)
   resources_load(&scene.resources)
+  fmt.printf("Resources load: ")
+  profile_end(profile_scope)
+  profile_scope = profile_begin(false)
   renderer_init(renderer, scene)
+  fmt.printf("Renderer init: ")
+  profile_end(profile_scope)
+  profile_scope = profile_begin(false)
   player_init(scene, &scene.player)
+  fmt.printf("Player init: ")
+  profile_end(profile_scope)
   scene.delta_time = 16.666;
   scene.delta_time_ema = 1//scene.delta_time
 
   // scene.post_process_quad = mesh_make_quad()
+  profile_scope = profile_begin(false)
+
+  when !LOAD_WORLD {
+    {
+      fmt.printfln("OBJ LOAD DEBUG")
+      obj_parse_new("assets/models/cube.obj", true)
+      profile_begin()
+      _, _, _, _, _ = obj_parse("assets/models/mountain/mountain.obj")
+      fmt.printf("Loading terrain bench (old): ")
+      profile_end()
+      profile_begin()
+      _ = obj_parse_new("assets/models/mountain/mountain.obj")
+      fmt.printf("Loading terrain bench (new): ")
+      profile_end()
+      profile_begin()
+      _ = texture_load("assets/textures/slate-cliff-rock-bl4/slatecliffrock-albedo.png", true)//texture_load("assets/textures/box_placeholder.ppm", true)
+      _ = texture_load("assets/textures/whispy-grass-meadow-bl/wispy-grass-meadow_albedo.png", true)
+      _ = texture_load("assets/textures/dirt_albedo.png", true)
+      fmt.printf("Loading textures bench: ")
+      profile_end()
+    }
+    os.exit(0)
+  }
 
   {
     sky_shader := shader_compileprogram(
@@ -125,6 +161,7 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
     // defer gl.DeleteProgram(sky_shader.program)
   }
 
+
   if !LOAD_WORLD do return
 
   albedo_texture := texture_load("assets/textures/slate-cliff-rock-bl4/slatecliffrock-albedo.png", true)//texture_load("assets/textures/box_placeholder.ppm", true)
@@ -141,21 +178,21 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
     metallic_strength = 0
   }
   uvf := f32(0.18)
-  ground_material := Material{
-    is_valid = true,
-    albedo_textures = {grass_texture, dirt_texture, 0},
-    roughness_textures = scene.resources.black_texture,
-    uv = {0, 0, uvf*2600, uvf*2600},
-    shader = shader_compileprogram(
-        cstring(#load("../assets/shaders/terrain_frag.glsl")),
-        cstring(#load("../assets/shaders/terrain_vert.glsl")),
-        .THREE_DIMENSIONAL,
-        "./assets/shaders/terrain_frag.glsl",
-        "./assets/shaders/terrain_vert.glsl"
-    ),
-    roughness_strength = 0,
-    metallic_strength = 0
-  }
+  // ground_material := Material{
+  //   is_valid = true,
+  //   albedo_textures = {grass_texture, dirt_texture, 0},
+  //   roughness_textures = scene.resources.black_texture,
+  //   uv = {0, 0, uvf*2600, uvf*2600},
+  //   shader = shader_compileprogram(
+  //       cstring(#load("../assets/shaders/terrain_frag.glsl")),
+  //       cstring(#load("../assets/shaders/terrain_vert.glsl")),
+  //       .THREE_DIMENSIONAL,
+  //       "./assets/shaders/terrain_frag.glsl",
+  //       "./assets/shaders/terrain_vert.glsl"
+  //   ),
+  //   roughness_strength = 0,
+  //   metallic_strength = 0
+  // }
 
   light_mesh := mesh_make_cube(default_material, {10, 10, 10})  
 
@@ -188,7 +225,7 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
   macroground_material.uv.zw = {100, 100} * 0.9
   macroground_material.albedo_textures[1] = texture_load("assets/textures/slate-cliff-rock-bl4/slatecliffrock-albedo.png", true)
   macroground_material.albedo_textures[2] = texture_load("assets/textures/iced-over-ground7-bl/iced-over-ground7-albedo.png", true)
-  
+
   macroground_material.roughness_textures[0] = texture_load("assets/textures/slate-cliff-rock-bl4/slatecliffrock_Roughness2.png")
   macroground_material.roughness_textures[1] = texture_load("assets/textures/iced-over-ground7-bl/iced-over-ground7-Roughness.png")
 
@@ -198,7 +235,7 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
 
 
   scl = f32(180)
-  macroground_mesh := asset_loader_obj_mesh("assets/models/mountain/mountain.obj", macroground_material)
+  macroground_mesh := asset_loader_obj_mesh("assets/models/mountain/mountain2.obj", macroground_material)
   macroground_mesh.model_matrix *= translation_matrix({0, -3, 0})
   macroground_mesh.model_matrix *= scale_matrix({scl, scl, scl})
   append(&scene.meshes, macroground_mesh)
@@ -228,6 +265,9 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
     type = .DYNAMIC
   })
   }
+
+  fmt.printf("Rest of scene init: ")
+  profile_end(profile_scope)
 }
 
 scene_update :: proc(scene: ^Scene) {
