@@ -14,8 +14,12 @@ profile_begin :: proc(set_default_profile_scope := true) -> ProfileScope {
   return {begin_time = time.tick_now()} 
 }
 
-profile_end :: proc(scope: ProfileScope = default_profile_scope) {
-  fmt.printfln("%f ms",
-    time.duration_milliseconds(time.tick_since(scope.begin_time))
-  )
+// Returns the duration between profile_begin and _end in ms
+profile_end :: proc(scope: ProfileScope = default_profile_scope, print := true) -> f32 {
+  if print {
+    fmt.printfln("%f ms",
+      time.duration_milliseconds(time.tick_since(scope.begin_time))
+    )
+  }
+  return f32(time.duration_milliseconds(time.tick_since(scope.begin_time)))
 }

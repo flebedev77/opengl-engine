@@ -303,7 +303,7 @@ mesh_make_quad :: proc(material: Material) -> Mesh {
 
 generate_ui :: proc(renderer: ^Renderer) {
   // profile_begin() // 0.09 ms! Pretty slow...
-  clear(&renderer.scene.quads) 
+  // clear(&renderer.scene.quads) 
 
   if .DEBUG_OVERLAY in renderer.scene.flags {
     for &m in renderer.scene.physics_meshes {
@@ -393,7 +393,7 @@ draw_text :: proc(renderer: ^Renderer, position: Vec2, text: string, font_size: 
 
       kerning := renderer.scene.resources.font_msdf_common.kernings[KerningKey{first = prev_id, second = d.id}]
 
-      append(&renderer.scene.quads, Quad{
+      append(&renderer.scene.charquads, QuadChar{
           position = {
             position.x + (kerning + d.xoffset) * scale * aspect_ratio, 
             position.y + (line_height - base - (d.height + d.yoffset) + line_height - base * 0.5) * scale
@@ -401,7 +401,6 @@ draw_text :: proc(renderer: ^Renderer, position: Vec2, text: string, font_size: 
           color = color,
           width = d.width * scale * aspect_ratio,
           height = d.height * scale,
-          is_char = true,
           char_weight = 0.5,
           uv = {
             d.x / msdf_resx,

@@ -8,8 +8,8 @@ in vec3 frag_normal;
 in vec4 frag_pos_lightspace;
 in vec3 frag_vert_color;
 in vec3 frag_pos_objectspace;
-in mat3 frag_normal_matrix;
 
+uniform mat3 normal_matrix;
 uniform sampler2D albedo_texture;
 uniform sampler2D secondary_albedo_texture;
 uniform sampler2D third_albedo_texture;
@@ -294,7 +294,7 @@ void main() {
 
   normal_sample = vec3(normal_sample.x, normal_sample.z, normal_sample.y);
   normal_sample = normalize(normal_sample * 2.0 - vec3(1));
-  normal_sample = normalize(frag_normal_matrix * normal_sample); 
+  normal_sample = normalize(normal_matrix * normal_sample); 
   // albedo = (normal_sample + vec3(1)) / 2.0;
   // normal_sample = frag_normal;
 

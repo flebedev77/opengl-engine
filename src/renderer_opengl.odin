@@ -81,6 +81,7 @@ ShaderParameters :: struct {
   prev_projection_matrix_location,
   view_matrix_location,
   projection_matrix_location,
+  normal_matrix_location,
   model_matrix_location: UniformLocation,
 
   resolution: Vec2,
@@ -137,13 +138,24 @@ Mesh :: struct {
   model_matrix: Mat4,
 }
 
+MeshRenderMode :: enum {
+  NORMAL, // Texture slots filled by render_mesh procedure
+  MANUAL, // Manually specify texture slots
+}
+
 Quad :: struct {
   position: Vec2,
   color: Vec4,
   width,
+  height: f32
+}
+
+QuadChar :: struct {
+  width,
   height,
   char_weight: f32,
-  is_char: bool,
+  position: Vec2,
+  color: Vec4,
   uv: Vec4
 }
 
@@ -343,6 +355,7 @@ renderer_render :: proc(renderer: ^Renderer) {
   render_mesh(renderer, &renderer.post_process_quad, &renderer.downscaled_depth_framebuffer.material)
 
   // Exponential shadowmap
+  // esm_profile := profile_begin(false)
   gl.ActiveTexture(gl.TEXTURE5)
   gl.BindTexture(gl.TEXTURE_3D, renderer.cloud_settings.cloud_noise.base_shape)
   gl.ActiveTexture(gl.TEXTURE6)
@@ -448,19 +461,40 @@ renderer_render :: proc(renderer: ^Renderer) {
   
 
   // Final combination pass
-  gl.ActiveTexture(gl.TEXTURE6)
-  gl.BindTexture(gl.TEXTURE_2D, renderer.accumulated_volumetric_framebuffer.color_texture)
-  gl.ActiveTexture(gl.TEXTURE0)
-  gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_framebuffer.red_texture)
-  gl.ActiveTexture(gl.TEXTURE3)
+  gl.UseProgram(renderer.final_pass_material.shader.program)
+  sp := renderer.final_pass_material.shader.parameters
+  gl.ActiveTexture(gl.TEXTURE0); gl.Uniform1i(sp.screen_texture_location, 0)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.back_framebuffer.color_texture)
+  gl.ActiveTexture(gl.TEXTURE1); gl.Uniform1i(sp.depth_texture_location, 1)
   gl.BindTexture(gl.TEXTURE_2D, renderer.prepass_framebuffer.depth_texture)
-  gl.ActiveTexture(gl.TEXTURE8)
-  gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_framebuffer.vector_texture)
+  gl.ActiveTexture(gl.TEXTURE2); gl.Uniform1i(sp.shadowmap_texture_location, 1)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.shadowmap_framebuffer.depth_texture)
+  gl.ActiveTexture(gl.TEXTURE3); gl.Uniform1i(sp.macroshadowmap_texture_location, 3)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.macroshadowmap_framebuffer.depth_texture)
+  gl.ActiveTexture(gl.TEXTURE4); gl.Uniform1i(sp.esm_shadowmap_texture_location, 4)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_exponential_shadowmap.red_texture)
+  gl.ActiveTexture(gl.TEXTURE5); gl.Uniform1i(sp.blue_noise_texture_location, 5)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.scene.resources.blue_noise_texture)
 
+  gl.ActiveTexture(gl.TEXTURE6); gl.Uniform1i(sp.base_cloud_noise_texture_location, 6)
+  gl.BindTexture(gl.TEXTURE_3D, renderer.cloud_settings.cloud_noise.base_shape)
+  gl.ActiveTexture(gl.TEXTURE7); gl.Uniform1i(sp.detail_cloud_noise_texture_location, 7)
+  gl.BindTexture(gl.TEXTURE_3D, renderer.cloud_settings.cloud_noise.detail_worley)
+  gl.ActiveTexture(gl.TEXTURE8); gl.Uniform1i(sp.perlin_cloud_noise_texture_location, 8)
+  gl.BindTexture(gl.TEXTURE_3D, renderer.cloud_settings.cloud_noise.detail_perlin)
+
+  gl.ActiveTexture(gl.TEXTURE9); gl.Uniform1i(sp.volumetrics_texture_location, 9)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.accumulated_volumetric_framebuffer.color_texture)
+  gl.ActiveTexture(gl.TEXTURE10); gl.Uniform1i(sp.volumetric_depth_texture_location, 10)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_framebuffer.red_texture)
+  gl.ActiveTexture(gl.TEXTURE11); gl.Uniform1i(sp.ssao_texture_location, 11)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.ssao_framebuffer.red_texture)
+  // esm_duration := profile_end(esm_profile, false)
+  // draw_text(renderer, {0, 0}, fmt.tprintf("ESM_pass: %f ms", esm_duration), 0.1)
 
   renderer.default_framebuffer.size = {FrameBuffer.w, FrameBuffer.h}
   renderer_bind_and_clear_framebuffer(renderer, renderer.default_framebuffer)
-  render_mesh(renderer, &renderer.post_process_quad) 
+  render_mesh(renderer, &renderer.post_process_quad, {}, MeshRenderMode.MANUAL) 
 
   gl.ActiveTexture(gl.TEXTURE2)
   gl.BindTexture(gl.TEXTURE_2D, renderer.back_framebuffer.color_texture)
@@ -483,6 +517,11 @@ renderer_render :: proc(renderer: ^Renderer) {
   for &quad in renderer.scene.quads {
     render_uiquad(renderer, &quad)
   }
+  for &char in renderer.scene.charquads {
+    render_uichar(renderer, &char)
+  }
+  clear(&renderer.scene.quads)
+  clear(&renderer.scene.charquads)
 
   free_all(context.temp_allocator)
 
@@ -515,7 +554,7 @@ renderer_add_to_transparent_queue :: proc(renderer: ^Renderer, mesh: ^Mesh) {
   append(&renderer.transparent_mesh_queue, mesh)
 }
 
-render_mesh :: proc(renderer: ^Renderer, mesh: ^Mesh, material_override: ^Material = {}) {
+render_mesh :: proc(renderer: ^Renderer, mesh: ^Mesh, material_override: ^Material = {}, rendermode := MeshRenderMode.NORMAL) {
   material_override := material_override
 
   mesh_material := &mesh.material
@@ -566,21 +605,32 @@ render_mesh :: proc(renderer: ^Renderer, mesh: ^Mesh, material_override: ^Materi
   shader_parameters.cloud_dome_radius = renderer.cloud_settings.cloud_dome_radius
 
 
-  mesh_draw(mesh^, material_override)
+  mesh_draw(mesh^, material_override, rendermode)
 }
 
-render_uiquad :: proc(renderer: ^Renderer, quad: ^Quad) {
+render_uichar :: proc(renderer: ^Renderer, quad: ^QuadChar) {
   // TODO: Batch / instanced rendering
   gl.BindVertexArray(renderer.post_process_quad.vao)
   gl.UseProgram(renderer.ui_quad_material.shader.program)
   gl.Uniform1i(renderer.ui_quad_material.shader.parameters.quad_msdf_texture_location, 0)
-  gl.Uniform1i(renderer.ui_quad_material.shader.parameters.quad_is_char_location, i32(quad.is_char))
+  gl.Uniform1i(renderer.ui_quad_material.shader.parameters.quad_is_char_location, 1)
   gl.Uniform1f(renderer.ui_quad_material.shader.parameters.quad_char_weight_location, quad.char_weight)
   gl.Uniform2f(renderer.ui_quad_material.shader.parameters.quad_size_location, quad.width, quad.height)
   gl.Uniform2fv(renderer.ui_quad_material.shader.parameters.quad_position_location, 1, &quad.position[0])
   gl.Uniform4fv(renderer.ui_quad_material.shader.parameters.quad_color_location, 1, &quad.color[0])
   gl.Uniform4fv(renderer.ui_quad_material.shader.parameters.uv_location, 1, &quad.uv[0])
 
+  gl.DrawElements(gl.TRIANGLE_STRIP, 4, gl.UNSIGNED_INT, cast(rawptr)nil)
+}
+render_uiquad :: proc(renderer: ^Renderer, quad: ^Quad) {
+  // TODO: Batch / instanced rendering
+  gl.BindVertexArray(renderer.post_process_quad.vao)
+  gl.UseProgram(renderer.ui_quad_material.shader.program)
+  gl.Uniform1i(renderer.ui_quad_material.shader.parameters.quad_msdf_texture_location, 0)
+  gl.Uniform1i(renderer.ui_quad_material.shader.parameters.quad_is_char_location, 0)
+  gl.Uniform2f(renderer.ui_quad_material.shader.parameters.quad_size_location, quad.width, quad.height)
+  gl.Uniform2fv(renderer.ui_quad_material.shader.parameters.quad_position_location, 1, &quad.position[0])
+  gl.Uniform4fv(renderer.ui_quad_material.shader.parameters.quad_color_location, 1, &quad.color[0])
   gl.DrawElements(gl.TRIANGLE_STRIP, 4, gl.UNSIGNED_INT, cast(rawptr)nil)
 }
 
@@ -650,14 +700,14 @@ mesh_init :: proc(
   // fmt.printfln("VAO  %d\nVBO  %d\nEBO  %d\nTRIS %d", mesh.vao, mesh.position_bufferobject, mesh.indice_bufferobject, len(indices))
 }
 
-mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}) {
+mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}, rendermode := MeshRenderMode.NORMAL) {
   mesh := mesh
   material := mesh.material
 
   if material.is_valid && (material_override == nil || !material_override.is_valid) {
-    gl.UseProgram(material.shader.program)
+    if rendermode == .NORMAL do gl.UseProgram(material.shader.program)
   } else if material_override.is_valid {
-    gl.UseProgram(material_override.shader.program)
+    if rendermode == .NORMAL do gl.UseProgram(material_override.shader.program)
     material = material_override^
   }
   shader := material.shader
@@ -672,30 +722,34 @@ mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}) {
 
   gl.Uniform3fv(shader.parameters.light_position_location, 1, &shader.parameters.sun_position[0])
 
-  gl.Uniform1i(shader.parameters.shadowmap_texture_location, 1)
-  gl.Uniform1i(shader.parameters.macroshadowmap_texture_location, 7)
 
   gl.Uniform1i(shader.parameters.frame_number_location, shader.parameters.frame_number)
 
   gl.BindVertexArray(mesh.vao)
-  if material.shader.type == .TWO_DIMENSIONAL ||
-     material.is_transparent {
-    gl.Uniform1i(shader.parameters.screen_texture_location, 2)
-    gl.Uniform1i(shader.parameters.depth_texture_location, 3)
-    gl.Uniform1i(shader.parameters.volumetrics_texture_location, 6)
+  if rendermode == .NORMAL {
+    gl.Uniform1i(shader.parameters.shadowmap_texture_location, 1)
+    gl.Uniform1i(shader.parameters.macroshadowmap_texture_location, 7)
+    if material.shader.type == .TWO_DIMENSIONAL ||
+      material.is_transparent {
+        gl.Uniform1i(shader.parameters.screen_texture_location, 2)
+        gl.Uniform1i(shader.parameters.depth_texture_location, 3)
+        gl.Uniform1i(shader.parameters.volumetrics_texture_location, 6)
+      }
   }
   if material.shader.type == .TWO_DIMENSIONAL {
-    gl.Uniform1i(shader.parameters.volumetric_depth_texture_location, 0)
-    gl.Uniform1i(shader.parameters.normal_texture_location, 4)
-    gl.Uniform1i(shader.parameters.ssao_texture_location, 5)
-    gl.Uniform1i(shader.parameters.input_texture_location, 5)
-    gl.Uniform1i(shader.parameters.base_cloud_noise_texture_location, 5)
-    gl.Uniform1i(shader.parameters.detail_cloud_noise_texture_location, 6)
-    gl.Uniform1i(shader.parameters.perlin_cloud_noise_texture_location, 9)
-    gl.Uniform1i(shader.parameters.volumetric_history_texture_location, 7)
-    gl.Uniform1i(shader.parameters.esm_shadowmap_texture_location, 1)
-    gl.Uniform1i(shader.parameters.volumetric_motion_vectors_texture_location, 8)
-    gl.Uniform1i(shader.parameters.blue_noise_texture_location, 8)
+    if rendermode == .NORMAL {
+      gl.Uniform1i(shader.parameters.volumetric_depth_texture_location, 0)
+      gl.Uniform1i(shader.parameters.normal_texture_location, 4)
+      gl.Uniform1i(shader.parameters.input_texture_location, 5)
+      gl.Uniform1i(shader.parameters.ssao_texture_location, 5)
+      gl.Uniform1i(shader.parameters.base_cloud_noise_texture_location, 5)
+      gl.Uniform1i(shader.parameters.detail_cloud_noise_texture_location, 6)
+      gl.Uniform1i(shader.parameters.perlin_cloud_noise_texture_location, 9)
+      gl.Uniform1i(shader.parameters.volumetric_history_texture_location, 7)
+      gl.Uniform1i(shader.parameters.esm_shadowmap_texture_location, 1)
+      gl.Uniform1i(shader.parameters.volumetric_motion_vectors_texture_location, 8)
+      gl.Uniform1i(shader.parameters.blue_noise_texture_location, 8)
+    }
     gl.Uniform1i(shader.parameters.blur_amount_location, i32(shader.parameters.blur_amount))
     gl.Uniform1i(shader.parameters.volumetrics_taa_frames_location, shader.parameters.volumetrics_taa_frames)
 
@@ -759,19 +813,24 @@ mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}) {
       gl.BindTexture(gl.TEXTURE_2D, material.normal_textures[2])
     }
 
-    gl.Uniform1i(shader.parameters.albedo_texture_location, 0)
-    gl.Uniform1i(shader.parameters.secondary_albedo_texture_location, 3)
-    gl.Uniform1i(shader.parameters.third_albedo_texture_location, 4)
+    nm := cast(matrix[3,3]f32)linalg.transpose(linalg.inverse(mesh.model_matrix))
+    gl.UniformMatrix3fv(shader.parameters.normal_matrix_location, 1, gl.FALSE, &nm[0,0])
 
-    gl.Uniform1i(shader.parameters.roughness_texture_location, 2)
-    gl.Uniform1i(shader.parameters.secondary_roughness_texture_location, 5)
-    gl.Uniform1i(shader.parameters.third_roughness_texture_location, 6)
+    if rendermode == .NORMAL {
+      gl.Uniform1i(shader.parameters.albedo_texture_location, 0)
+      gl.Uniform1i(shader.parameters.secondary_albedo_texture_location, 3)
+      gl.Uniform1i(shader.parameters.third_albedo_texture_location, 4)
 
-    gl.Uniform1i(shader.parameters.geonormal_texture_location, 9)
-    gl.Uniform1i(shader.parameters.secondary_geonormal_texture_location, 10)
-    gl.Uniform1i(shader.parameters.third_geonormal_texture_location, 11)
+      gl.Uniform1i(shader.parameters.roughness_texture_location, 2)
+      gl.Uniform1i(shader.parameters.secondary_roughness_texture_location, 5)
+      gl.Uniform1i(shader.parameters.third_roughness_texture_location, 6)
 
-    gl.Uniform1i(shader.parameters.esm_shadowmap_texture_location, 8)
+      gl.Uniform1i(shader.parameters.geonormal_texture_location, 9)
+      gl.Uniform1i(shader.parameters.secondary_geonormal_texture_location, 10)
+      gl.Uniform1i(shader.parameters.third_geonormal_texture_location, 11)
+
+      gl.Uniform1i(shader.parameters.esm_shadowmap_texture_location, 8)
+    }
 
     gl.Uniform1f(shader.parameters.roughness_strength_location, material.roughness_strength)
     gl.Uniform1f(shader.parameters.metallic_strength_location, material.metallic_strength)
@@ -867,6 +926,7 @@ shader_init :: proc(shader: ^Shader) {
   shader.parameters.frame_number_location = gl.GetUniformLocation(shader.program, "frame_number")
   // switch shader.type {
   //   case .THREE_DIMENSIONAL:
+      shader.parameters.normal_matrix_location = gl.GetUniformLocation(shader.program, "normal_matrix")
       shader.parameters.uv_location = gl.GetUniformLocation(shader.program, "uv");
       shader.parameters.tint_location = gl.GetUniformLocation(shader.program, "tint")
       shader.parameters.albedo_texture_location = gl.GetUniformLocation(shader.program, "albedo_texture")

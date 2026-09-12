@@ -356,7 +356,7 @@ player_debug_update :: proc(scene: ^Scene, player: ^Player) {
   }
 
 
-  if player.debug_is_fast do player.walk_speed = PLAYER_WALK_SPEED + 26
+  if player.debug_is_fast do player.walk_speed = PLAYER_WALK_SPEED + 46
   else do player.walk_speed = PLAYER_WALK_SPEED
 
   if linalg.length2(moveinput) > 0 &&

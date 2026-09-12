@@ -102,33 +102,770 @@ vec3 reconstruct_position(vec2 uv, float non_linear_depth) {
   return view.xyz / view.w;
 }
 
+uniform sampler2D shadowmap_texture;
+uniform sampler2D macroshadowmap_texture;
+uniform sampler2D esm_shadowmap_texture;
+uniform sampler2D blue_noise_texture;
+
+uniform sampler3D base_cloud_noise;
+uniform sampler3D detail_cloud_noise;
+uniform sampler3D perlin_cloud_noise;
+
+uniform mat4 inv_view_matrix;
+
+uniform mat4 shadowmap_matrix;
+uniform mat4 macroshadowmap_matrix;
+
+uniform float cloud_dome_radius;
+
+const float cloud_layer_thickness = 3600;//(186-10);
+const float cloud_height_base = 1000;
+float cloud_height_apex = cloud_height_base+cloud_layer_thickness;
+// const float cloud_dome_radius = 1000000;
+vec3 cloud_dome_position = vec3(0, -(cloud_dome_radius-cloud_height_base), 0);
+float actual_cloud_height_base = cloud_dome_radius;
+float actual_cloud_height_apex = cloud_dome_radius + cloud_layer_thickness;
+const float cloud_minimum_height = -3500;
+
+const float esm_k = 120;
+
+ivec3 base_cloud_noise_size = ivec3(128*6, 16, 128*6);
+float bb_side = 18000;
+vec3 sky_bounding_box = vec3(bb_side, cloud_height_apex+100, bb_side);
+// ivec3 base_cloud_noise_size = ivec3(64);
+
+#define STEPS_CLOUDS 128//64
+#define STEPS_CLOUDS_LIGHTING 5
+#define CLOUD_DENSITY 0.1168
+#define CLOUD_LIGHT_DENSITY 0.31//2.018
+#define CLOUD_STEP_LENGTH 55.5
+#define CLOUD_LARGE_STEP_LENGTH 800//265.5
+#define CLOUD_LIGHT_STEP_LENGTH 100//1570.6
+#define MIN_DENSITY 0//0.012//0.01
+#define SUN_INTENSITY 8.6//0
+
+#define BACKSCATTER_MIN 0.15
+#define BACKSCATTER_MAX 0.65
+
+#define EXTINCTION_FACTOR 0.5
+#define SCATTERING_FACTOR (EXTINCTION_FACTOR-0.0001)
+
+#define POWDER_FACTOR 7.01
+#define POWDER_STRENGTH 0.6
+
+#define TEMPORAL_ACCUMULATION_ENABLED true
+
+const float PI = 3.141592653589793;
+
+vec3 project_position(vec3 p, mat4 proj_view) {
+  vec4 v = proj_view * vec4(p, 1);
+  return v.xyz / v.w;
+}
+
+//	Simplex 3D Noise 
+//	by Ian McEwan, Stefan Gustavson (https://github.com/stegu/webgl-noise)
+//
+vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
+vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
+
+float rand_hash(vec2 p) {
+  return fract(sin(dot(p.xy ,vec2(12.9898,78.233))) * 43758.5453);
+}
+
+float remap(float v, float fmin, float fmax, float tmin, float tmax) {
+  return tmin + (tmax - tmin) * (v - fmin) / (fmax - fmin);
+}
+
+float lerp(float a, float b, float t) {
+  return a + (b-a) * t;
+}
+
+vec2 rand_vec(vec2 p) {
+	return (vec2(
+		rand_hash(p) * 2.0 - 1.0, 
+		rand_hash(p + vec2(1, 2343)) * 2.0 - 1.0
+	));
+}
+
+float noisetwod(vec2 p) {
+	vec2 f = fract(p);
+	vec2 br = ceil(p);
+	vec2 bl = br - vec2(1, 0);
+	vec2 tl = bl + vec2(0, 1);
+	vec2 tr = tl + vec2(1, 0);
+	
+	vec2 brn = rand_vec(br);
+	vec2 bln = rand_vec(bl);
+	vec2 tln = rand_vec(tl);
+	vec2 trn = rand_vec(tr);
+	
+	float brv = dot(brn, (p - br));
+	float blv = dot(bln, (p - bl));
+	float trv = dot(trn, (p - tr));
+	float tlv = dot(tln, (p - tl));
+	
+	float bn = lerp(blv, brv, f.x);
+	float tn = lerp(tlv, trv, f.x);
+	
+	float v = lerp(bn, tn, f.y);
+	return v * 0.5 + 0.5;
+}
+
+vec2 snoise(vec3 v){ return texture(base_cloud_noise, v).rg; }
+float dnoise(vec3 p) { return texture(detail_cloud_noise, p).r; }
+float pnoise(vec3 p) { return texture(perlin_cloud_noise, p).r; }
+
+const float golden_ratio = 1.61803398875;
+
+float rand(vec2 co){
+  vec2 res = textureSize(screen_texture, 0);
+  float aspect = res.x / res.y;
+  float frame_offset = 0;
+// #if (TEMPORAL_ACCUMULATION_ENABLED == true)
+  frame_offset = fract(float(frame_number) * golden_ratio); 
+// #endif
+  co.x *= aspect;
+  return fract(texture(blue_noise_texture, co * 7.3327486 + frame_offset * 10).r * 100 + frame_offset);
+}
+
+vec3 rand_vec_three(vec2 p) {
+	return (vec3(
+		rand_hash(p) * 2.0 - 1.0, 
+		rand_hash(p + vec2(1, 2343)) * 2.0 - 1.0,
+		rand_hash(p + vec2(-23425, 675)) * 2.0 - 1.0
+	));
+}
+
+float Ei( float z )
+{
+  return 0.5772156649015328606065 + log( 1e-4 + abs(z) ) + z * (1.0 + z * (0.25 + z * ( (1.0/18.0) + z * ( (1.0/96.0) + z *
+            (1.0/600.0) ) ) ) ); // For x!=0
+}
+
+// #define AMPLITUDE_FACTOR 0.3
+// #define FREQUENCY_FACTOR 4.5
+// #define DENSITY_FACTOR 0.6
+// #define DENSITY_BIAS -0.2
+#define CLOUD_SCALE 100
+#define BASE_FREQUENCY_FACTOR 0.06
+#define AMPLITUDE_FACTOR 0.2
+#define FREQUENCY_FACTOR 1.2
+#define DENSITY_FACTOR 0.9
+#define DENSITY_BIAS -0.5
+#define COVERAGE_BIAS -1//0.54
+#define CLOUD_DRIFT_SPEED 0.6
+
+float get_height_mask(float y, float layerMin, float layerMax, float feather) {
+    float bottomFade = smoothstep(layerMin, layerMin + feather, y);
+    float topFade = 1.0 - smoothstep(layerMax - feather, layerMax, y);
+    return bottomFade * topFade;
+}
+
+vec2 sample_cloud_density(vec3 p) {
+  // float y = length(cloud_dome_position-p) - cloud_height_base;
+  float y = p.y - cloud_height_base;// - 100;
+
+  float cloud_drift = float(frame_number) * 0.2 + 1e5;
+  p.x += cloud_drift;
+  p.x += cloud_drift * 10;
+  p.z += cloud_drift * 0.32;
+  float width_to_height = base_cloud_noise_size.x / base_cloud_noise_size.y;
+  float depth_to_height = base_cloud_noise_size.z / base_cloud_noise_size.y;
+  vec3 base_p = vec3(
+      p.x / (cloud_layer_thickness * width_to_height),
+      y / cloud_layer_thickness,
+      p.z / (cloud_layer_thickness * depth_to_height)
+    );
+
+  vec2 n = snoise(base_p);
+
+  float sdf_step_length = 0;
+
+  if (n.g > 0) {
+    float max_dist = abs(n.g) * length(vec3(base_cloud_noise_size));
+    float cell_size = cloud_layer_thickness / float(base_cloud_noise_size.y); 
+
+    sdf_step_length = max(max_dist * cell_size, 0);
+  }
+  if (n.r > 0) {
+    vec3 detail_p = vec3(p.x, y, p.z) / cloud_layer_thickness;
+    detail_p += vec3(cloud_drift, -cloud_drift * 0.3, cloud_drift) * (1/cloud_layer_thickness);
+
+    float d = pow(dnoise(detail_p * 0.9), 1) * 1.4;
+    d += dnoise(detail_p * 1.5) * 1.6;
+    // // d += (dnoise(detail_p * 1.8)) * 2.4;
+    // d += dnoise(detail_p * 3.5) * 0.9;
+    // d += dnoise(detail_p * 3.9) * 0.9 * pnoise(detail_p * 0.3);
+    d += (1-dnoise(detail_p * 2)) * 2;
+    d += pnoise(detail_p * 2) * 1;
+    d += pnoise(detail_p * 5) * 1;
+    d += (1-dnoise(detail_p * 5)) * 1 * get_height_mask(y, 0, (cloud_height_apex - cloud_height_base) * 0.3, 100);
+
+    n.r = clamp(n.r-d*0.14, 0, 1);
+    n.r *= get_height_mask(y, 0, cloud_layer_thickness, 100);
+    // n.r *= 0.18;
+    // n.r *= 0.08;
+    // n.r += 1.001;
+  }
+
+  return vec2(n.r * CLOUD_DENSITY, sdf_step_length);
+}
+
+#define AMBIENT_COEFFICIENT 1//5//12.0
+#define AMBIENT_TOP_COEFFICIENT 0//0.87
+#define AMBIENT_TOP_COLOR vec3(0.9)
+#define AMBIENT_BOTTOM_COEFFICIENT 5.2
+#define AMBIENT_BOTTOM_COLOR vec3(0.35, 0.35, 0.35)
+#define AMBIENT_CONSTANT_COEFFICIENT 1.8
+#define AMBIENT_CONSTANT_COLOR vec3(1., 1., 1.2)//vec3(0.260, 0.325, 0.489)
+#define AMBIENT_OCCLUSION_DISTANCE 2
+#define AMBIENT_OCCLUSION_STRENGTH 2.5
+
+vec3 calculate_ambient_color(vec3 p, float extinction_coefficient) {
+  // return AMBIENT_CONSTANT_COLOR * AMBIENT_CONSTANT_COEFFICIENT;
+  float dc = length(p-cloud_dome_position);
+  float distance_top = (cloud_height_apex - dc);
+  float a = -extinction_coefficient * distance_top;
+  vec3 isotropic_scattering_top = AMBIENT_TOP_COLOR *
+    max(0, exp(a) - a * Ei(a)) * AMBIENT_TOP_COEFFICIENT;
+
+
+  float distance_bottom = (dc - cloud_height_base)*0.1;
+  a = -extinction_coefficient * distance_bottom;
+  vec3 isotropic_scattering_bottom = AMBIENT_BOTTOM_COLOR *
+    max(0, exp(a) - a * Ei(a)) * AMBIENT_BOTTOM_COEFFICIENT;
+  return AMBIENT_COEFFICIENT * (isotropic_scattering_top +
+    isotropic_scattering_bottom + 
+    AMBIENT_CONSTANT_COLOR * AMBIENT_CONSTANT_COEFFICIENT);
+}
+
+float HG(float g, float cos_theta) {
+  return 1 / (4.0 * 3.14159) * 
+    (1.0 - g * g) / (pow(1.0 + g * g - 2.0 * g * cos_theta, 1.5));
+}
+
+// https://youtu.be/9-HTvoBi0Iw?t=7923
+float calculate_phase(float g, float cos_theta, float extinction) {
+  float wzero = 0.86;
+  float wone = 1-wzero;
+  int M = 1; // Used to be 2, genuinely cannot see the difference
+  float octave_sum = 0;
+  for (int j = 1; j <= M; j++) {
+    octave_sum += HG(pow(2/3, j) * g, cos_theta);
+  }
+  float phase = HG(g, cos_theta) * wzero + (wone + extinction) / M * octave_sum;
+  float backscatter = 1/PI * remap(extinction, 0, 1, BACKSCATTER_MIN, BACKSCATTER_MAX);
+  return max(phase, backscatter);
+}
+
+vec2 ray_sphere(vec3 ro, vec3 rd, float sr, vec3 sp) {
+    vec3 L = ro - sp;
+    float a = dot(rd, rd); 
+    float b = 2.0 * dot(rd, L);
+    float c = dot(L, L) - (sr * sr);
+    float discriminant = b * b - 4.0 * a * c;
+    if (discriminant < 0.0) return vec2(-1);
+    float sqrtD = sqrt(discriminant);
+    float t0 = (-b - sqrtD) / (2.0 * a);
+    float t1 = (-b + sqrtD) / (2.0 * a);
+
+    return vec2(t0, t1);
+}
+
+float sample_atmo_density(vec3 p, bool far) {
+  p.x += float(frame_number) * 5.1 + p.y * 0.01;
+  float v = exp(-(p.y + 200) * 0.001) * 0.0002;
+  if (!far) v -= texture(detail_cloud_noise, p * 0.0012).r * 0.0001;
+  return max(v, 0);
+}
+
+
+vec4 calculate_atmosphere(vec3 camera_world_pos, vec3 ray_dir, float ray_length, float start_transmittance) {
+  // return vec4(vec3(1), 0.8);
+  // return vec4(vec3(0.494, 0.545, 0.729)*1.1, 1-exp(-ray_length * 0.0001) );
+  float transmittance = start_transmittance; // Absobtion and out scattering
+  vec3 scattering = vec3(0); // Really just in scattering
+
+  float stes = 65;
+  float base_step = stes;
+  float distance_along = stes * fract(rand(frag_uv) * float(frame_number) * 0.8);
+  float start_offset = distance_along;
+  vec3 pos = camera_world_pos + ray_dir * distance_along;
+  float light_step_l = 900;
+  float dens = 0.002;//0.0001;
+  vec3 light_dens = vec3(
+      3,
+      3,
+      2
+    );
+  vec3 step_vec = ray_dir * stes;
+  vec3 prev_light_transmittance = vec3(0);
+  float prev_density = dens;
+  float prev_transmittance = transmittance;
+  vec3 obstructed_scatter = vec3(0.4);
+  obstructed_scatter.b = 0.5;
+  obstructed_scatter *= 0.3;
+
+  if (ray_length < base_step) {
+    float out_trans = start_transmittance * 
+      exp(-sample_atmo_density(camera_world_pos, true) * ray_length);
+    return vec4(vec3(0) * out_trans, out_trans);
+  }
+
+  for (int i = 0; i < 128; i++) {
+    if (distance_along > max(ray_length, base_step) ||
+        transmittance <= 0.001) break;
+    dens = sample_atmo_density(pos, (distance_along > 3000));
+    transmittance *= exp(-dens * stes);
+
+    vec3 light_transmittance = vec3(1);
+    vec3 prev_light_transmittance = light_transmittance;
+    vec3 light_dir = normalize(light_pos);
+    vec3 light_step_vec = light_dir * light_step_l;
+    vec3 light_pos = pos;
+
+    for (int j = 0; j < 1; j++) {
+      vec3 shadowspace = project_position(light_pos, macroshadowmap_matrix);
+      float current_depth = shadowspace.z;
+      vec2 uvspace = shadowspace.xy * 0.5 + vec2(0.5);
+      float closest_depth = min(
+          log(texture(esm_shadowmap_texture, uvspace).r) / esm_k, // Clouds & objs
+          texture(macroshadowmap_texture, uvspace).r // Sharper obj edges
+        );
+
+      if (closest_depth < current_depth) {
+        light_transmittance = obstructed_scatter;
+        break;
+      }
+
+      light_transmittance.r *= exp(-dens * light_step_l * light_dens.r);
+      light_transmittance.g *= exp(-dens * light_step_l * light_dens.g);
+      light_transmittance.b *= exp(-dens * light_step_l * light_dens.b);
+
+      light_pos += light_step_vec;
+    }
+
+    vec3 prev_scatter = prev_light_transmittance * prev_density * prev_transmittance;
+    vec3 current_scatter = light_transmittance * dens * transmittance;
+    scattering += (current_scatter + current_scatter) * 0.5 * stes;
+
+    stes = base_step * pow(1+0.02, float(i));
+    step_vec = ray_dir * (stes);// + stes * float(frame_number)*0.01);
+
+    pos += step_vec;
+    distance_along += stes;
+
+    prev_light_transmittance = light_transmittance;
+    prev_density = dens;
+    prev_transmittance = transmittance;
+  }
+  // if (ray_length < base_step) return vec4(scattering, exp(-dens * ray_length));
+
+  return vec4(scattering, transmittance);//exp(-ray_length * dens));
+  // return vec4(scattering, 1-transmittance);
+}
+
+vec4 calculate_volumetrics() {
+  base_cloud_noise_size = textureSize(base_cloud_noise, 0);
+  // if (fract(rand(gl_FragCoord.xy * 0.0010 + vec2(float(frame_number) * 0.345)) * 1000) < 0.8)
+    // motion_vector = vec2(0);
+    // ivec2 pixel = ivec2(gl_FragCoord.x - 0.5, gl_FragCoord.y - 0.5);
+    // int pi = pixel.x + pixel.y * int(textureSize(depth_texture, 0).x + frame_number % 3);
+    // if (pi % 4 == int(frame_number * 2.0) % 4)
+    //   return vec4(-1);//texture(volumetric_history_texture, frag_uv);
+    // if (pixel.x 
+  // return vec4(vec3(1), rand(frag_uv));
+    float depth = texture(depth_texture, frag_uv).r;
+
+    vec4 clip_space = vec4(frag_uv * 2.0 - 1.0, depth, 1.0);
+    vec4 view_space = inv_projection_matrix * clip_space;
+    view_space /= view_space.w;
+
+    vec3 world_space_pixel = (inv_view_matrix * view_space).xyz;
+    vec3 camera_world_pos = inv_view_matrix[3].xyz;
+
+    // return vec4(world_space_pixel, 0.5);
+
+    vec3 ray_dir = world_space_pixel - camera_world_pos;
+    float ray_length = length(ray_dir);
+    ray_dir = normalize(ray_dir);
+    // ray_length = min(ray_length, 100);
+
+    float jitter = rand(frag_uv);// * 0.8;
+    float density = 0.0;
+    bool far_away = false;
+
+    float g = 0.85; // Forward scattering (0.0 to 0.99)
+    float cos_theta = dot(ray_dir, normalize(light_pos));
+    // float hg_phase = HG(g, cos_theta);//calculate_phase();
+
+    //SUN RAYS
+    
+    // vec4 light_space_pos = shadowmap_matrix * vec4(world_space_pixel, 1);
+    //
+    // vec3 proj_coords = light_space_pos.xyz / light_space_pos.w;
+    // proj_coords = proj_coords * 0.5 + 0.5;
+    //
+    // float shadow_depth = 0;
+    // if (proj_coords.x > 1 || proj_coords.x < 0 || proj_coords.y > 1 || proj_coords.y < 0) {
+    //       light_space_pos = macroshadowmap_matrix * vec4(world_space_pixel, 1);
+    //
+    //       proj_coords = light_space_pos.xyz / light_space_pos.w;
+    //       proj_coords = proj_coords * 0.5 + 0.5;
+    //
+    //       shadow_depth = texture(macroshadowmap_texture, proj_coords.xy).r;
+    // } else {
+    //   shadow_depth = texture(shadowmap_texture, proj_coords.xy).r;
+    // }
+    // float volumetric_light = 0;
+    // if (proj_coords.z < shadow_depth) {
+    //   volumetric_light += proj_coords.z;// * hg_phase;
+    // }
+    //
+    // return vec4(vec3(volumetric_light), 0.2);//clamp(volumetric_light, 0, 1));
+
+
+    // for (int i = 0; i < STEPS_LIGHT; i++) {
+    //     vec4 light_space_pos;
+    //     vec3 proj_coords;
+    //     float shadow_depth;
+    //
+    //     if (far_away) {
+    //       light_space_pos = macroshadowmap_matrix * vec4(current_pos, 1);
+    //
+    //       proj_coords = light_space_pos.xyz / light_space_pos.w;
+    //       proj_coords = proj_coords * 0.5 + 0.5;
+    //
+    //       shadow_depth = texture(macroshadowmap_texture, proj_coords.xy).r;
+    //     } else {
+    //       light_space_pos = shadowmap_matrix * vec4(current_pos, 1);
+    //
+    //       proj_coords = light_space_pos.xyz / light_space_pos.w;
+    //       proj_coords = proj_coords * 0.5 + 0.5;
+    //
+    //       if (proj_coords.x > 1 || proj_coords.x < 0 || proj_coords.y > 1 || proj_coords.y < 0) {
+    //         far_away = true;
+    //       }
+    //
+    //       shadow_depth = texture(shadowmap_texture, proj_coords.xy).r;
+    //     }
+    //
+    //     if (proj_coords.z < shadow_depth) {
+    //       volumetric_light += scattering_intensity * phase;
+    //     }
+    //
+    //     current_pos += step_vector;
+    // }
+    // volumetric_light /= STEPS_LIGHT;
+    bool hit_cloud_surface = false;
+    // vec3 world_space_surface = vec3(0);//world_space_pixel;
+    float first_hit_distance = 1.0 / 0.0;//1e19; // Apparently infinity?
+
+    float extinction = 1.0;
+    vec3 scattering = vec3(0);
+
+    vec2 A = ray_sphere(camera_world_pos, ray_dir, cloud_dome_radius + cloud_layer_thickness, cloud_dome_position);
+    vec2 B = ray_sphere(camera_world_pos, ray_dir, cloud_dome_radius, cloud_dome_position);
+
+    float t_in = -1.0;
+    float t_out = -1.0;
+
+    if (A.y >= 0.0) { 
+
+      if (B.x < 0.0 && B.y < 0.0) {
+        t_in = max(0.0, A.x);
+        t_out = A.y;
+      } else {
+        if (B.x > 0.0) {
+          t_in = max(0.0, A.x);
+          t_out = B.x;
+        } else if (A.y > 0.0) {
+          t_in = max(0.0, B.y);
+          t_out = A.y;
+        }
+      }
+    }
+
+    if (t_in >= 0 && t_out > 0.0) {
+      t_in = max(t_in, 0.0);
+
+      // if (ray_length > 1000) ray_length = 1e6;
+      t_out = min(t_out, ray_length);
+
+      if (t_in < t_out) {
+
+        float cloud_march_length = t_out - t_in;
+
+        vec3 start_pos = camera_world_pos + ray_dir * t_in;
+
+        if (!(start_pos.x < sky_bounding_box.x &&
+            start_pos.x > -sky_bounding_box.x &&
+            start_pos.y < sky_bounding_box.y &&
+            start_pos.y > 0 &&
+            start_pos.z < sky_bounding_box.z &&
+            start_pos.z > -sky_bounding_box.z)) {
+          extinction = 1;
+          scattering = vec3(0);
+        } else {
+
+          // if (start_pos.y < cloud_minimum_height || cloud_march_length > 2000) return vec4(0, 0, 0, 0);
+          // return vec4(0, 0, 0, 0);
+
+          vec3 current_pos = start_pos;
+
+          float random = rand(frag_uv + vec2(float(frame_number)));
+          float jitter = random * CLOUD_STEP_LENGTH;
+          float distance_travelled = 0;
+          float step_length = CLOUD_STEP_LENGTH;
+          float current_step_length = step_length;
+          float sdf_skip_outside = -1;
+
+          for (int i = 0; i < STEPS_CLOUDS; i++) {
+            if (extinction < 0.02) { extinction = 0; break; }
+            // if (distance_travelled >= cloud_march_length ||
+            //     current_pos.y < cloud_minimum_height ||
+            //     current_pos.y > cloud_height_apex) break;
+            if (distance_travelled >= cloud_march_length) break;
+
+            current_pos = start_pos + ray_dir * distance_travelled;
+            vec2 current_cloud_data = sample_cloud_density(current_pos);
+            float current_density = current_cloud_data.x;
+            float current_sdf = current_cloud_data.y;
+
+            float cell_size = cloud_layer_thickness / float(base_cloud_noise_size.y);
+
+            float k = 150.1;
+            if (current_density <= 0.0 && current_sdf > k) {
+              sdf_skip_outside = distance_travelled;
+              distance_travelled += current_sdf;
+              // if (current_sdf < k) {
+              //   distance_travelled += cell_size;//CLOUD_STEP_LENGTH;
+              //                                   // distance_travelled += CLOUD_STEP_LENGTH;
+              // }
+              continue;
+            }            //
+            // if (current_density > MIN_DENSITY && sdf_skip_outside > 0.0) {
+            //   float left = sdf_skip_outside;
+            //   float right = distance_travelled;
+            //
+            //   for (int s = 0; s < 2; s++) {
+            //     float m = (left + right) * 0.5;
+            //     vec2 cd_refine = sample_cloud_density(start_pos + ray_dir * m);
+            //
+            //     if (cd_refine.r > 0) { //MIN_DENSITY) {
+            //       right = m;
+            //     } else {
+            //       left = m;
+            //     }
+            //   }
+            //
+            //   distance_travelled = right;// + fract(texture(blue_noise_texture, frag_uv).r);
+            //   sdf_skip_outside = -1.0; 
+            //
+            //     // distance_travelled += jitter; 
+            //     // distance_travelled += CLOUD_STEP_LENGTH;
+            //   continue;
+            // }
+            //
+              current_step_length = min(CLOUD_STEP_LENGTH, ray_length-distance_travelled-t_in);
+              if (current_density > MIN_DENSITY) {
+                if (!hit_cloud_surface) {
+                  // world_space_surface = current_pos; 
+                  first_hit_distance = distance_travelled + t_in;
+                  hit_cloud_surface = true;
+                }
+
+                float scattering_coefficient = SCATTERING_FACTOR * current_density;
+                float extinction_coefficient = EXTINCTION_FACTOR * current_density;
+
+                vec3 light_dir = normalize(light_pos);
+                vec3 light_step_vector = light_dir * CLOUD_LIGHT_STEP_LENGTH;
+                vec3 light_current_pos = current_pos + light_step_vector;
+
+                float light_distance_travelled = 0.0;
+                float light_transmittance = 1.0;
+
+                vec3 light_start_macroshadowmap_pos = project_position(light_current_pos, macroshadowmap_matrix);
+                float current_depth = light_start_macroshadowmap_pos.z;
+                vec2 light_macroshadowmap_uv = light_start_macroshadowmap_pos.xy * 0.5 + vec2(0.5);
+                if (light_macroshadowmap_uv.x > 0 && light_macroshadowmap_uv.x < 1 &&
+                    light_macroshadowmap_uv.y > 0 && light_macroshadowmap_uv.y < 1 &&
+                    current_depth > 0 && current_depth < 1) {
+                  float closest_depth = texture(macroshadowmap_texture, light_macroshadowmap_uv).r;
+                  if (closest_depth < current_depth - 0.00000001) {
+
+                    light_transmittance = 0;
+                  }
+                  // float esm_lightness = exp(-esm_k * current_depth) *
+                  //   texture(esm_shadowmap_texture, light_macroshadowmap_uv).r;
+                  // esm_lightness *= esm_lightness;
+                  // esm_lightness *= esm_lightness;
+                  // esm_lightness *= esm_lightness;
+                  // esm_lightness *= esm_lightness;
+                  // esm_lightness *= esm_lightness;
+                  // esm_lightness *= esm_lightness;
+                  // esm_lightness = clamp(esm_lightness, 0, 1);
+                  // light_transmittance = esm_lightness;
+                  // if (esm_lightness < 0.2) light_transmittance = 0;
+                }
+
+
+                if (light_transmittance > 0) {
+                  for (int j = 0; j < STEPS_CLOUDS_LIGHTING; j++) {
+                    // if (light_transmittance < 0.01) break;
+
+                    vec2 light_current_data = sample_cloud_density(light_current_pos);
+                    float light_step_length = light_current_data.y;
+                    if (light_step_length < CLOUD_LIGHT_STEP_LENGTH) light_step_length = CLOUD_LIGHT_STEP_LENGTH;
+
+                    float light_current_density = light_current_data.x;
+                    if (light_current_density > MIN_DENSITY)
+                      light_transmittance *= exp(-EXTINCTION_FACTOR * light_current_density * CLOUD_LIGHT_DENSITY * light_step_length);
+
+
+
+                    light_current_pos += light_dir * light_step_length;
+                  }
+                }
+
+                float transmittance = exp(-extinction_coefficient * current_step_length);
+                float powder = 1.0 - exp(-extinction_coefficient * POWDER_FACTOR);
+                float occ = exp(-sample_cloud_density(current_pos + vec3(0, AMBIENT_OCCLUSION_DISTANCE, 0)).r * AMBIENT_OCCLUSION_STRENGTH);
+
+                vec3 sun_light = vec3(SUN_INTENSITY);
+                sun_light *= vec3(1, 1, 1.1);
+                vec3 sun_color = mix(1, powder, POWDER_STRENGTH) * light_transmittance * sun_light;
+                vec3 ambient_color = calculate_ambient_color(current_pos, extinction_coefficient);
+                float ambient_phase = 1 / (4 * PI);
+                float sun_phase = calculate_phase(0.86, cos_theta, extinction_coefficient);
+                vec3 scattered = scattering_coefficient * (sun_color * sun_phase + ambient_color * ambient_phase);
+                vec3 integrated_light = (scattered - scattered * transmittance) / max(extinction_coefficient, 0.0001);
+                scattering += extinction * integrated_light;
+
+                extinction *= transmittance;
+              }
+
+              // if (current_sdf > CLOUD_STEP_LENGTH) {
+              //   current_step_length = current_sdf;
+              //
+              //   // if (current_step_length > cloud_march_length)
+              //   //   return vec4(1, 0, 0, 1);
+              // } else {
+              //   current_step_length = CLOUD_STEP_LENGTH;
+              // }
+
+              distance_travelled += current_step_length;
+            }
+
+          }
+        
+
+
+      }
+    }
+
+    vec3 p_view = project_position(camera_world_pos + ray_dir * min(ray_length, first_hit_distance), view_matrix);
+    vec3 p_proj = project_position(p_view, projection_matrix);
+
+
+    // if (isinf(first_hit_distance)) {
+    //   vec3 d_view = project_position(world_space_pixel.xyz - ray_dir * 0.1, view_matrix);
+    //   vec3 d_proj = project_position(d_view, projection_matrix);
+    //   frag_depth = d_view.z;
+    // } else {
+    //   frag_depth = p_proj.z;
+    // }
+
+    // vec4 projected = prev_projection_matrix * prev_view_matrix * vec4(world_space_surface, 1);
+    // projected.xyz /= projected.w;
+    // vec2 prev_uv = projected.xy * 0.5 + 0.5;
+    // motion_vector = (frag_uv - prev_uv) * 100;
+
+    // vec4 prev_clip = prev_projection_matrix * prev_view_matrix * vec4(world_space_surface, 1.0);
+    // if (prev_clip.w < 0) {
+    //   motion_vector = vec2(999);
+    // } else {
+    //   vec2 prev_ndc = prev_clip.xy / prev_clip.w;
+    //   vec2 prev_uv = prev_ndc * 0.5 + 0.5;
+    //
+    //   vec4 current_clip = projection_matrix * view_matrix * vec4(world_space_surface, 1.0);
+    //   vec2 current_ndc = current_clip.xy / current_clip.w;
+    //   vec2 current_uv = current_ndc * 0.5 + 0.5;
+    //
+    //   motion_vector = current_uv - prev_uv;
+    // }
+
+
+      // first_hit_distance = 99999999;
+    vec4 secondary_atmo_ray = vec4(0, 0, 0, 1);
+
+    float d = ray_length;
+    // if (first_hit_distance < d && extinction < 0.02) d = first_hit_distance;
+    if (first_hit_distance < d && scattering.r > 0.1) d = first_hit_distance;
+    vec4 atmo = calculate_atmosphere(
+       camera_world_pos,
+       ray_dir,
+       d,//min(first_hit_distance, ray_length),
+        1.0
+    );
+    // vec4 atmo = vec4(0, 0, 0, 1);
+
+    float total_ext = atmo.a * extinction;
+    if (total_ext > 0.1 && total_ext < 1) {
+      // secondary_atmo_ray = calculate_atmosphere(
+      //     camera_world_pos + ray_dir * first_hit_distance,
+      //     ray_dir,
+      //     ray_length - first_hit_distance,
+      //     total_ext
+      // );
+      // atmo.a *= secondary_atmo_ray.a;
+      // atmo.rgb += secondary_atmo_ray.rgb;
+    }
+      
+    // vec4 atmo = vec4(0, 0, 0, 1);
+
+    scattering = clamp(scattering*2.6, vec3(0), vec3(1));
+    extinction = clamp(extinction, 0, 1);
+
+    float transmittance = extinction;
+    transmittance *= atmo.a;
+    // transmittance *= secondary_atmo_ray.a;
+    scattering *= atmo.a;
+    scattering += atmo.rgb;// * (1-atmo.a);// + atmo_void.rgb * (extinction - atmo.a);
+    // scattering += secondary_atmo_ray.rgb;
+
+    scattering = clamp(scattering, vec3(0), vec3(1));
+    transmittance = clamp(transmittance, 0, 1);
+
+    return vec4(
+        scattering, transmittance
+    );
+}
+
 void main() {
   float depth = texture(depth_texture, frag_uv).r;
-  float volume_depth = texture(volumetric_depth_texture, frag_uv).r;
-  // frag_color = vec3(volume_depth);
-  // return;
-
-  // float linear_depth = reconstruct_position(frag_uv, depth).z;
-  // frag_color = vec3(volume_depth);
-  // frag_color = vec3(depth, volume_depth, 0);
-  // frag_color = vec3(frag_color.r*10000 - frag_color.g * 10000);
-  // if (frag_color.r > 0.01) return;
-  // return;
-  // if (pow(abs(volume_depth-linear_depth), 1) < 1000) {
-  // if (abs(volume_depth - linear_depth) < 100) {
-  //   frag_color = vec3(1, 0, 0);
-  //   return;
-  // }
+  float volume_depth = textureBicubic(volumetric_depth_texture, frag_uv).r;
+  float linear_depth = -reconstruct_position(frag_uv, depth).z;
+  float discrepancy = volume_depth-linear_depth;
 
   frag_color = texture(screen_texture, frag_uv).rgb * 6;
   
   frag_color *= 1-texture(ssao_texture, frag_uv).r;
 
-  vec4 volumetrics = texture(volumetrics_texture, frag_uv);
-  volumetrics.rgb *= 2.5;
-  // Could do a lanczos or bicubic filter here
-  vec3 mixed = volumetrics.rgb + frag_color * (volumetrics.a);
-  frag_color = mixed;
+  if (discrepancy > 300) {
+    // frag_color = ;
+    vec4 march = calculate_volumetrics();
+    march.rgb *= 1.5;
+    frag_color = march.rgb + frag_color * march.a;
+    // frag_color = vec3(1, 0, 0);
+    // return;
+  } else {
+    vec4 volumetrics = texture(volumetrics_texture, frag_uv);
+    volumetrics.rgb *= 1.5;
+    // Could do a lanczos or bicubic filter here
+    vec3 mixed = volumetrics.rgb + frag_color * (volumetrics.a);
+    frag_color = mixed;
+  }
   frag_color = ACES_ToneMap(frag_color) * 1;
   return;
 

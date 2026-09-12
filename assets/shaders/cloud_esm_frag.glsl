@@ -101,10 +101,10 @@ vec2 sample_cloud_density(vec3 p) {
     d += dnoise(detail_p * 1.5) * 1.6;
     // d += (dnoise(detail_p * 1.8)) * 2.4;
     d += dnoise(detail_p * 3.5) * 0.9;
-    d += dnoise(detail_p * 3.9) * 0.9 * pnoise(detail_p * 0.3);
-    d += (1-dnoise(detail_p * 2)) * 2;
-    d += pnoise(detail_p * 2) * 1;
-    d += pnoise(detail_p * 5) * 1;
+    // d += dnoise(detail_p * 3.9) * 0.9 * pnoise(detail_p * 0.3);
+    // d += (1-dnoise(detail_p * 2)) * 2;
+    // d += pnoise(detail_p * 2) * 1;
+    // d += pnoise(detail_p * 5) * 1;
     // d += (1-dnoise(detail_p * 5)) * 1 * get_height_mask(y, 0, (cloud_height_apex - cloud_height_base) * 0.3, 100);
 
     n.r = clamp(n.r-d*0.14, 0, 1);

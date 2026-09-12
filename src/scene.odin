@@ -67,6 +67,7 @@ Scene :: struct {
   meshes: [dynamic]Mesh,
   physics_meshes: [dynamic]PhysicsMesh,
   quads: [dynamic]Quad,
+  charquads: [dynamic]QuadChar,
   renderer: ^Renderer,
   resources: Resources,
   delta_time: f32,

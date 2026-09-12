@@ -17,8 +17,6 @@ uniform sampler3D base_cloud_noise;
 uniform sampler3D detail_cloud_noise;
 uniform sampler3D perlin_cloud_noise;
 
-uniform vec2 resolution;
-
 uniform mat4 prev_projection_matrix;
 uniform mat4 prev_view_matrix;
 uniform mat4 projection_matrix;
@@ -54,22 +52,22 @@ vec3 sky_bounding_box = vec3(bb_side, cloud_height_apex+100, bb_side);
 
 #define STEPS_CLOUDS 128//64
 #define STEPS_CLOUDS_LIGHTING 5
-#define CLOUD_DENSITY 0.0198
-#define CLOUD_LIGHT_DENSITY 3.018
+#define CLOUD_DENSITY 0.1168
+#define CLOUD_LIGHT_DENSITY 0.31//2.018
 #define CLOUD_STEP_LENGTH 55.5
 #define CLOUD_LARGE_STEP_LENGTH 800//265.5
-#define CLOUD_LIGHT_STEP_LENGTH 100.6
+#define CLOUD_LIGHT_STEP_LENGTH 100//1570.6
 #define MIN_DENSITY 0//0.012//0.01
-#define SUN_INTENSITY 4.6//0
+#define SUN_INTENSITY 8.6//0
 
-#define BACKSCATTER_MIN 0.65
+#define BACKSCATTER_MIN 0.15
 #define BACKSCATTER_MAX 0.65
 
 #define EXTINCTION_FACTOR 0.5
 #define SCATTERING_FACTOR (EXTINCTION_FACTOR-0.0001)
 
-#define POWDER_FACTOR 1.01
-#define POWDER_STRENGTH 0.7
+#define POWDER_FACTOR 7.01
+#define POWDER_STRENGTH 0.6
 
 #define TEMPORAL_ACCUMULATION_ENABLED true
 
@@ -211,13 +209,13 @@ vec2 sample_cloud_density(vec3 p) {
 
     float d = pow(dnoise(detail_p * 0.9), 1) * 1.4;
     d += dnoise(detail_p * 1.5) * 1.6;
-    // d += (dnoise(detail_p * 1.8)) * 2.4;
-    d += dnoise(detail_p * 3.5) * 0.9;
-    d += dnoise(detail_p * 3.9) * 0.9 * pnoise(detail_p * 0.3);
+    // // d += (dnoise(detail_p * 1.8)) * 2.4;
+    // d += dnoise(detail_p * 3.5) * 0.9;
+    // d += dnoise(detail_p * 3.9) * 0.9 * pnoise(detail_p * 0.3);
     d += (1-dnoise(detail_p * 2)) * 2;
     d += pnoise(detail_p * 2) * 1;
     d += pnoise(detail_p * 5) * 1;
-    // d += (1-dnoise(detail_p * 5)) * 1 * get_height_mask(y, 0, (cloud_height_apex - cloud_height_base) * 0.3, 100);
+    d += (1-dnoise(detail_p * 5)) * 1 * get_height_mask(y, 0, (cloud_height_apex - cloud_height_base) * 0.3, 100);
 
     n.r = clamp(n.r-d*0.14, 0, 1);
     n.r *= get_height_mask(y, 0, cloud_layer_thickness, 100);
@@ -408,7 +406,7 @@ vec4 calculate_volumetrics() {
     float ray_length = length(ray_dir);
     ray_dir = normalize(ray_dir);
     // ray_length = min(ray_length, 100);
-    frag_depth = depth;
+    frag_depth = -view_space.z;
 
     float jitter = rand(frag_uv);// * 0.8;
     float density = 0.0;
@@ -554,39 +552,38 @@ vec4 calculate_volumetrics() {
             float cell_size = cloud_layer_thickness / float(base_cloud_noise_size.y);
 
             float k = 150.1;
-            if (current_density <= 0.0 && current_sdf >= 0) {
+            if (current_density <= 0.0 && current_sdf > k) {
               sdf_skip_outside = distance_travelled;
               distance_travelled += current_sdf;
-              if (current_sdf < k) {
-                distance_travelled += cell_size;//CLOUD_STEP_LENGTH;
-                                                // distance_travelled += CLOUD_STEP_LENGTH;
-              }
+              // if (current_sdf < k) {
+              //   distance_travelled += cell_size;//CLOUD_STEP_LENGTH;
+              //                                   // distance_travelled += CLOUD_STEP_LENGTH;
+              // }
               continue;
-            } 
-
-            if (current_density > MIN_DENSITY && sdf_skip_outside > 0.0) {
-              float left = sdf_skip_outside;
-              float right = distance_travelled;
-
-              for (int s = 0; s < 10; s++) {
-                float m = (left + right) * 0.5;
-                vec2 cd_refine = sample_cloud_density(start_pos + ray_dir * m);
-
-                if (cd_refine.r > 0) { //MIN_DENSITY) {
-                  right = m;
-                } else {
-                  left = m;
-                }
-              }
-
-              distance_travelled = right;// + fract(texture(blue_noise_texture, frag_uv).r);
-              sdf_skip_outside = -1.0; 
-
-                // distance_travelled += jitter; 
-                // distance_travelled += CLOUD_STEP_LENGTH;
-              continue;
-            }
-
+            }            //
+            // if (current_density > MIN_DENSITY && sdf_skip_outside > 0.0) {
+            //   float left = sdf_skip_outside;
+            //   float right = distance_travelled;
+            //
+            //   for (int s = 0; s < 2; s++) {
+            //     float m = (left + right) * 0.5;
+            //     vec2 cd_refine = sample_cloud_density(start_pos + ray_dir * m);
+            //
+            //     if (cd_refine.r > 0) { //MIN_DENSITY) {
+            //       right = m;
+            //     } else {
+            //       left = m;
+            //     }
+            //   }
+            //
+            //   distance_travelled = right;// + fract(texture(blue_noise_texture, frag_uv).r);
+            //   sdf_skip_outside = -1.0; 
+            //
+            //     // distance_travelled += jitter; 
+            //     // distance_travelled += CLOUD_STEP_LENGTH;
+            //   continue;
+            // }
+            //
               current_step_length = min(CLOUD_STEP_LENGTH, ray_length-distance_travelled-t_in);
               if (current_density > MIN_DENSITY) {
                 if (!hit_cloud_surface) {
