@@ -374,7 +374,7 @@ vec2 ray_sphere(vec3 ro, vec3 rd, float sr, vec3 sp) {
 
 float sample_atmo_density(vec3 p, bool far) {
   p.x += float(frame_number) * 5.1 + p.y * 0.01;
-  float v = exp(-(p.y + 200) * 0.001) * 0.0002;
+  float v = exp(-(p.y - 3400) * 0.001) * 0.0002 * 0.05;
   if (!far) v -= texture(detail_cloud_noise, p * 0.0012).r * 0.0001;
   return max(v, 0);
 }
@@ -802,13 +802,13 @@ vec4 calculate_volumetrics() {
     float d = ray_length;
     // if (first_hit_distance < d && extinction < 0.02) d = first_hit_distance;
     if (first_hit_distance < d && scattering.r > 0.1) d = first_hit_distance;
-    vec4 atmo = calculate_atmosphere(
-       camera_world_pos,
-       ray_dir,
-       d,//min(first_hit_distance, ray_length),
-        1.0
-    );
-    // vec4 atmo = vec4(0, 0, 0, 1);
+    // vec4 atmo = calculate_atmosphere(
+    //    camera_world_pos,
+    //    ray_dir,
+    //    d,//min(first_hit_distance, ray_length),
+    //     1.0
+    // );
+    vec4 atmo = vec4(0, 0, 0, 1);
 
     float total_ext = atmo.a * extinction;
     if (total_ext > 0.1 && total_ext < 1) {

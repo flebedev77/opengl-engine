@@ -7,9 +7,11 @@ layout (location = 1) out vec4 out_frag_normal;
 
 uniform vec3 light_pos;
 uniform vec3 camera_pos;
+uniform int frame_number;
+uniform samplerCube cubemap;
 
 // Noise functions
-/*const mat2 myt = mat2(.12121212, .13131313, -.13131313, .12121212);
+const mat2 myt = mat2(.12121212, .13131313, -.13131313, .12121212);
 const vec2 mys = vec2(1e4, 1e6);
 
 vec2 rhash(vec2 uv) {
@@ -25,7 +27,7 @@ vec3 hash(vec3 p) {
       43758.5453);
 }
 
-vec3 voronoi3d(const in vec3 x) {
+vec3 voronoitd(const in vec3 x) {
   vec3 p = floor(x);
   vec3 f = fract(x);
 
@@ -88,32 +90,59 @@ float noisethree(vec3 p){
     vec2 o4 = o3.yw * d.x + o3.xz * (1.0 - d.x);
 
     return o4.y * d.y + o4.x * (1.0 - d.y);
-}*/
+}
 
 void main() {
-  // frag_color = vec4(frag_normal, 1.0);
-  // Night stars
-  // float v = smoothstep(0.9, 0.97, 1 - voronoi3d(frag_normal * 30).r);
-  // vec3 out_color = vec3(0.9, 0.9, 1) * v;
-  // out_color += vec3(0.357, 0.047, 0.478) * noise3(frag_normal * 2) * 0.01;
+  // // frag_color = vec4(frag_normal, 1.0);
+  // // Night stars
+  // // float star_uniqueness = sin(dot(frag_normal, frag_normal)*100000);
+  // // float twinkle = sin((float(frame_number)*star_uniqueness)*(0.01*star_uniqueness))*0.03;
+  // // float v = smoothstep(0.90 + twinkle, 0.937, max(1 - voronoitd(frag_normal * 80).r, 0.87));
+  // vec3 out_color = vec3(1);//vec3(0.9, 0.9, 1) * v;
+  // // out_color += vec3(0.357, 0.047, 0.478) * noisethree(frag_normal * 2) * 0.02;
+  // // out_color += vec3(0.8, 0.753, 0.769)*2 * (
+  // //     max(voronoitd(frag_normal * 0.2).r, 0.4) * // Base webby shape
+  // //     noisethree(frag_normal * 1.5) * 4 * // Variation
+  // //     smoothstep(0.9, 1.0 + noisethree(frag_normal*2.5)*0.4 // Ring width variation
+  // //         , frag_normal.x*frag_normal.x + frag_normal.y*frag_normal.y) // Ring mask to resemble a dust ring
+  // //     ) * 0.03;
+  // //
+  // // out_color += vec3(0.733, 0.635, 0.580) * (
+  // //     voronoitd(frag_normal * 1).r * // Base webby shape
+  // //     noisethree(frag_normal) * 2 * // Variation
+  // //     smoothstep(0.8, 1, frag_normal.x*frag_normal.x + frag_normal.y*frag_normal.y) // Ring mask to resemble a dust ring
+  // //     ) * 0.01;
+  // // out_color += vec3(0.596, 0.447, 0.012) * (
+  // //     voronoitd(frag_normal * 2).r * // Base webby shape
+  // //     noisethree(frag_normal*5) * 5 * // Variation
+  // //     smoothstep(0.7, 1, frag_normal.x*frag_normal.x + frag_normal.y*frag_normal.y) // Ring mask to resemble a dust ring
+  // //     ) * 0.01;
+  // // out_color += vec3(0.896, 0.847, 0.912) * (
+  // //     noisethree(frag_normal*10) * 1.2 * // Variation
+  // //     noisethree(frag_normal*5) * 5 * // Variation
+  // //     smoothstep(0.7, 1, frag_normal.x*frag_normal.x + frag_normal.y*frag_normal.y) // Ring mask to resemble a dust ring
+  // //     ) * 0.004;
+  //
+  // // Day sky
+  // // out_frag_color = vec4(0);
+  // // return;
+  //
+  // //Sun
+  // // float y_factor = min(frag_pos.y+0.0, 1);
+  // // float y_factor = clamp(
+  // //     pow(dot(frag_pos, vec3(0, 1, 0)), 0.8) * 0.5 + 0.5,
+  // //     0, 1);
+  // // vec3 high_color = vec3(0.094, 0.345, 0.729) * 0.1;
+  // // vec3 out_color = mix(vec3(0.345, 0.6, 0.839), high_color, y_factor);
+  //
+  // out_frag_color = vec4(out_color, 1.0);
 
-  // Day sky
-  // out_frag_color = vec4(0);
-  // return;
+  out_frag_color = texture(cubemap, frag_normal);
+  out_frag_normal = vec4(0);
 
-  //Sun
-  // float y_factor = min(frag_pos.y+0.0, 1);
-  float y_factor = clamp(
-      pow(dot(frag_pos, vec3(0, 1, 0)), 0.8) * 0.5 + 0.5,
-      0, 1);
-  vec3 high_color = vec3(0.094, 0.345, 0.729) * 0.1;
-  vec3 out_color = mix(vec3(0.345, 0.6, 0.839), high_color, y_factor);
   vec3 view_dir = normalize(frag_pos);
-  vec3 light_dir = normalize(light_pos);
+  vec3 light_dir = normalize(vec3(0, 0, 1));
 
   float sun_factor = clamp((pow(max(dot(view_dir, light_dir) - 0.0065, 0), 200) - 0.001) * 2.0, 0, 1);
-  out_color = mix(out_color, vec3(1, 1, 0.98), sun_factor);
-
-  out_frag_color = vec4(out_color, 1.0);
-  out_frag_normal = vec4(0);
+  out_frag_color = mix(out_frag_color, vec4(1, 1, 0.98, 1), sun_factor);
 }

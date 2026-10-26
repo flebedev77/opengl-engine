@@ -61,6 +61,7 @@ Scene :: struct {
   camera: Camera,
   player: Player,
   sky_mesh: Mesh,
+  sky_identity_matrix: Mat4,
   mouse: Mouse,
   keys: map[int]bool,
   keys_pressed: map[int]bool,
@@ -144,20 +145,19 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
   }
 
   {
-    sky_shader := shader_compileprogram(
-                  cstring(#load("../assets/shaders/sky_frag.glsl")),
-                  cstring(#load("../assets/shaders/sky_vert.glsl")),
-                  .THREE_DIMENSIONAL,
-                  "./assets/shaders/sky_frag.glsl",
-                  "./assets/shaders/sky_vert.glsl"
-                )
-    sky_material := Material{
-      is_valid = true,
-      shader = sky_shader
-    }
+    sky_material := asset_loader_material(0, 0, "sky", .THREE_DIMENSIONAL)
+    sky_material.cubemap = texture_load_cubemap({ // Order matters
+      "assets/cubemaps/skybox/right.png",
+      "assets/cubemaps/skybox/left.png",
+      "assets/cubemaps/skybox/top.png",
+      "assets/cubemaps/skybox/bottom.png",
+      "assets/cubemaps/skybox/front.png",
+      "assets/cubemaps/skybox/back.png",
+    })
     sky_mesh := asset_loader_obj_mesh("assets/models/skydome.obj", sky_material)
-    sky_size := f32(100000000)
+    sky_size := f32(10000000)
     sky_mesh.model_matrix *= scale_matrix({sky_size, sky_size, sky_size})
+    scene.sky_identity_matrix = sky_mesh.model_matrix
     scene.sky_mesh = sky_mesh
     // defer gl.DeleteProgram(sky_shader.program)
   }
@@ -179,21 +179,15 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
     metallic_strength = 0
   }
   uvf := f32(0.18)
-  // ground_material := Material{
-  //   is_valid = true,
-  //   albedo_textures = {grass_texture, dirt_texture, 0},
-  //   roughness_textures = scene.resources.black_texture,
-  //   uv = {0, 0, uvf*2600, uvf*2600},
-  //   shader = shader_compileprogram(
-  //       cstring(#load("../assets/shaders/terrain_frag.glsl")),
-  //       cstring(#load("../assets/shaders/terrain_vert.glsl")),
-  //       .THREE_DIMENSIONAL,
-  //       "./assets/shaders/terrain_frag.glsl",
-  //       "./assets/shaders/terrain_vert.glsl"
-  //   ),
-  //   roughness_strength = 0,
-  //   metallic_strength = 0
-  // }
+  ground_material := Material{
+    is_valid = true,
+    albedo_textures = {grass_texture, dirt_texture, 0},
+    roughness_textures = scene.resources.black_texture,
+    uv = {0, 0, uvf*2600, uvf*2600},
+    shader = default_material.shader,
+    roughness_strength = 0,
+    metallic_strength = 0
+  }
 
   light_mesh := mesh_make_cube(default_material, {10, 10, 10})  
 
@@ -206,13 +200,13 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
   append(&scene.meshes, light_mesh)
 
 
-  // ground_mesh := asset_loader_obj_mesh("assets/models/terrain.obj", ground_material)
+  ground_mesh := asset_loader_obj_mesh("assets/models/terrain.obj", ground_material)
   scl := f32(850)
-  // ground_mesh.material.albedo_tint = {0.3, 0.7, 0.3}
-  // ground_mesh.model_matrix *= translation_matrix({0, -3, 0})
-  // ground_mesh.model_matrix *= scale_matrix({scl, scl, scl})
+  ground_mesh.material.albedo_tint = {0.3, 0.7, 0.3}
+  ground_mesh.model_matrix *= translation_matrix({0, -3, 0})
+  ground_mesh.model_matrix *= scale_matrix({scl, scl, scl})
 
-  // append(&scene.meshes, ground_mesh)
+  append(&scene.meshes, ground_mesh)
 
   macroground_material := asset_loader_material(
     texture_load("assets/models/mountain/textures/albedo.jpg"),

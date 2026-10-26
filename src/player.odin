@@ -155,12 +155,9 @@ player_update :: proc(scene: ^Scene, player: ^Player) {
 
   if platform_key_pressed(glfw.KEY_TAB) {
     player.is_flying = true
-    player.debug_movement = true
+    player.debug_movement = !player.debug_movement
     player.freecam_position = player.position
-  }
-  if platform_key_pressed(glfw.KEY_RIGHT_ALT) {
-    player.is_flying = false
-    player.debug_movement = false
+    player.walk_speed = PLAYER_WALK_SPEED
   }
 
   if platform_key_pressed(glfw.KEY_LEFT_ALT) {
@@ -356,8 +353,11 @@ player_debug_update :: proc(scene: ^Scene, player: ^Player) {
   }
 
 
-  if player.debug_is_fast do player.walk_speed = PLAYER_WALK_SPEED + 46
-  else do player.walk_speed = PLAYER_WALK_SPEED
+  // if player.debug_is_fast do player.walk_speed = PLAYER_WALK_SPEED + 56
+  // else do player.walk_speed = PLAYER_WALK_SPEED
+
+  player.walk_speed += 0.3 * scene.mouse.scroll * player.walk_speed
+  player.walk_speed = max(player.walk_speed, 0)
 
   if linalg.length2(moveinput) > 0 &&
     linalg.length(player.freecam_velocity.xz) < player.walk_speed {

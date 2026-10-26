@@ -52,6 +52,7 @@ ShaderParameters :: struct {
   depth_texture_location,
   normal_texture_location,
   albedo_texture_location,
+  cubemap_texture_location,
   secondary_albedo_texture_location,
   third_albedo_texture_location,
   roughness_texture_location,
@@ -117,6 +118,7 @@ Material :: struct {
   roughness_textures: [3]GpuID,
   albedo_textures: [3]GpuID, //Multiple albedo textures used for terrain
   albedo_tint: Vec3,
+  cubemap: GpuID,
   uv: Vec4,
   shader: Shader,
   roughness_strength,
@@ -157,6 +159,13 @@ QuadChar :: struct {
   position: Vec2,
   color: Vec4,
   uv: Vec4
+}
+
+CpuTexture :: struct {
+  width,
+  height,
+  channels: i32,
+  data: [^]byte
 }
 
 Renderer :: struct {
@@ -385,8 +394,14 @@ renderer_render :: proc(renderer: ^Renderer) {
   gl.ActiveTexture(gl.TEXTURE8)
   gl.BindTexture(gl.TEXTURE_2D, renderer.volumetric_exponential_shadowmap.red_texture)
   renderer_bind_and_clear_framebuffer(renderer, renderer.msaa_back_framebuffer)
-  render_mesh(renderer, &renderer.scene.sky_mesh)
   renderer_draw_meshes(renderer)
+  gl.DepthFunc(gl.GEQUAL)
+  renderer.scene.sky_mesh.model_matrix = rotation_matrix_x(-renderer.sun_angle)*renderer.scene.sky_identity_matrix;
+  gl.UseProgram(renderer.scene.sky_mesh.material.shader.program)
+  gl.Uniform1i(renderer.scene.sky_mesh.material.shader.parameters.cubemap_texture_location, 1)
+  gl.ActiveTexture(gl.TEXTURE1); gl.BindTexture(gl.TEXTURE_CUBE_MAP, renderer.scene.sky_mesh.material.cubemap)
+  render_mesh(renderer, &renderer.scene.sky_mesh, {}, .MANUAL)
+  gl.Enable(gl.GREATER)
 
 
   renderer.debug_renderer.shader.parameters.view_matrix = renderer.scene.camera.view_matrix
@@ -946,6 +961,7 @@ shader_init :: proc(shader: ^Shader) {
       shader.parameters.roughness_strength_location = gl.GetUniformLocation(shader.program, "roughness_strength")
       shader.parameters.metallic_strength_location = gl.GetUniformLocation(shader.program, "metallic_strength")
       shader.parameters.esm_shadowmap_texture_location = gl.GetUniformLocation(shader.program, "esm_shadowmap_texture")
+      shader.parameters.cubemap_texture_location = gl.GetUniformLocation(shader.program, "cubemap")
     // case .TWO_DIMENSIONAL:
       shader.parameters.resolution_location = gl.GetUniformLocation(shader.program, "resolution")
       shader.parameters.blue_noise_texture_location = gl.GetUniformLocation(shader.program, "blue_noise_texture")
@@ -1035,6 +1051,78 @@ texture_init :: proc(img_channels: i32 = 3, img_w: i32, img_h: i32, img_data: [^
     gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
   }
   return texture
+}
+texture_load_cubemap :: proc(paths_to_faces: []string, srgb := true) -> GpuID {
+  assert(len(paths_to_faces) == 6, "Have to pass 6 faces for a cubemap")
+  cubemap: GpuID
+  gl.GenTextures(1, &cubemap)
+  gl.BindTexture(gl.TEXTURE_CUBE_MAP, cubemap)
+
+  for i in 0..<6 {
+    filepath := paths_to_faces[i]
+    file_stat, _ := os.stat(filepath, context.temp_allocator)
+    cached_filename := fmt.tprintf("%s.img.cache", filepath)
+
+    if os.exists(cached_filename) {
+      cached_contents, err := os.read_entire_file_from_path(cached_filename, context.temp_allocator)
+      assert(err == os.General_Error.None)
+      base := cast([^]i64)raw_data(cached_contents)
+      if file_stat.creation_time._nsec == base[0] {
+        cscope := profile_begin(false)
+        fmt.printf("Loading cubemap face image from cache %s ", cached_filename)
+        half_base := cast([^]i32)&base[1]
+        img_w, img_h, img_channels := half_base[0], half_base[1], half_base[2]
+        fmt.printf("%dx%d %d ", img_w, img_h, img_channels)
+        img_data := (cast([^]byte)(&half_base[3]))[:(img_w*img_h*img_channels)]
+
+        gl.TexImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + u32(i),
+          0, (srgb) ? gl.SRGB8_ALPHA8 : ((img_channels == 3) ? gl.RGB32F : gl.RGBA32F), img_w, img_h, 0, (img_channels == 3) ? gl.RGB : gl.RGBA, gl.UNSIGNED_BYTE, &img_data[0])
+
+        profile_end(cscope)
+        continue
+      } else {
+        os.remove(cached_filename)
+      }
+    }
+
+    contents := os.read_entire_file_from_path(filepath, context.allocator) or_else nil
+
+    if contents == nil {
+      fmt.eprintfln("Failed to read %s image", filepath)
+    }
+
+    img_w, img_h, img_channels: i32
+    img_data := stbi.load_from_memory(&contents[0], i32(len(contents)), 
+      &img_w, &img_h, &img_channels, 0)
+    defer stbi.image_free(img_data)
+
+    if img_data == nil {
+      fmt.eprintfln("Failed to parse %s image", filepath)
+    }
+
+    gl.TexImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + u32(i),
+      0, (srgb) ? gl.SRGB8_ALPHA8 : ((img_channels == 3) ? gl.RGB32F : gl.RGBA32F), img_w, img_h, 0, (img_channels == 3) ? gl.RGB : gl.RGBA, gl.UNSIGNED_BYTE, &img_data[0])
+
+    {
+      fmt.printfln("Caching image %s", filepath)
+      cached_file, e := os.open(cached_filename, {.Read, .Write, .Create})
+      assert(e == os.General_Error.None)
+      os.write_ptr(cached_file, &file_stat.creation_time._nsec, 8)
+      os.write_ptr(cached_file, &img_w, 4)
+      os.write_ptr(cached_file, &img_h, 4)
+      os.write_ptr(cached_file, &img_channels, 4)
+      os.write_ptr(cached_file, img_data, int(img_h*img_w*img_channels))
+      os.close(cached_file)
+    }
+  }
+  gl.GenerateMipmap(gl.TEXTURE_CUBE_MAP)
+  gl.TexParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)
+  gl.TexParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+  gl.TexParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+  gl.TexParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+  gl.TexParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE)
+
+  return cubemap
 }
 texture_load_with_dimensions :: proc(filepath: string, srgb := false, mipmaps := true) -> (u32, IVec2) {
   file_stat, _ := os.stat(filepath, context.temp_allocator)
