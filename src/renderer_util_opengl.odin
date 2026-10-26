@@ -4,6 +4,7 @@ import "core:os"
 import "core:mem"
 import "core:math"
 import gl "vendor:OpenGL"
+import stbi "vendor:stb/image"
 
 CloudNoise :: struct {
   base_shape:    GpuID,
@@ -23,7 +24,7 @@ bake_cloud_noise :: proc() -> CloudNoise {
   fmt.printf("Allocating 3d noise ")
   profile_begin()
   cloud_noise := CloudNoise{}
-  base_shape_w, base_shape_h, base_shape_d := i32(128)*6, i32(16), i32(128)*6
+  base_shape_w, base_shape_h, base_shape_d := i32(128)*6, i32(4), i32(128)*6
   // base_shape_w, base_shape_h, base_shape_d := i32(64), i32(64), i32(64)
   // base_shape_h = 64/4
 
@@ -48,6 +49,18 @@ bake_cloud_noise :: proc() -> CloudNoise {
   if !base_loaded {
     fmt.printfln("Generating 3d noise %dx%dx%d ", base_shape_w, base_shape_h, base_shape_d)
     profile_begin()
+    w, h, channels: i32
+    coverage_data := stbi.load("assets/textures/cloud_coveragemapgray.png", &w, &h, &channels, 1)
+    defer stbi.image_free(coverage_data)
+
+    assert(channels == 1, "Coverage map has to be grayscale")
+    assert(w == base_shape_w, fmt.tprintf("Coverage map has to be %dx%d", base_shape_w, base_shape_d))
+    assert(h == base_shape_d, fmt.tprintf("Coverage map has to be %dx%d", base_shape_w, base_shape_d))
+    if coverage_data == nil {
+      fmt.eprintfln("Could not load assets/textures/cloud_coveragemapgray2.png")
+    }
+
+    fmt.printfln("Loaded coverage map assets/textures/cloud_coveragemapgray2.png %dx%d %d", w, h, channels)
     for z : i32 = 0; z < base_shape_d; z += 1 {
       for y : i32 = 0; y < base_shape_h; y += 1 {
         for x : i32 = 0; x < base_shape_w; x += 1 {
@@ -59,16 +72,17 @@ bake_cloud_noise :: proc() -> CloudNoise {
           percentage_to_apex := f32(y) / f32(base_shape_h)
 
           height_feather := clamp(1.0 - percentage_to_apex, 0, 1)
-          perlin := (height_feather > 0) ? cpu_snoise(p) * height_feather : 0
-          worley : f32 = (height_feather > 0) ? (1 - cpu_voronoi3d(p * 1.5).r) * height_feather : 0
-          worley_perlin_weight : f32 = clamp(1 - worley + perlin_weight, 0, 1)
-          perlin_worley := worley_perlin_weight * perlin + (1 - worley_perlin_weight) * worley
+          // perlin := (height_feather > 0) ? cpu_snoise(p) * height_feather : 0
+          // worley : f32 = (height_feather > 0) ? (1 - cpu_voronoi3d(p * 1.5).r) * height_feather : 0
+          // worley_perlin_weight : f32 = clamp(1 - worley + perlin_weight, 0, 1)
+          // perlin_worley := worley_perlin_weight * perlin + (1 - worley_perlin_weight) * worley
+          //
+          // high_freq_worley := 1 - cpu_voronoi3d(p * 6).r * 0.2
+          // perlin_worley = remap_range_f32(perlin_worley, 1 - high_freq_worley, 1, 0, 1)
+          // perlin_worley *= 2.1
 
-          high_freq_worley := 1 - cpu_voronoi3d(p * 6).r * 0.2
-          perlin_worley = remap_range_f32(perlin_worley, 1 - high_freq_worley, 1, 0, 1)
-          perlin_worley *= 2.1
-
-          base_noise[index] = clamp(perlin_worley - coverage_bias, 0, 1)
+          base_noise[index] = max(0,//clamp(perlin_worley - coverage_bias, 0, 1),
+            (f32(coverage_data[x+z*base_shape_w])/255)*height_feather)
         }
       }
     }

@@ -34,8 +34,8 @@ uniform int frame_number;
 
 uniform float cloud_dome_radius;
 
-const float cloud_layer_thickness = 3600;//(186-10);
-const float cloud_height_base = 1000;
+const float cloud_layer_thickness = 1800;//(186-10);
+const float cloud_height_base = 2400;
 float cloud_height_apex = cloud_height_base+cloud_layer_thickness;
 // const float cloud_dome_radius = 1000000;
 vec3 cloud_dome_position = vec3(0, -(cloud_dome_radius-cloud_height_base), 0);
@@ -45,7 +45,7 @@ const float cloud_minimum_height = -3500;
 
 const float esm_k = 120;
 
-ivec3 base_cloud_noise_size = ivec3(128*6, 16, 128*6);
+ivec3 base_cloud_noise_size = ivec3(128*6, 4, 128*6);
 
 #define CLOUD_DENSITY 1.5
 #define CLOUD_STEP_LENGTH 55.5
@@ -68,13 +68,13 @@ float get_height_mask(float y, float layerMin, float layerMax, float feather) {
 }
 
 vec2 sample_cloud_density(vec3 p) {
-  // float y = length(cloud_dome_position-p) - cloud_height_base;
-  float y = p.y - cloud_height_base;// - 100;
+  float y = length(cloud_dome_position-p) - cloud_dome_radius;
+  // float y = p.y - cloud_height_base;// - 100;
 
   float cloud_drift = float(frame_number) * 0.2 + 1e5;
   p.x += cloud_drift;
   p.x += cloud_drift * 10;
-  p.z += cloud_drift * 0.32;
+  p.z += cloud_drift * 7.32;
   float width_to_height = base_cloud_noise_size.x / base_cloud_noise_size.y;
   float depth_to_height = base_cloud_noise_size.z / base_cloud_noise_size.y;
   vec3 base_p = vec3(
@@ -98,17 +98,11 @@ vec2 sample_cloud_density(vec3 p) {
     detail_p += vec3(cloud_drift, -cloud_drift * 0.3, cloud_drift) * (1/cloud_layer_thickness);
 
     float d = pow(dnoise(detail_p * 0.9), 1) * 1.4;
-    d += dnoise(detail_p * 1.5) * 1.6;
-    // d += (dnoise(detail_p * 1.8)) * 2.4;
-    d += dnoise(detail_p * 3.5) * 0.9;
-    // d += dnoise(detail_p * 3.9) * 0.9 * pnoise(detail_p * 0.3);
-    // d += (1-dnoise(detail_p * 2)) * 2;
-    // d += pnoise(detail_p * 2) * 1;
-    // d += pnoise(detail_p * 5) * 1;
-    // d += (1-dnoise(detail_p * 5)) * 1 * get_height_mask(y, 0, (cloud_height_apex - cloud_height_base) * 0.3, 100);
 
-    n.r = clamp(n.r-d*0.14, 0, 1);
-    n.r *= get_height_mask(y, 0, cloud_layer_thickness, 100);
+    detail_p += vec3(cloud_drift*0.4, -cloud_drift * 0.3, cloud_drift*0.4) * (0.005);
+    d += (1-dnoise(detail_p * 2)) * 1;
+
+    n.r = clamp(n.r-d*0.08, 0, 1);
   }
 
   return vec2(n.r * CLOUD_DENSITY, sdf_step_length);
@@ -193,7 +187,7 @@ float calculate_esm() {
 
           float cell_size = cloud_layer_thickness / float(base_cloud_noise_size.y);
 
-          float k = 50.1;
+          float k = cell_size;//50.1;
           if (current_density <= 0.0 && current_sdf >= 0) {
             distance_travelled += current_sdf;
             if (current_sdf < k) {

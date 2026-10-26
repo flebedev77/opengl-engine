@@ -34,8 +34,8 @@ uniform int frame_number;
 
 uniform float cloud_dome_radius;
 
-const float cloud_layer_thickness = 3600;//(186-10);
-const float cloud_height_base = 1000;
+const float cloud_layer_thickness = 800;//3600;//(186-10);
+const float cloud_height_base = 2400;
 float cloud_height_apex = cloud_height_base+cloud_layer_thickness;
 // const float cloud_dome_radius = 1000000;
 vec3 cloud_dome_position = vec3(0, -(cloud_dome_radius-cloud_height_base), 0);
@@ -45,16 +45,17 @@ const float cloud_minimum_height = -3500;
 
 const float esm_k = 120;
 
-ivec3 base_cloud_noise_size = ivec3(128*6, 16, 128*6);
+ivec3 base_cloud_noise_size = ivec3(128*6, 4, 128*6);
 float bb_side = 18000;
-vec3 sky_bounding_box = vec3(bb_side, cloud_height_apex+100, bb_side);
+// vec3 sky_bounding_box = vec3(bb_side, cloud_height_apex+100, bb_side);
+vec3 sky_bounding_box = vec3(1000000, 1000000, 1000000);
 // ivec3 base_cloud_noise_size = ivec3(64);
 
-#define STEPS_CLOUDS 128//64
+#define STEPS_CLOUDS 64//64
 #define STEPS_CLOUDS_LIGHTING 5
-#define CLOUD_DENSITY 0.1168
+#define CLOUD_DENSITY 0.2168
 #define CLOUD_LIGHT_DENSITY 0.31//2.018
-#define CLOUD_STEP_LENGTH 55.5
+#define CLOUD_STEP_LENGTH 10.5
 #define CLOUD_LARGE_STEP_LENGTH 800//265.5
 #define CLOUD_LIGHT_STEP_LENGTH 100//1570.6
 #define MIN_DENSITY 0//0.012//0.01
@@ -66,8 +67,8 @@ vec3 sky_bounding_box = vec3(bb_side, cloud_height_apex+100, bb_side);
 #define EXTINCTION_FACTOR 0.5
 #define SCATTERING_FACTOR (EXTINCTION_FACTOR-0.0001)
 
-#define POWDER_FACTOR 7.01
-#define POWDER_STRENGTH 0.6
+#define POWDER_FACTOR 30.0//7.01
+#define POWDER_STRENGTH 0.6//0.6
 
 #define TEMPORAL_ACCUMULATION_ENABLED true
 
@@ -178,13 +179,13 @@ float get_height_mask(float y, float layerMin, float layerMax, float feather) {
 }
 
 vec2 sample_cloud_density(vec3 p) {
-  // float y = length(cloud_dome_position-p) - cloud_height_base;
-  float y = p.y - cloud_height_base;// - 100;
+  float y = length(cloud_dome_position-p) - cloud_dome_radius;
+  // float y = p.y - cloud_height_base;// - 100;
 
   float cloud_drift = float(frame_number) * 0.2 + 1e5;
   p.x += cloud_drift;
   p.x += cloud_drift * 10;
-  p.z += cloud_drift * 0.32;
+  p.z += cloud_drift * 7.32;
   float width_to_height = base_cloud_noise_size.x / base_cloud_noise_size.y;
   float depth_to_height = base_cloud_noise_size.z / base_cloud_noise_size.y;
   vec3 base_p = vec3(
@@ -207,18 +208,19 @@ vec2 sample_cloud_density(vec3 p) {
     vec3 detail_p = vec3(p.x, y, p.z) / cloud_layer_thickness;
     detail_p += vec3(cloud_drift, -cloud_drift * 0.3, cloud_drift) * (1/cloud_layer_thickness);
 
-    float d = pow(dnoise(detail_p * 0.9), 1) * 1.4;
-    d += dnoise(detail_p * 1.5) * 1.6;
-    // // d += (dnoise(detail_p * 1.8)) * 2.4;
-    // d += dnoise(detail_p * 3.5) * 0.9;
-    // d += dnoise(detail_p * 3.9) * 0.9 * pnoise(detail_p * 0.3);
-    d += (1-dnoise(detail_p * 2)) * 2;
-    d += pnoise(detail_p * 2) * 1;
-    d += pnoise(detail_p * 5) * 1;
-    d += (1-dnoise(detail_p * 5)) * 1 * get_height_mask(y, 0, (cloud_height_apex - cloud_height_base) * 0.3, 100);
+    float d = pow(dnoise(detail_p * 0.5), 1) * 1.4;
+    // d += dnoise(detail_p * 1.5) * 1.6;
+    // // // d += (dnoise(detail_p * 1.8)) * 2.4;
+    // // d += dnoise(detail_p * 3.5) * 0.9;
+    // // d += dnoise(detail_p * 3.9) * 0.9 * pnoise(detail_p * 0.3);
+    detail_p += vec3(cloud_drift*0.4, -cloud_drift * 0.3, cloud_drift*0.4) * (0.005);
+    d += (1-dnoise(detail_p * 1.3)) * 0.8;
+    // d += pnoise(detail_p * 2) * 1;
+    // d += pnoise(detail_p * 5) * 1;
+    // d += (1-dnoise(detail_p * 5)) * 1 * get_height_mask(y, 0, (cloud_height_apex - cloud_height_base) * 0.3, 100);
 
-    n.r = clamp(n.r-d*0.14, 0, 1);
-    n.r *= get_height_mask(y, 0, cloud_layer_thickness, 100);
+    n.r = clamp(n.r-d*0.08, 0, 1);
+    // n.r *= get_height_mask(y, 0, cloud_layer_thickness, 100);
     // n.r *= 0.18;
     // n.r *= 0.08;
     // n.r += 1.001;
@@ -532,7 +534,7 @@ vec4 calculate_volumetrics() {
 
           float random = rand(frag_uv + vec2(float(frame_number)));
           float jitter = random * CLOUD_STEP_LENGTH;
-          float distance_travelled = 0;
+          float distance_travelled = 0;//jitter * 7;
           float step_length = CLOUD_STEP_LENGTH;
           float current_step_length = step_length;
           float sdf_skip_outside = -1;
@@ -551,7 +553,7 @@ vec4 calculate_volumetrics() {
 
             float cell_size = cloud_layer_thickness / float(base_cloud_noise_size.y);
 
-            float k = 150.1;
+            float k = cell_size;
             if (current_density <= 0.0 && current_sdf > k) {
               sdf_skip_outside = distance_travelled;
               distance_travelled += current_sdf;
@@ -584,7 +586,9 @@ vec4 calculate_volumetrics() {
             //   continue;
             // }
             //
-              current_step_length = min(CLOUD_STEP_LENGTH, ray_length-distance_travelled-t_in);
+
+              current_step_length = min(step_length, ray_length-distance_travelled-t_in);
+              step_length = CLOUD_STEP_LENGTH * pow(1.05, float(i));
               if (current_density > MIN_DENSITY) {
                 if (!hit_cloud_surface) {
                   // world_space_surface = current_pos; 
