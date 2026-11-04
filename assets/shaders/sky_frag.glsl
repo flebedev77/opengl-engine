@@ -137,11 +137,23 @@ void main() {
   //
   // out_frag_color = vec4(out_color, 1.0);
 
-  out_frag_color = texture(cubemap, frag_normal);
-  out_frag_normal = vec4(0);
-
   vec3 view_dir = normalize(frag_pos);
   vec3 light_dir = normalize(vec3(0, 0, 1));
+
+  float fac = dot(light_pos, vec3(0, 1, 0));
+  if (fac > 0) {
+    out_frag_color = vec4(0);
+  } else {
+    out_frag_color = texture(cubemap, frag_normal);
+  }
+  float star_fade_padding_day = 0.2;
+  float star_fade_padding_night = 1.0;
+  if (fac > -star_fade_padding_night && fac < star_fade_padding_day) {
+    out_frag_color = mix(texture(cubemap, frag_normal), vec4(0),
+        smoothstep(-star_fade_padding_night, star_fade_padding_day, fac));
+  }
+  out_frag_normal = vec4(0);
+
 
   float sun_factor = clamp((pow(max(dot(view_dir, light_dir) - 0.0065, 0), 200) - 0.001) * 2.0, 0, 1);
   out_frag_color = mix(out_frag_color, vec4(1, 1, 0.98, 1), sun_factor);

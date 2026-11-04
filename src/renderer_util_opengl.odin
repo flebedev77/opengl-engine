@@ -20,11 +20,16 @@ SdfCell :: struct {
   distance_sq:     f32,
 }
 
+// COVERAGE_FILE_PATH :: "assets/textures/cloud_coveragemapgray.png"
+COVERAGE_FILE_PATH :: "assets/textures/KerbinLowAltCoverageGray.png"
+
 bake_cloud_noise :: proc() -> CloudNoise {
   fmt.printf("Allocating 3d noise ")
   profile_begin()
   cloud_noise := CloudNoise{}
   base_shape_w, base_shape_h, base_shape_d := i32(128)*6, i32(4), i32(128)*6
+  // base_shape_w, base_shape_h, base_shape_d := i32(128)*24, i32(4), i32(128)*24
+  // base_shape_w, base_shape_h, base_shape_d := i32(4096), i32(2), i32(4096)
   // base_shape_w, base_shape_h, base_shape_d := i32(64), i32(64), i32(64)
   // base_shape_h = 64/4
 
@@ -50,17 +55,16 @@ bake_cloud_noise :: proc() -> CloudNoise {
     fmt.printfln("Generating 3d noise %dx%dx%d ", base_shape_w, base_shape_h, base_shape_d)
     profile_begin()
     w, h, channels: i32
-    coverage_data := stbi.load("assets/textures/cloud_coveragemapgray.png", &w, &h, &channels, 1)
+    coverage_data := stbi.load(COVERAGE_FILE_PATH, &w, &h, &channels, 1)
     defer stbi.image_free(coverage_data)
 
     assert(channels == 1, "Coverage map has to be grayscale")
-    assert(w == base_shape_w, fmt.tprintf("Coverage map has to be %dx%d", base_shape_w, base_shape_d))
-    assert(h == base_shape_d, fmt.tprintf("Coverage map has to be %dx%d", base_shape_w, base_shape_d))
+    // assert(w == base_shape_w && h == base_shape_d, fmt.tprintf("Coverage map has to be %dx%d", base_shape_w, base_shape_d))
     if coverage_data == nil {
-      fmt.eprintfln("Could not load assets/textures/cloud_coveragemapgray2.png")
+      fmt.eprintfln("Could not load %s", COVERAGE_FILE_PATH)
     }
 
-    fmt.printfln("Loaded coverage map assets/textures/cloud_coveragemapgray2.png %dx%d %d", w, h, channels)
+    fmt.printfln("Loaded coverage map assets/textures/%s %dx%d %d", COVERAGE_FILE_PATH, w, h, channels)
     for z : i32 = 0; z < base_shape_d; z += 1 {
       for y : i32 = 0; y < base_shape_h; y += 1 {
         for x : i32 = 0; x < base_shape_w; x += 1 {
@@ -82,7 +86,7 @@ bake_cloud_noise :: proc() -> CloudNoise {
           // perlin_worley *= 2.1
 
           base_noise[index] = max(0,//clamp(perlin_worley - coverage_bias, 0, 1),
-            (f32(coverage_data[x+z*base_shape_w])/255)*height_feather)
+            (f32(coverage_data[x+z*w])/255)*height_feather)
         }
       }
     }

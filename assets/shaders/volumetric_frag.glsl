@@ -35,6 +35,7 @@ uniform int frame_number;
 uniform float cloud_dome_radius;
 
 const float cloud_layer_thickness = 800;//3600;//(186-10);
+// const float cloud_layer_thickness = 10000;//3600;//(186-10);
 const float cloud_height_base = 2400;
 float cloud_height_apex = cloud_height_base+cloud_layer_thickness;
 // const float cloud_dome_radius = 1000000;
@@ -46,6 +47,8 @@ const float cloud_minimum_height = -3500;
 const float esm_k = 120;
 
 ivec3 base_cloud_noise_size = ivec3(128*6, 4, 128*6);
+// ivec3 base_cloud_noise_size = ivec3(128*24, 4, 128*24);
+// ivec3 base_cloud_noise_size = ivec3(4096, 2, 4096);
 float bb_side = 18000;
 // vec3 sky_bounding_box = vec3(bb_side, cloud_height_apex+100, bb_side);
 vec3 sky_bounding_box = vec3(1000000, 1000000, 1000000);
@@ -178,6 +181,15 @@ float get_height_mask(float y, float layerMin, float layerMax, float feather) {
     return bottomFade * topFade;
 }
 
+vec2 dirToEquirect(vec3 v)
+{
+    v = normalize(v);
+    float lon = atan(v.z, v.x);                 // [-PI, PI]
+    float lat = asin(clamp(v.y, -1.0, 1.0));    // [-PI/2, PI/2]
+    return vec2(lon / (2.0 * PI) + 0.5,
+                lat / PI + 0.5);
+}
+
 vec2 sample_cloud_density(vec3 p) {
   float y = length(cloud_dome_position-p) - cloud_dome_radius;
   // float y = p.y - cloud_height_base;// - 100;
@@ -186,6 +198,9 @@ vec2 sample_cloud_density(vec3 p) {
   p.x += cloud_drift;
   p.x += cloud_drift * 10;
   p.z += cloud_drift * 7.32;
+  // vec2 equi = dirToEquirect(p);
+  // p.x = equi.x;
+  // p.z = equi.y;
   float width_to_height = base_cloud_noise_size.x / base_cloud_noise_size.y;
   float depth_to_height = base_cloud_noise_size.z / base_cloud_noise_size.y;
   vec3 base_p = vec3(
@@ -291,17 +306,24 @@ vec2 ray_sphere(vec3 ro, vec3 rd, float sr, vec3 sp) {
 }
 
 float sample_atmo_density(vec3 p, bool far) {
+  // p.y += 10500000;
+  float radius = 1000000;//10000;
+  // p.y -= 14000;
+  p.y += radius - 2000;
+  float height = length(cloud_dome_position-p);
   p.x += float(frame_number) * 5.1 + p.y * 0.01;
-  float v = exp(-(p.y - 3400) * 0.001) * 0.0002 * 0.05;
+  float v = exp(-(height - radius) * 0.0001);//exp(-(height - 10612100) * 0.000009) * 0.0002 * 0.05 * 0.0005;
   if (!far) v -= texture(detail_cloud_noise, p * 0.0012).r * 0.0001;
+  v *= 1308.1;
   return max(v, 0);
 }
 
+float first_hit_distance = 1.0 / 0.0;//1e19; // Apparently infinity?
 
 vec4 calculate_atmosphere(vec3 camera_world_pos, vec3 ray_dir, float ray_length, float start_transmittance) {
   // return vec4(vec3(1), 0.8);
   // return vec4(vec3(0.494, 0.545, 0.729)*1.1, 1-exp(-ray_length * 0.0001) );
-  float transmittance = start_transmittance; // Absobtion and out scattering
+  vec3 transmittance = vec3(start_transmittance); // Absobtion and out scattering
   vec3 scattering = vec3(0); // Really just in scattering
 
   float stes = 65;
@@ -309,40 +331,41 @@ vec4 calculate_atmosphere(vec3 camera_world_pos, vec3 ray_dir, float ray_length,
   float distance_along = stes * fract(rand(frag_uv) * float(frame_number) * 0.8);
   float start_offset = distance_along;
   vec3 pos = camera_world_pos + ray_dir * distance_along;
-  float light_step_l = 900;
-  float dens = 0.002;//0.0001;
+  float dens = 0.002;
   vec3 light_dens = vec3(
-      2,
-      2,
-      0.8
+      635.0,
+      540.0,
+      470.0
     );
+  light_dens = vec3(1/pow(light_dens.r, 4), 1/pow(light_dens.g, 4), 1/pow(light_dens.b, 4));
+  light_dens *= (33.1e-6 / light_dens.b) * 10;
   vec3 step_vec = ray_dir * stes;
-  vec3 prev_light_transmittance = vec3(0);
-  float prev_density = dens;
-  float prev_transmittance = transmittance;
-  vec3 obstructed_scatter = vec3(0.4);
+  vec3 obstructed_scatter = vec3(0.2);
   obstructed_scatter.b = 0.5;
   obstructed_scatter *= 0.3;
 
   if (ray_length < base_step) {
     float out_trans = start_transmittance * 
       exp(-sample_atmo_density(camera_world_pos, true) * ray_length);
-    return vec4(vec3(0) * out_trans, out_trans);
+    return vec4(vec3(0), 1);
   }
 
   for (int i = 0; i < 128; i++) {
     if (distance_along > max(ray_length, base_step) ||
-        transmittance <= 0.001) break;
+        transmittance.r+transmittance.g+transmittance.b <= 0.0001) break;
     dens = sample_atmo_density(pos, (distance_along > 3000));
-    transmittance *= exp(-dens * stes);
+    transmittance.r *= exp(-dens * stes * light_dens.r);
+    transmittance.g *= exp(-dens * stes * light_dens.g);
+    transmittance.b *= exp(-dens * stes * light_dens.b);
 
     vec3 light_transmittance = vec3(1);
     vec3 prev_light_transmittance = light_transmittance;
     vec3 light_dir = normalize(light_pos);
+    float light_step_l = 7000;//1500;
     vec3 light_step_vec = light_dir * light_step_l;
     vec3 light_pos = pos;
 
-    for (int j = 0; j < 1; j++) {
+    for (int j = 0; j < 36; j++) {
       vec3 shadowspace = project_position(light_pos, macroshadowmap_matrix);
       float current_depth = shadowspace.z;
       vec2 uvspace = shadowspace.xy * 0.5 + vec2(0.5);
@@ -351,35 +374,42 @@ vec4 calculate_atmosphere(vec3 camera_world_pos, vec3 ray_dir, float ray_length,
           texture(macroshadowmap_texture, uvspace).r // Sharper obj edges
         );
 
-      if (closest_depth < current_depth) {
-        light_transmittance = obstructed_scatter;
-        break;
-      }
+      float path_dens = sample_atmo_density(light_pos, true);
+      // if (closest_depth < current_depth) {
+      //   float obs_scale = 100000;
+      //   // light_transmittance.r *= exp(-path_dens * light_step_l * light_dens.r * obs_scale);
+      //   // light_transmittance.g *= exp(-path_dens * light_step_l * light_dens.g * obs_scale);
+      //   // light_transmittance.b *= exp(-path_dens * light_step_l * light_dens.b * obs_scale);
+      //   light_transmittance = obstructed_scatter;
+      //   break;
+      // }
+      // if (path_dens < 0.01) break;
 
-      light_transmittance.r *= exp(-dens * light_step_l * light_dens.r);
-      light_transmittance.g *= exp(-dens * light_step_l * light_dens.g);
-      light_transmittance.b *= exp(-dens * light_step_l * light_dens.b);
+      light_transmittance.r *= exp(-path_dens * light_step_l * light_dens.r);
+      light_transmittance.g *= exp(-path_dens * light_step_l * light_dens.g);
+      light_transmittance.b *= exp(-path_dens * light_step_l * light_dens.b);
 
       light_pos += light_step_vec;
+      // light_step_vec = light_dir * light_step_l * pow(1+0.02, float(i));
     }
 
-    vec3 prev_scatter = prev_light_transmittance * prev_density * prev_transmittance;
     vec3 current_scatter = light_transmittance * dens * transmittance;
-    scattering += (current_scatter + current_scatter) * 0.5 * stes;
 
-    stes = base_step * pow(1+0.02, float(i));
+    float cos_theta = dot(ray_dir, light_dir);
+    float phase = 0.75 * (1.0 + cos_theta * cos_theta);
+
+    scattering += current_scatter * stes * phase * light_dens;
+
+    stes = base_step * pow(1+0.06, float(i));
     step_vec = ray_dir * (stes);// + stes * float(frame_number)*0.01);
 
     pos += step_vec;
     distance_along += stes;
-
-    prev_light_transmittance = light_transmittance;
-    prev_density = dens;
-    prev_transmittance = transmittance;
   }
   // if (ray_length < base_step) return vec4(scattering, exp(-dens * ray_length));
 
-  return vec4(scattering, transmittance);//exp(-ray_length * dens));
+  scattering *= 0.3;
+  return vec4(scattering, (transmittance.r+transmittance.g+transmittance.b)/3);//exp(-ray_length * dens));
   // return vec4(scattering, 1-transmittance);
 }
 
@@ -393,7 +423,6 @@ vec4 calculate_clouds(
 
   vec3 scattering = vec3(0);
   bool hit_cloud_surface = false;
-  float first_hit_distance = 1.0 / 0.0;
   if (t_in >= 0 && t_out > 0.0) {
     t_in = max(t_in, 0.0);
 
@@ -406,6 +435,7 @@ vec4 calculate_clouds(
 
       vec3 start_pos = camera_world_pos + ray_dir * t_in;
 
+      // if (false) {
       if (!(start_pos.x < sky_bounding_box.x &&
             start_pos.x > -sky_bounding_box.x &&
             start_pos.y < sky_bounding_box.y &&
@@ -449,7 +479,9 @@ vec4 calculate_clouds(
           current_step_length = min(step_length, ray_length-distance_travelled-t_in);
           step_length = CLOUD_STEP_LENGTH * pow(1.05, float(i));
           if (current_density > MIN_DENSITY) {
-            if (!hit_cloud_surface) {
+            if (current_density > 0.02 && 
+                !hit_cloud_surface &&
+                distance_travelled + t_in < first_hit_distance) {
               first_hit_distance = distance_travelled + t_in;
               hit_cloud_surface = true;
             }
@@ -622,11 +654,11 @@ vec4 calculate_volumetrics() {
     // volumetric_light /= STEPS_LIGHT;
     bool hit_cloud_surface = false;
     // vec3 world_space_surface = vec3(0);//world_space_pixel;
-    float first_hit_distance = 1.0 / 0.0;//1e19; // Apparently infinity?
 
     float extinction = 1.0;
     vec3 scattering = vec3(0);
 
+    if (false) { //Clouds
     vec2 A = ray_sphere(camera_world_pos, ray_dir, cloud_dome_radius + cloud_layer_thickness, cloud_dome_position);
     vec2 B = ray_sphere(camera_world_pos, ray_dir, cloud_dome_radius, cloud_dome_position);
 
@@ -661,6 +693,7 @@ vec4 calculate_volumetrics() {
     extinction *= clouds.a;
     // scattering *= extinction;
     scattering += clouds.rgb;
+    }
 
     vec3 p_view = project_position(camera_world_pos + ray_dir * min(ray_length, first_hit_distance), view_matrix);
     vec3 p_proj = project_position(p_view, projection_matrix);
@@ -700,13 +733,13 @@ vec4 calculate_volumetrics() {
     float d = ray_length;
     // if (first_hit_distance < d && extinction < 0.02) d = first_hit_distance;
     if (first_hit_distance < d && scattering.r > 0.1) d = first_hit_distance;
-    // vec4 atmo = calculate_atmosphere(
-    //    camera_world_pos,
-    //    ray_dir,
-    //    d,//min(first_hit_distance, ray_length),
-    //     1.0
-    // );
-    vec4 atmo = vec4(0, 0, 0, 1);
+    vec4 atmo = calculate_atmosphere(
+       camera_world_pos,
+       ray_dir,
+       d,//min(first_hit_distance, ray_length),
+        1.0
+    );
+    // vec4 atmo = vec4(0, 0, 0, 1);
 
     float total_ext = atmo.a * extinction;
     if (total_ext > 0.1 && total_ext < 1) {
