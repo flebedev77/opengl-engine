@@ -306,7 +306,8 @@ player_debug_update :: proc(scene: ^Scene, player: ^Player) {
   }
 
 
-  player.viewmatrix = linalg.matrix4_look_at_f32(player.freecam_position, player.freecam_position + look_direction, {0, 1, 0})
+  player.viewmatrix = linalg.matrix4_look_at_f32({0, 0, 0}, look_direction, {0, 1, 0})
+  player.viewmatrix *= translation_matrix(-player.freecam_position)
 
   forward := linalg.normalize(Vec3{look_direction.x, 0, look_direction.z}) 
 
