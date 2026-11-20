@@ -200,14 +200,14 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
   append(&scene.meshes, light_mesh)
 
 
-  ground_mesh := asset_loader_obj_mesh("assets/models/terrain.obj", ground_material)
+  // ground_mesh := asset_loader_obj_mesh("assets/models/terrain.obj", ground_material)
   scl := f32(850)
-  ground_mesh.material.albedo_tint = {0.3, 0.7, 0.3}
-  ground_mesh.model_matrix *= translation_matrix({0, -3, 0})
-  ground_mesh.model_matrix *= scale_matrix({scl, scl, scl})
-
-  append(&scene.meshes, ground_mesh)
-
+  // ground_mesh.material.albedo_tint = {0.3, 0.7, 0.3}
+  // ground_mesh.model_matrix *= translation_matrix({0, -3, 0})
+  // ground_mesh.model_matrix *= scale_matrix({scl, scl, scl})
+  //
+  // append(&scene.meshes, ground_mesh)
+  //
   macroground_material := asset_loader_material(
     texture_load("assets/models/mountain/textures/albedo.jpg"),
     0,
@@ -234,6 +234,11 @@ scene_init :: proc(scene: ^Scene, renderer: ^Renderer) {
   macroground_mesh.model_matrix *= translation_matrix({0, -3, 0})
   macroground_mesh.model_matrix *= scale_matrix({scl, scl, scl})
   append(&scene.meshes, macroground_mesh)
+
+  planet_mesh := asset_loader_obj_mesh("assets/models/planet.obj", ground_material)
+  planet_mesh.model_matrix *= translation_matrix({0, -1000000-2000, 0})
+  planet_mesh.model_matrix *= scale_matrix({1000000, 1000000, 1000000})
+  append(&scene.meshes, planet_mesh)
 
   // scene_append_physics_mesh(scene, {
   //   position = {0, 100, 0},
