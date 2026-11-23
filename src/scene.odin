@@ -331,6 +331,7 @@ scene_delete :: proc(scene: ^Scene, verbose := false) {
     shader_delete(mesh.material.shader)
     mesh_delete(mesh)
   }
+  resources_unload(&scene.resources)
   shader_delete(scene.sky_mesh.material.shader)
   delete(scene.meshes)
   renderer_delete(scene.renderer)

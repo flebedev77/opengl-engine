@@ -68,6 +68,7 @@ ShaderParameters :: struct {
   inv_macroshadowmap_matrix_location,
   esm_shadowmap_texture_location,
   blue_noise_texture_location,
+  atmo_lightmarch_lut_texture_location,
   frame_number_location,
   volumetrics_taa_frames_location,
   cloud_dome_radius_location,
@@ -243,7 +244,7 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   framebuffer_init(&renderer.shadowmap_framebuffer, shadowmap_resolution, {.DEPTH}, "shadowmap", .SHADOWMAP)
   framebuffer_init(&renderer.macroshadowmap_framebuffer, shadowmap_resolution, {.DEPTH}, "shadowmap", .SHADOWMAP)
 
-  effects_resolution_factor: f32 = 1.0/8
+  effects_resolution_factor: f32 = 1.0/1
   effects_resolution := Vec2{WINDOW_WIDTH, WINDOW_HEIGHT} * effects_resolution_factor
   effects_resolution_int := IVec2{i32(effects_resolution.x), i32(effects_resolution.y)}
   fmt.printfln("Effects resolution %d (1/%d)", effects_resolution_int, i32(1 / effects_resolution_factor))
@@ -432,6 +433,8 @@ renderer_render :: proc(renderer: ^Renderer) {
   gl.BindTexture(gl.TEXTURE_2D, renderer.scene.resources.blue_noise_texture)
   gl.ActiveTexture(gl.TEXTURE9)
   gl.BindTexture(gl.TEXTURE_3D, renderer.cloud_settings.cloud_noise.detail_perlin)
+  gl.ActiveTexture(gl.TEXTURE10)
+  gl.BindTexture(gl.TEXTURE_2D, renderer.scene.resources.atmo_lightmarch_lut_texture)
 
   renderer_bind_and_clear_framebuffer(renderer, renderer.volumetric_framebuffer)
   render_mesh(renderer, &renderer.post_process_quad, &renderer.volumetric_framebuffer.material)
@@ -764,6 +767,7 @@ mesh_draw :: proc(mesh: Mesh, material_override: ^Material = {}, rendermode := M
       gl.Uniform1i(shader.parameters.esm_shadowmap_texture_location, 1)
       gl.Uniform1i(shader.parameters.volumetric_motion_vectors_texture_location, 8)
       gl.Uniform1i(shader.parameters.blue_noise_texture_location, 8)
+      gl.Uniform1i(shader.parameters.atmo_lightmarch_lut_texture_location, 10)
     }
     gl.Uniform1i(shader.parameters.blur_amount_location, i32(shader.parameters.blur_amount))
     gl.Uniform1i(shader.parameters.volumetrics_taa_frames_location, shader.parameters.volumetrics_taa_frames)
@@ -963,6 +967,7 @@ shader_init :: proc(shader: ^Shader) {
       shader.parameters.esm_shadowmap_texture_location = gl.GetUniformLocation(shader.program, "esm_shadowmap_texture")
       shader.parameters.cubemap_texture_location = gl.GetUniformLocation(shader.program, "cubemap")
     // case .TWO_DIMENSIONAL:
+      shader.parameters.atmo_lightmarch_lut_texture_location = gl.GetUniformLocation(shader.program, "atmo_lightmarch_lut_texture")
       shader.parameters.resolution_location = gl.GetUniformLocation(shader.program, "resolution")
       shader.parameters.blue_noise_texture_location = gl.GetUniformLocation(shader.program, "blue_noise_texture")
       shader.parameters.volumetrics_texture_location = gl.GetUniformLocation(shader.program, "volumetrics_texture")

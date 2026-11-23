@@ -2,7 +2,10 @@ package main
 import "core:os"
 import "core:fmt"
 import "core:unicode/utf8"
+import "core:reflect"
+import "core:strings"
 import json "core:encoding/json"
+import gl "vendor:OpenGL"
   
 MsdfCharData :: struct {
   char: rune,
@@ -34,7 +37,7 @@ Resources :: struct {
   font_msdf_common: MsdfData,
   font_msdf,
   black_texture,
-  wtf_tex,
+  atmo_lightmarch_lut_texture,
   blue_noise_texture: GpuID
 }
 
@@ -43,6 +46,14 @@ resources_load :: proc(r: ^Resources) {
   r.blue_noise_texture = texture_load("assets/textures/blue_noise/128_128/HDR_L_0.png")
   r.font_msdf, r.font_msdf_common.resolution = texture_load_with_dimensions("assets/textures/msdf_fonts/noto_serif_512.png", false, false) 
   r.font_msdf_common.charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!?.,;:'\"()[]{}-+@#$%^&*=_|<>/`~\\"
+  r.atmo_lightmarch_lut_texture = texture_load("assets/textures/atmo_lightmarch_lut.png")
+  gl.BindTexture(gl.TEXTURE_2D, r.atmo_lightmarch_lut_texture)
+  gl.TextureParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+  gl.TextureParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+  gl.TextureParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+  gl.TextureParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
+  gl.BindTexture(gl.TEXTURE_2D, 0)
+
 
   // MSDF generated from https://msdf.zap.works/
   font_json_data, ok := os.read_entire_file_from_path("assets/textures/msdf_fonts/noto_data.json", context.temp_allocator)
@@ -154,4 +165,18 @@ resources_load :: proc(r: ^Resources) {
     fmt.eprintfln("Failed to locate kernings table")
   }
 
+}
+
+resources_unload :: proc(r: ^Resources) {
+  s := reflect.struct_fields_zipped(Resources)
+  for i in 0..<len(s) {
+    if s.type[i].id == typeid_of(GpuID) {
+      if strings.contains(s.name[i], "_texture") {
+        id: GpuID = (transmute(^GpuID)(uintptr(r) + s.offset[i]))^
+        fmt.printfln("Texture %s (%d) freed", s.name[i], id)
+        textures_delete(id)
+      }
+    }
+  }
+  textures_delete(r.font_msdf)
 }

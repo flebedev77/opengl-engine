@@ -231,5 +231,6 @@ float calculate_esm() {
 }
 
 void main() {
-  frag_color = calculate_esm();
+  // frag_color = calculate_esm();
+  frag_color = 1.0 / 0.0;
 }
