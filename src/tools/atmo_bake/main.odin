@@ -17,131 +17,39 @@ AtmosphereConfig :: struct {
   transmittance: f32
 }
 
-BETA_RAYLEIGH := Vec3{5.8e-6, 13.5e-6, 33.1e-6}
-
-rayleigh_phase :: proc(cos_theta: f32) -> f32 {
-	return (3.0 / (16.0 * math.PI)) * (1.0 + cos_theta * cos_theta)
-}
-
-// main :: proc() {
-//   fmt.printfln("Hello world!")
-//   rl.InitWindow(0, 0, "Atmosphere baker")
-//   rl.SetConfigFlags({.VSYNC_HINT, .FULLSCREEN_MODE, .MSAA_4X_HINT})
-//
-//   window_width: f32 = 0
-//   window_height: f32 = 0
-//
-//   for !rl.WindowShouldClose() {
-//     window_width = f32(rl.GetScreenWidth())
-//     window_height = f32(rl.GetScreenHeight())
-//     rl.BeginDrawing()
-//     rl.ClearBackground({120, 120, 255, 0})
-//     // rl.DrawPixel()
-//     mp := rl.GetMousePosition() / {window_width, window_height}
-//     mp = mp * 2 - {1, 1}
-//
-//     {
-//       ray_ang := f32(0)
-//       ray_ang_step := f32(math.PI/100)
-//       ray_ang_range := f32(math.PI)
-//       ray_ang_steps := ray_ang_range / ray_ang_step
-//       sun_pos := Vec3{mp.x * 70, 10, 0}//mp.y * 20}
-//       atmo_scatter := Vec3{0.3, 0.3, 0.8} * 1.01
-//       ray_step := f32(0.1)
-//       ray_light_step := f32(0.1)
-//       for ray_ang = 0; ray_ang < ray_ang_range; ray_ang += ray_ang_step {
-//         index := ray_ang / ray_ang_step
-//         ray_dir := Vec3{
-//           math.cos(ray_ang),
-//           math.sin(ray_ang),
-//           0
-//         }
-//         cos_theta := linalg.dot(ray_dir, linalg.normalize(sun_pos))
-//         rayleigh := rayleigh_phase(cos_theta)
-//         // fmt.printfln("%f %f %f %f", index, ray_dir.x, ray_dir.y, ray_dir.z)
-//         w := f32(window_width / ray_ang_steps)
-//         inscattering := Vec3{0, 0, 0}
-//         transmittance := f32(1)
-//         ray_pos := Vec3{0, 0, 0}
-//         for i in 0..<50 {
-//           distance_center := linalg.length(ray_pos)
-//           if distance_center > 100 do break
-//
-//           ray_pos += ray_dir * ray_step
-//
-//           air_density := math.pow(math.E, -distance_center * 1.5)
-//           transmittance *= math.pow(math.E, -air_density * 0.2 * ray_step)
-//           light_transmittance := f32(1)
-//           light_pos := ray_pos
-//           light_dir := linalg.normalize(sun_pos - light_pos)
-//           for j in 0..<20 {
-//             ldist_center := linalg.length(light_pos)
-//             if ldist_center > 100 do break
-//             dens := math.pow(math.E, -ldist_center * 1.5)
-//             light_transmittance *= math.pow(math.E, -dens * 0.2 * ray_step)
-//             light_pos += light_dir * ray_light_step
-//           }
-//           sca := light_transmittance * transmittance
-//           inscattering += atmo_scatter * sca
-//           // inscattering.r *= air_density * 3.0
-//           // inscattering.g *= air_density * 2.0
-//           // inscattering.b *= air_density
-//         }
-//         inscattering *= rayleigh
-//         if inscattering.x > 1 do inscattering.x = 1
-//         if inscattering.y > 1 do inscattering.y = 1
-//         if inscattering.z > 1 do inscattering.z = 1
-//
-//
-//         rl.DrawRectangle(
-//           i32(index * w),
-//           0, i32(w)+1, i32(window_height), rl.Color{u8(inscattering.x*255), u8(inscattering.y*255), u8(inscattering.z*255), 255}
-//         )
-//         // rl.DrawRectangle(
-//         //   i32(index * w),
-//         //   0, i32(w)+1, i32(window_height), rl.Color{u8(math.abs(ray_dir.x)*255), u8(math.abs(ray_dir.y)*255), 0, 255}
-//         // )
-//
-//       }
-//       // rl.CloseWindow()
-//     }
-//
-//     rl.DrawFPS(10, 10)
-//     rl.EndDrawing()
-//   }
-//
-//   rl.CloseWindow()
-// }
-
 rt: rl.RenderTexture2D
 export_rt: rl.RenderTexture2D
 // rt_width :: 300
 // rt_height :: 300
 
-// rt_width :: 16
-// rt_height :: 16
+rt_width :: 128
+rt_height :: 16
 
-rt_width :: 64
-rt_height :: 64
+// rt_width :: 64
+// rt_height :: 64
 
-export_rt_width :: 512
-export_rt_height :: 512
+// export_rt_width :: 512
+// export_rt_height :: 512
 // export_rt_width :: 64
 // export_rt_height :: 64
+export_rt_width :: 256
+export_rt_height :: 64
 export_step_size :: 0.005
 // export_step_count :: 128
-export_step_count :: 256
+export_step_count :: 512
 
 atmo_density_mult := f32(1.8)
 atmo_axis_mult := f32(1.7)
-light_density_mult := f32(100000000.0)
+light_density_mult := f32(60000000000)//100000000.0) * 10000
 
 hover_color := Vec3{0,0,0}
+hover_xyz := Vec3{0, 0, 0}
 
-exposure_sliderdata := SliderData{value = 1, max_value=1, min_value=0}
-steps_sliderdata := SliderData{value = 64, max_value=512, min_value=1}
+exposure_sliderdata := SliderData{value = 1, max_value=2, min_value=0}
+steps_sliderdata := SliderData{value = 128, max_value=512, min_value=1}
 stepsize_sliderdata := SliderData{value = 0.01, max_value=0.4, min_value=0.00001}
-planetsize_sliderdata := SliderData{value = 1, max_value=100, min_value=0.0}
+planetsize_sliderdata := SliderData{value = 1000/55, max_value=1000, min_value=0.0}
+horizon_bleed_mult_sliderdata := SliderData{value = 1, max_value=1, min_value=0.0}
 
 pal: Pallette
 Pallette :: struct {
@@ -158,6 +66,9 @@ Pallette :: struct {
 }
 
 EPS :: 1e-5
+
+time_mult_pressed := f64(0)
+time_light_dens_pressed := f64(0)
 
 export_render_texture :: proc(rt: rl.RenderTexture2D, path: cstring) -> bool {
 	img := rl.LoadImageFromTexture(rt.texture) // reads pixels back from the GPU
@@ -189,39 +100,44 @@ ray_circle_intersect :: proc(origin, direction, center: Vec2, radius: f32) -> (t
   if t_in < 0 || t_out < 0 do return 0, 0, false
   return t_in, t_out, true
 }
-sample_atmo_density :: proc (p: Vec3) -> f32 {
+sample_atmo_density :: proc (p: Vec3, planet_center: Vec3, earth_r: f32) -> f32 {
   // return 0
-  v: f32 = math.exp(-(linalg.length(p)) * atmo_axis_mult)
-  v *= atmo_density_mult; // same as e^{-ln(atmo_density_mult)-x}
+  value_at_edge_of_atmosphere := f32(0.01)
+  h := f32(1 / -math.ln(value_at_edge_of_atmosphere / 1))//atmo_density_mult))
+  // h = 0.145
+  v: f32 = math.exp(-(linalg.length(p-planet_center) - earth_r) / h)
+  // v *= atmo_density_mult; // same as e^{-ln(atmo_density_mult)-x}
   // v *= 2.1
   // v *= 1308.1;
   // return v
 
-  return math.clamp(v, 0, 1) * 10000
+  return math.clamp(v, 0, 1)
 }
 
 render_atmo :: proc(step_size: f32, step_count: i32, norm_mp := Vec2{0, 0}, rt_wh := Vec2{rt_width, rt_height}) {
   inscattering := Vec3{}
   extinction := Vec3{1, 1, 1}
 
-  light_densities := Vec3{635, 540, 470}
+  light_densities := Vec3{680, 550, 440}
   light_densities = Vec3{
     1/math.pow(light_densities.r, 4),
     1/math.pow(light_densities.g, 4),
     1/math.pow(light_densities.b, 4)
   } * light_density_mult
 
+  earth_r: f32 = planetsize_sliderdata.value
+  planet_center := Vec3{0, -earth_r, 0}
+
   for y in 0..<rt_wh.y {
     for x in 0..<rt_wh.x {
       // x = angle to sun
       // y = altitude
-      x_norm, y_norm := f32(x)/rt_wh.x, f32(y)/rt_wh.y
-      angle_to_sun := math.acos(x_norm*2-1)//(x_norm) * math.PI // Maybe don't need entire revolution
+      x_norm, y_norm := f32(x)/(rt_wh.x-1), f32(y)/(rt_wh.y-1)
+      angle_to_sun := math.acos(x_norm*2-1)
       altitude := y_norm// - 0.1
-      pos := Vec3{0, altitude, 0} // Technically, don't need an entire 3d representation
-      dens := sample_atmo_density(pos)
+      pos := Vec3{0, altitude, 0}
+      dens := sample_atmo_density(pos, planet_center, earth_r)
       advance_vector := Vec3{math.sin(angle_to_sun), math.cos(angle_to_sun), 0}
-      earth_r: f32 = planetsize_sliderdata.value
       t_in, t_out, is_hit := ray_circle_intersect(pos.xy, advance_vector.xy, {0, -earth_r}, earth_r)
       // fmt.printfln("%v", is_hit)
       advance_vector *= step_size
@@ -241,16 +157,16 @@ render_atmo :: proc(step_size: f32, step_count: i32, norm_mp := Vec2{0, 0}, rt_w
 
 
       for i in 0..<step_count {
-        dens = sample_atmo_density(pos)
-        extinction.r *= math.exp(-dens * step_size * light_densities.r)
-        extinction.g *= math.exp(-dens * step_size * light_densities.g)
-        extinction.b *= math.exp(-dens * step_size * light_densities.b)
+        light_dens := sample_atmo_density(pos, planet_center, earth_r)
+        extinction.r *= math.exp(-light_dens * step_size * light_densities.r)
+        extinction.g *= math.exp(-light_dens * step_size * light_densities.g)
+        extinction.b *= math.exp(-light_dens * step_size * light_densities.b)
 
         pos += advance_vector
       }
       if is_hit {
         // extinction = Vec3{0, 0, 0}
-        extinction *= clamp(earth_r-max((t_out-t_in), 0), 0, 1)
+        extinction *= clamp(1-max(t_out-t_in, 0) * horizon_bleed_mult_sliderdata.value, 0, 1)
       }
       // extinction *= 1000.01
       extinction *= exposure_sliderdata.value
@@ -265,11 +181,13 @@ render_atmo :: proc(step_size: f32, step_count: i32, norm_mp := Vec2{0, 0}, rt_w
       // }
       if (norm_mp.x) == x && (norm_mp.y) == y {
         hover_color = extinction
+        hover_xyz = Vec3{angle_to_sun, altitude, dens}
       }
       // }
       // inscattering = extinction * 1/(linalg.length(extinction))
       // inscattering = Vec3{math.log_f32(extinction.r, 2), math.log_f32(extinction.g, 2), math.log_f32(extinction.b, 2)}
       inscattering = Vec3{clamp(inscattering.r, 0, 1), clamp(inscattering.g, 0, 1), clamp(inscattering.b, 0, 1)}
+      if rl.IsKeyDown(.SPACE) do inscattering = Vec3{dens, dens, dens}
       rl.DrawPixel(i32(x), i32(y), rl.Color{u8(inscattering.r*255), u8(inscattering.g*255), u8(inscattering.b*255), 255})
       // rl.DrawPixel(i32(x), i32(y), rl.Color{u8(dens*255), 0, 0, 255})
   }
@@ -317,6 +235,7 @@ main :: proc() {
       rl.EndTextureMode()
       if ok := export_render_texture(export_rt, "./exported.png"); ok {
         fmt.printfln("Successfully exported lightmarch to ./exported.png")
+        fmt.printfln("Light mult %0.2f", light_density_mult)
       }
       rl.CloseWindow() 
     }
@@ -359,9 +278,20 @@ main :: proc() {
             rl.DrawRectangleV(color_rect_pos, {20, 20}, 
               rl.Color{u8(norm_hover_col.r), u8(norm_hover_col.g), u8(norm_hover_col.b), 255}
             )
+            rl.DrawText(rl.TextFormat("(%0.2f, %0.2f, %0.2f)", hover_xyz.x, hover_xyz.y, hover_xyz.z),
+              i32(color_rect_pos.x) + 50, i32(color_rect_pos.y), 15, rl.GREEN)
+            rl.DrawText(rl.TextFormat("(%0.2f, %0.2f, %0.2f)", hover_color.x, hover_color.y, hover_color.z),
+              i32(color_rect_pos.x) + 50, i32(color_rect_pos.y)+30, 15, rl.GREEN)
       }
 
-      atmo_mult_rate := f32(10.1) * rl.GetFrameTime()
+      if rl.IsKeyUp(.DOWN) && rl.IsKeyUp(.UP) {
+        time_mult_pressed = rl.GetTime()
+      }
+      if rl.IsKeyUp(.LEFT_SHIFT) && rl.IsKeyUp(.LEFT_CONTROL) {
+        time_light_dens_pressed = rl.GetTime()
+      }
+      atmo_axis_rate := f32(10.1) * rl.GetFrameTime()
+      atmo_mult_rate := f32(10.1) * rl.GetFrameTime() * math.pow(f32(rl.GetTime() - time_mult_pressed), 2)
       if rl.IsKeyDown(.UP) {
         atmo_density_mult += atmo_mult_rate
       }
@@ -369,20 +299,23 @@ main :: proc() {
         atmo_density_mult -= atmo_mult_rate
       }
       if rl.IsKeyDown(.RIGHT) {
-        atmo_axis_mult += atmo_mult_rate
+        atmo_axis_mult += atmo_axis_rate
       }
       if rl.IsKeyDown(.LEFT) {
-        atmo_axis_mult -= atmo_mult_rate
+        atmo_axis_mult -= atmo_axis_rate
       }
-      light_density_mult_rate := f32(10000000) * 0.1
+      light_density_mult_rate := f32(10000000000) *
+        rl.GetFrameTime() *
+        math.pow(f32(rl.GetTime() - time_light_dens_pressed), 2)
       if rl.IsKeyDown(.LEFT_SHIFT) {
-        light_density_mult += atmo_mult_rate * light_density_mult_rate
+        light_density_mult += light_density_mult_rate
       }
       if rl.IsKeyDown(.LEFT_CONTROL) {
-        light_density_mult -= atmo_mult_rate * light_density_mult_rate
+        light_density_mult -= light_density_mult_rate
       }
-      atmo_density_mult = clamp(atmo_density_mult, 0, 100)
-      atmo_axis_mult = clamp(atmo_axis_mult, 0, 10)
+      light_density_mult = max(light_density_mult, 0)
+      atmo_density_mult = clamp(atmo_density_mult, 0, 106000)
+      atmo_axis_mult = clamp(atmo_axis_mult, 0, 600)
 
       slider({50, window_size.y-50, 400, 15}, &exposure_sliderdata)
       slider({50, window_size.y-150, 200, 15}, &steps_sliderdata)
@@ -390,6 +323,9 @@ main :: proc() {
       rl.DrawText(rl.TextFormat("exposure: %0.2f", exposure_sliderdata.value), 50, i32(window_size.y-70), 15, rl.BLACK)
       rl.DrawText(rl.TextFormat("step amount: %0.2f", steps_sliderdata.value), 50, i32(window_size.y-70-50), 15, rl.BLACK)
       rl.DrawText(rl.TextFormat("step size: %0.2f", stepsize_sliderdata.value), 50, i32(window_size.y-70-100), 15, rl.BLACK)
+
+      slider({50, window_size.y-250, 300, 15}, &horizon_bleed_mult_sliderdata)
+      rl.DrawText(rl.TextFormat("horizon bleed mutliplier: %0.2f", horizon_bleed_mult_sliderdata.value), 50, i32(window_size.y-70-150), 15, rl.BLACK)
 
 
       rl.DrawText(rl.TextFormat("planet size: %0.2f", planetsize_sliderdata.value), i32(window_size.x-250), i32(window_size.y-70-100), 15, rl.BLACK)

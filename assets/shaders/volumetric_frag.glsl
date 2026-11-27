@@ -45,7 +45,7 @@ float actual_cloud_height_base = cloud_dome_radius;
 float actual_cloud_height_apex = cloud_dome_radius + cloud_layer_thickness;
 vec3 atmosphere_position = vec3(cloud_dome_position.x, -1000000-2000, cloud_dome_position.z);
 // float atmosphere_thickness = 170000;
-float atmosphere_thickness = 70000;
+float atmosphere_thickness = 55000;//300000;//70000;
 float planet_radius = 1000000;
 const float cloud_minimum_height = -3500;
 
@@ -319,16 +319,16 @@ float sample_atmo_density(vec3 p, bool far) {
   // float k = 0.00001;
   // k *= 1/1.7;
   // return 0.1;
-  float atmo_intens = 1.0;
-  float value_at_edge_of_atmosphere = 0.001;
+  float atmo_intens = 2.0;
+  float value_at_edge_of_atmosphere = 0.01;
   // float h = log(exp(-atmosphere_thickness)) / log(value_at_edge_of_atmosphere);
-  float h = 1 / 6.9078; // -1 / ln(value_at_edge_of_atmosphere)
+  float h = 1 / -log(value_at_edge_of_atmosphere / atmo_intens); // -1 / ln(value_at_edge_of_atmosphere)
   // float k = 1.0/h;//(atmosphere_thickness);
   // k = 1/radius;
   // k *= 0.0000000000001;
   float height = (length(atmosphere_position-p) - planet_radius)/atmosphere_thickness;
   // p.x += float(frame_number) * 5.1 + p.y * 0.01;
-  float v = exp(-(height) / h);// * (radius - height);//exp(-(height - 10612100) * 0.000009) * 0.0002 * 0.05 * 0.0005;
+  float v = atmo_intens * exp(-(height) / h);// * (radius - height);//exp(-(height - 10612100) * 0.000009) * 0.0002 * 0.05 * 0.0005;
   // v /= radius;
   // if (!far) v -= texture(detail_cloud_noise, p * 0.0012).r * 0.0001;
   // v *= 1008.1;
@@ -351,6 +351,8 @@ vec4 calculate_atmosphere(vec3 camera_world_pos, vec3 ray_dir, float ray_length,
   else if (atmo_ray.x < atmo_ray.y) t_in = atmo_ray.x;
   else return vec4(1, 0, 0, 0);
 
+
+
   float stes = 2065;
   float base_step = stes;
   float distance_along = stes * fract(rand(frag_uv) * float(frame_number) * 0.8) + t_in;
@@ -363,9 +365,11 @@ vec4 calculate_atmosphere(vec3 camera_world_pos, vec3 ray_dir, float ray_length,
       470.0
     );
   light_dens = vec3(1/pow(light_dens.r, 4), 1/pow(light_dens.g, 4), 1/pow(light_dens.b, 4));
-  light_dens *= (33.1e-6 / light_dens.b) * 70;// * 50;
-  light_dens *= 0.007;
+  // light_dens *= 894472683520.0/atmosphere_thickness;
+  light_dens *= 1000000.0 * 0.9;
+  // light_dens *= (33.1e-6 / light_dens.b) * 70;// * 50;
   // light_dens *= 0.007;
+  // light_dens *= 4.007;
   vec3 step_vec = ray_dir * stes;
   vec3 obstructed_scatter = vec3(0.2);
   obstructed_scatter.b = 0.5;
@@ -378,7 +382,7 @@ vec4 calculate_atmosphere(vec3 camera_world_pos, vec3 ray_dir, float ray_length,
   // }
 
   for (int i = 0; i < 64; i++) {
-    if (distance_along > ray_length ||// ray_length - distance_along < 100 || 
+    if (distance_along > ray_length || //distance_along >= ray_length - 0.1 || 
         transmittance.r+transmittance.g+transmittance.b <= 0.01) break;
     dens = sample_atmo_density(pos, (distance_along > 3000));
     transmittance.r *= exp(-dens * stes * light_dens.r);
@@ -398,7 +402,7 @@ vec4 calculate_atmosphere(vec3 camera_world_pos, vec3 ray_dir, float ray_length,
     //   ) / PI;
     float angle_to_sun = (dot(light_dir, normalize(pos-atmosphere_position))+1)*0.5;
     float altitude = (length(pos-atmosphere_position) - planet_radius) / atmosphere_thickness;//(2730000 - 1000000);
-    float m = 0.01;
+    float m = 0.1;//1/512;
     vec3 light_transmittance = texture(
         atmo_lightmarch_lut_texture, 
         vec2(
@@ -406,6 +410,7 @@ vec4 calculate_atmosphere(vec3 camera_world_pos, vec3 ray_dir, float ray_length,
           clamp(altitude, m, 1-m)
         )
         ).rgb;
+    // light_transmittance = vec3(angle_to_sun*2-1);
 
 
       // vec3 shadowspace = project_position(pos, macroshadowmap_matrix);
@@ -469,7 +474,20 @@ vec4 calculate_atmosphere(vec3 camera_world_pos, vec3 ray_dir, float ray_length,
     scattering += current_scatter * stes * phase * light_dens;
 
     stes = base_step * pow(1+0.08, float(i));
-    if (distance_along + stes > ray_length) stes = ray_length - distance_along;
+    if (distance_along + stes > ray_length) {
+      stes = ray_length - distance_along;
+      transmittance.r *= exp(-dens * stes * light_dens.r);
+      transmittance.g *= exp(-dens * stes * light_dens.g);
+      transmittance.b *= exp(-dens * stes * light_dens.b);
+
+      vec3 current_scatter = light_transmittance * dens * transmittance;
+
+      float cos_theta = dot(ray_dir, light_dir);
+      float phase = 0.75 * (1.0 + cos_theta * cos_theta);
+
+      scattering += current_scatter * stes * phase * light_dens;
+      break;
+    }
     step_vec = ray_dir * (stes);// + stes * float(frame_number)*0.01);
 
     pos += step_vec;
@@ -728,7 +746,7 @@ vec4 calculate_volumetrics() {
     float extinction = 1.0;
     vec3 scattering = vec3(0);
 
-    if (false) { //Clouds
+    if (true) { //Clouds
     vec2 A = ray_sphere(camera_world_pos, ray_dir, cloud_dome_radius + cloud_layer_thickness, cloud_dome_position);
     vec2 B = ray_sphere(camera_world_pos, ray_dir, cloud_dome_radius, cloud_dome_position);
 

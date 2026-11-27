@@ -244,7 +244,7 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   framebuffer_init(&renderer.shadowmap_framebuffer, shadowmap_resolution, {.DEPTH}, "shadowmap", .SHADOWMAP)
   framebuffer_init(&renderer.macroshadowmap_framebuffer, shadowmap_resolution, {.DEPTH}, "shadowmap", .SHADOWMAP)
 
-  effects_resolution_factor: f32 = 1.0/1
+  effects_resolution_factor: f32 = 1.0/2
   effects_resolution := Vec2{WINDOW_WIDTH, WINDOW_HEIGHT} * effects_resolution_factor
   effects_resolution_int := IVec2{i32(effects_resolution.x), i32(effects_resolution.y)}
   fmt.printfln("Effects resolution %d (1/%d)", effects_resolution_int, i32(1 / effects_resolution_factor))
@@ -252,7 +252,7 @@ renderer_init :: proc(renderer: ^Renderer, scene: ^Scene) {
   framebuffer_init(&renderer.blur_framebuffer, effects_resolution_int, {.COLOR}, "blur", .TWO_DIMENSIONAL)
   framebuffer_init(&renderer.downscaled_depth_framebuffer, effects_resolution_int, {.RED}, "depth_downscale", .TWO_DIMENSIONAL)
 
-  renderer.cloud_settings.cloud_dome_radius = 1e5
+  renderer.cloud_settings.cloud_dome_radius = 1e7;//1e5
 
   renderer.cloud_settings.cloud_noise = bake_cloud_noise()
   renderer.volumetrics_taa_frames = 128
