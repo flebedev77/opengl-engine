@@ -33,7 +33,7 @@ rt_height :: 16
 // export_rt_width :: 64
 // export_rt_height :: 64
 export_rt_width :: 256
-export_rt_height :: 64
+export_rt_height :: 128
 export_step_size :: 0.005
 // export_step_count :: 128
 export_step_count :: 512
@@ -49,7 +49,7 @@ exposure_sliderdata := SliderData{value = 1, max_value=2, min_value=0}
 steps_sliderdata := SliderData{value = 128, max_value=512, min_value=1}
 stepsize_sliderdata := SliderData{value = 0.01, max_value=0.4, min_value=0.00001}
 planetsize_sliderdata := SliderData{value = 1000/55, max_value=1000, min_value=0.0}
-horizon_bleed_mult_sliderdata := SliderData{value = 1, max_value=1, min_value=0.0}
+horizon_bleed_mult_sliderdata := SliderData{value = 1, max_value=2, min_value=0.0}
 
 pal: Pallette
 Pallette :: struct {
@@ -74,7 +74,7 @@ export_render_texture :: proc(rt: rl.RenderTexture2D, path: cstring) -> bool {
 	img := rl.LoadImageFromTexture(rt.texture) // reads pixels back from the GPU
 	defer rl.UnloadImage(img)
 
-	// rl.ImageFlipVertical(&img) // render textures are stored upside down (OpenGL origin)
+	rl.ImageFlipVertical(&img) // render textures are stored upside down (OpenGL origin)
 	return rl.ExportImage(img, path)
 }
 
