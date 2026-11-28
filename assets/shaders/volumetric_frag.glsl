@@ -47,16 +47,18 @@ vec3 atmosphere_position = vec3(cloud_dome_position.x, -1000000-2000, cloud_dome
 // float atmosphere_thickness = 170000;
 float atmosphere_thickness = 55000;//300000;//70000;
 float planet_radius = 1000000;
-const float cloud_minimum_height = -3500;
+// const float cloud_minimum_height = -3500;
 
 const float esm_k = 120;
 
-ivec3 base_cloud_noise_size = ivec3(128*6, 4, 128*6);
+ivec3 base_cloud_noise_size = ivec3(128*6, 3, 128*6);
+// ivec3 base_cloud_noise_size = ivec3(8192, 1, 4096);
 // ivec3 base_cloud_noise_size = ivec3(128*24, 4, 128*24);
 // ivec3 base_cloud_noise_size = ivec3(4096, 2, 4096);
 float bb_side = 18000;
 // vec3 sky_bounding_box = vec3(bb_side, cloud_height_apex+100, bb_side);
-vec3 sky_bounding_box = vec3(1000000, 1000000, 1000000);
+// vec3 sky_bounding_box = vec3(1000000, 1000000, 1000000);
+vec3 sky_bounding_box = vec3(planet_radius*2, planet_radius*2, planet_radius*2)*2;
 // ivec3 base_cloud_noise_size = ivec3(64);
 
 #define STEPS_CLOUDS 128//64
@@ -320,7 +322,7 @@ float sample_atmo_density(vec3 p, bool far) {
   // k *= 1/1.7;
   // return 0.1;
   float atmo_intens = 2.0;
-  float value_at_edge_of_atmosphere = 0.01;
+  float value_at_edge_of_atmosphere = 0.002;
   // float h = log(exp(-atmosphere_thickness)) / log(value_at_edge_of_atmosphere);
   float h = 1 / -log(value_at_edge_of_atmosphere / atmo_intens); // -1 / ln(value_at_edge_of_atmosphere)
   // float k = 1.0/h;//(atmosphere_thickness);
@@ -471,7 +473,7 @@ vec4 calculate_atmosphere(vec3 camera_world_pos, vec3 ray_dir, float ray_length,
     float cos_theta = dot(ray_dir, light_dir);
     float phase = 0.75 * (1.0 + cos_theta * cos_theta);
 
-    scattering += current_scatter * stes * phase * light_dens;
+    scattering += current_scatter * stes * phase * light_dens;// * HG(0.85, cos_theta);
 
     stes = base_step * pow(1+0.08, float(i));
     if (distance_along + stes > ray_length) {
@@ -523,13 +525,13 @@ vec4 calculate_clouds(
 
       vec3 start_pos = camera_world_pos + ray_dir * t_in;
 
-      // if (false) {
-      if (!(start_pos.x < sky_bounding_box.x &&
-            start_pos.x > -sky_bounding_box.x &&
-            start_pos.y < sky_bounding_box.y &&
-            start_pos.y > 0 &&
-            start_pos.z < sky_bounding_box.z &&
-            start_pos.z > -sky_bounding_box.z)) {
+      if (false) {
+      // if (!(start_pos.x < sky_bounding_box.x &&
+      //       start_pos.x > -sky_bounding_box.x &&
+      //       start_pos.y < sky_bounding_box.y &&
+      //       start_pos.y > 0 &&
+      //       start_pos.z < sky_bounding_box.z &&
+      //       start_pos.z > -sky_bounding_box.z)) {
         extinction = 1;
         scattering = vec3(0);
       } else {
@@ -757,21 +759,25 @@ vec4 calculate_volumetrics() {
 
       if (B.x < 0.0 && B.y < 0.0) { // Not intersecting inner sphere
         t_in = max(0.0, A.x);
-        t_out = A.y;
+        // t_out = min(A.y, ray_length);
+          t_out = A.y;
       } else {
         if (B.x > 0.0) { // Aerial perspective
           t_in = max(0.0, A.x);
           t_out = B.x;
-          if (B.y > 0.0 && A.y > 0.0 && A.x <= 0.0) { // When inside layer, ray passes out of the layers and then enters back in thus requiring a second ray
+          // t_out = min(B.x, ray_length);
+          if (B.y > 0.0 && A.y > 0.0) { // When inside or above layer, ray passes out of the layers and then enters back in thus requiring a second ray
             vec4 clouds = calculate_clouds(t_in, t_out, extinction, ray_length, ray_dir, camera_world_pos, cos_theta);
             extinction = clouds.a;
             scattering = clouds.rgb;
             t_in = B.y;
-            t_out = A.y;
+          t_out = A.y;
+            // t_out = min(A.y, ray_length);
             // return vec4(vec3(1, 0, 0), 0);
           }
         } else if (A.y > 0.0) { // Ground perspective
           t_in = max(0.0, B.y);
+          // t_out = min(A.y, ray_length);
           t_out = A.y;
         }
       }

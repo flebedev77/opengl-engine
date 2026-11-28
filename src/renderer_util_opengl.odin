@@ -20,14 +20,15 @@ SdfCell :: struct {
   distance_sq:     f32,
 }
 
-// COVERAGE_FILE_PATH :: "assets/textures/cloud_coveragemapgray.png"
-COVERAGE_FILE_PATH :: "assets/textures/KerbinLowAltCoverageGray.png"
+COVERAGE_FILE_PATH :: "assets/textures/cloud_coveragemapgray.png"
+// COVERAGE_FILE_PATH :: "assets/textures/KerbinLowAltCoverageGray.png"
 
 bake_cloud_noise :: proc() -> CloudNoise {
   fmt.printf("Allocating 3d noise ")
   profile_begin()
   cloud_noise := CloudNoise{}
-  base_shape_w, base_shape_h, base_shape_d := i32(128)*6, i32(4), i32(128)*6
+  base_shape_w, base_shape_h, base_shape_d := i32(128)*6, i32(3), i32(128)*6
+  // base_shape_w, base_shape_h, base_shape_d := i32(8192), i32(1), i32(4096)
   // base_shape_w, base_shape_h, base_shape_d := i32(128)*24, i32(4), i32(128)*24
   // base_shape_w, base_shape_h, base_shape_d := i32(4096), i32(2), i32(4096)
   // base_shape_w, base_shape_h, base_shape_d := i32(64), i32(64), i32(64)
@@ -76,6 +77,9 @@ bake_cloud_noise :: proc() -> CloudNoise {
           percentage_to_apex := f32(y) / f32(base_shape_h)
 
           height_feather := clamp(1.0 - percentage_to_apex, 0, 1)
+          coverage_v := f32(coverage_data[x+z*w])/255
+          // worley : f32 = (height_feather > 0) ? (1 - cpu_voronoi3d(p * 1.5).r) * height_feather * coverage_v : 0
+
           // perlin := (height_feather > 0) ? cpu_snoise(p) * height_feather : 0
           // worley : f32 = (height_feather > 0) ? (1 - cpu_voronoi3d(p * 1.5).r) * height_feather : 0
           // worley_perlin_weight : f32 = clamp(1 - worley + perlin_weight, 0, 1)
@@ -86,7 +90,7 @@ bake_cloud_noise :: proc() -> CloudNoise {
           // perlin_worley *= 2.1
 
           base_noise[index] = max(0,//clamp(perlin_worley - coverage_bias, 0, 1),
-            (f32(coverage_data[x+z*w])/255)*height_feather)
+            coverage_v*height_feather)
         }
       }
     }

@@ -102,7 +102,7 @@ ray_circle_intersect :: proc(origin, direction, center: Vec2, radius: f32) -> (t
 }
 sample_atmo_density :: proc (p: Vec3, planet_center: Vec3, earth_r: f32) -> f32 {
   // return 0
-  value_at_edge_of_atmosphere := f32(0.01)
+  value_at_edge_of_atmosphere := f32(0.002)
   h := f32(1 / -math.ln(value_at_edge_of_atmosphere / 1))//atmo_density_mult))
   // h = 0.145
   v: f32 = math.exp(-(linalg.length(p-planet_center) - earth_r) / h)
