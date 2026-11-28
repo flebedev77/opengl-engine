@@ -155,6 +155,6 @@ void main() {
   out_frag_normal = vec4(0);
 
 
-  float sun_factor = clamp(pow(max(dot(view_dir, light_dir) - 0.9995, 0)*2006.5, 2), 0, 1);
+  float sun_factor = clamp(pow(max(dot(view_dir, light_dir) - 0.9997, 0)*8006.5, 2), 0, 1);
   out_frag_color = mix(out_frag_color, vec4(1, 1, 0.98, 1), sun_factor);
 }
